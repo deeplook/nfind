@@ -27,6 +27,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import textwrap
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -1274,6 +1275,11 @@ def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[s
         "privileges. Only run filters you have reviewed and trust. To replay it "
         "sandboxed instead, use `pfind --run`."
     )
+    # ruff formats code but not prose, so wrap the warning paragraph ourselves to the
+    # same width (accounting for the comment prefix). The aligned key/value lines are
+    # left verbatim so their two-space column alignment is preserved.
+    prefix_len = len(comment) + 1 if comment else 0
+    warning_lines = textwrap.wrap(warning, width=FILTER_LINE_LENGTH - prefix_len)
     lines = [
         "pfind filter",
         "",
@@ -1282,7 +1288,7 @@ def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[s
         f"Runtime: {runtime}",
         f"Saved:   {date.today().isoformat()}",
         "",
-        warning,
+        *warning_lines,
     ]
     return [f"{comment} {line}".rstrip() for line in lines]
 

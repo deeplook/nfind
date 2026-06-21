@@ -978,6 +978,17 @@ def test_render_saved_filter_python_is_valid_pep723_script():
     assert 'if __name__ == "__main__":' in src
 
 
+def test_render_saved_filter_wraps_header_within_line_length():
+    long_code = "def filter_paths(paths):\n    return paths"
+    for runtime in ("python", "node"):
+        gen = MODULE.GeneratedFilter(code=long_code, dependencies=[], runtime=runtime)
+        src = MODULE.render_saved_filter(gen, "epub archives", "gpt-4o-mini")
+        longest = max(len(line) for line in src.splitlines())
+        assert longest <= MODULE.FILTER_LINE_LENGTH, (runtime, longest)
+        # The warning prose is wrapped across multiple lines, not left as one long line.
+        assert sum("OUTSIDE the" in line or "trust." in line for line in src.splitlines()) >= 1
+
+
 def test_render_saved_filter_escapes_triple_quotes_in_prompt():
     src = MODULE.render_saved_filter(
         _gen("def filter_paths(paths): return paths"), 'a """ quote', "gpt-4o-mini"
