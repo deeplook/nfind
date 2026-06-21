@@ -67,9 +67,12 @@ def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool) -> Non
 @app.command()
 def main(
     prompt: Annotated[
-        str,
-        typer.Argument(help="Natural-language description of the paths to find."),
-    ],
+        Optional[str],
+        typer.Argument(
+            help="Natural-language description of the paths to find. "
+            "Omit when replaying a saved filter with --run.",
+        ),
+    ] = None,
     path: Annotated[
         str,
         typer.Argument(help="Directory to search."),
@@ -116,7 +119,15 @@ def main(
     ] = False,
     save: Annotated[
         Optional[Path],
-        typer.Option(help="Write the generated filter code to this file."),
+        typer.Option(help="Save the generated filter as a self-describing, replayable script."),
+    ] = None,
+    run: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--run",
+            help="Replay a previously saved filter through the sandbox instead of "
+            "generating one (no PROMPT, no LLM call).",
+        ),
     ] = None,
     confirm: Annotated[
         bool,
@@ -160,10 +171,22 @@ def main(
         raise typer.Exit(2)
     if macos_meta and sys.platform != "darwin":
         typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
+    if run is not None:
+        if prompt is not None:
+            typer.echo("error: PROMPT is not used with --run (the filter is replayed).", err=True)
+            raise typer.Exit(2)
+        for flag, used in (("--save", save is not None), ("--confirm", confirm),
+                           ("--macos-meta", macos_meta)):
+            if used:
+                typer.echo(f"error: {flag} cannot be combined with --run.", err=True)
+                raise typer.Exit(2)
+    elif prompt is None:
+        typer.echo("error: PROMPT is required (or use --run to replay a saved filter).", err=True)
+        raise typer.Exit(2)
 
     def on_generated(generated: GeneratedFilter) -> None:
         if save is not None:
-            save.write_text(generated.code)
+            save.write_text(backend.render_saved_filter(generated, prompt or "", model))
             typer.echo(f"saved generated filter to {save}", err=True)
         if show_code or confirm:
             typer.echo(f"--- generated filter ({generated.runtime}) ---", err=True)
@@ -193,22 +216,37 @@ def main(
     hook = on_generated if (show_code or save is not None or confirm) else None
 
     try:
-        results = backend.search(
-            path,
-            prompt,
-            image=image,
-            model=model,
-            timeout=timeout,
-            memory=memory,
-            cpus=cpus,
-            pids_limit=pids_limit,
-            rebuild=rebuild,
-            build_timeout=build_timeout,
-            on_generated=hook,
-            on_retry=on_retry,
-            approve_dependencies=approve_dependencies,
-            macos_meta=macos_meta,
-        )
+        if run is not None:
+            results = backend.run_saved(
+                run,
+                path,
+                image=image,
+                timeout=timeout,
+                memory=memory,
+                cpus=cpus,
+                pids_limit=pids_limit,
+                rebuild=rebuild,
+                build_timeout=build_timeout,
+                approve_dependencies=approve_dependencies,
+                on_generated=hook,
+            )
+        else:
+            results = backend.search(
+                path,
+                prompt,
+                image=image,
+                model=model,
+                timeout=timeout,
+                memory=memory,
+                cpus=cpus,
+                pids_limit=pids_limit,
+                rebuild=rebuild,
+                build_timeout=build_timeout,
+                on_generated=hook,
+                on_retry=on_retry,
+                approve_dependencies=approve_dependencies,
+                macos_meta=macos_meta,
+            )
     except (typer.Exit, typer.Abort):
         # Control-flow exceptions (e.g. a declined --confirm) subclass RuntimeError;
         # let them propagate to Typer instead of reporting them as errors.

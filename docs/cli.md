@@ -6,6 +6,7 @@
 - [Arguments](#arguments)
 - [Options](#options)
 - [Reviewing the generated code](#reviewing-the-generated-code)
+- [Saving & replaying filters](#saving--replaying-filters)
 - [Output modes](#output-modes)
 - [Dependencies](#dependencies)
 - [Exit codes](#exit-codes)
@@ -16,10 +17,13 @@
 
 ```bash
 pfind PROMPT [PATH] [OPTIONS]
+pfind --run FILTER [PATH] [OPTIONS]   # replay a saved filter, no PROMPT
 ```
 
 Search `PATH` for files and directories matching the natural-language `PROMPT` and
-print one path per line. Both `-h` and `--help` show usage.
+print one path per line. Both `-h` and `--help` show usage. With `--run`, a previously
+saved filter is replayed instead and `PROMPT` is omitted (see
+[Saving & replaying filters](#saving--replaying-filters)).
 
 ```bash
 pfind "directories that contain only audio files"
@@ -47,7 +51,8 @@ pfind "files larger than 1 MB, with their size" --verbose
 | `--rebuild` | off | Rebuild the worker image before searching. |
 | `--build-timeout` | `120.0` | Seconds allowed for building the worker image. |
 | `--show-code` | off | Print the generated filter (to stderr) before running it. |
-| `--save PATH` | — | Write the generated filter code to a file. |
+| `--save PATH` | — | Save the generated filter as a self-describing, replayable script (see [Saving & replaying filters](#saving--replaying-filters)). |
+| `--run PATH` | — | Replay a previously saved filter through the sandbox instead of generating one. No `PROMPT`, no LLM call. |
 | `--confirm`, `-i` | off | Show the generated code and ask for confirmation before running it. |
 | `--verbose`, `-v` | off | Show extra per-path fields alongside each path. |
 | `--json` | off | Output results as JSON (path plus any extra fields). |
@@ -78,6 +83,70 @@ stderr is redirected.
 
 Declining a `--confirm` prompt aborts before the container runs and exits with code
 130.
+
+## Saving & replaying filters
+
+`--save PATH` writes the generated filter as a **self-describing, replayable script**
+rather than a bare function. For the Python runtime that's a
+[PEP 723](https://peps.python.org/pep-0723/) script:
+
+```bash
+pfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save mp3-live.py
+```
+
+```python
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["mutagen"]
+# ///
+"""
+pfind filter
+
+Prompt:  MP3 files whose title tag contains 'live', using mutagen
+Model:   gpt-4o-mini
+Runtime: python
+Saved:   2026-06-21
+
+WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the pfind
+Docker sandbox -- no read-only mount, no network block, full user privileges...
+"""
+
+def filter_paths(paths):
+    ...
+
+if __name__ == "__main__":
+    ...   # walks sys.argv[1] (default ".") and prints matching paths
+```
+
+The module docstring carries the original prompt and provenance; the `# /// script`
+block declares the filter's dependencies. You can then run it **two ways**:
+
+```bash
+# Sandboxed replay through pfind — no LLM call, runs in the same hardened container
+pfind --run mp3-live.py ~/Music
+
+# Trusted fast path — runs directly via uv, OUTSIDE the sandbox (see warning below)
+uv run mp3-live.py ~/Music
+```
+
+`--run` reuses the dependency [whitelist](dependencies.md): a saved filter that
+declares a not-yet-approved package still prompts (or is rejected with `--no-deps`),
+so a replayed filter can't silently pull new packages.
+
+> **Safety:** `uv run` executes the filter with your full user privileges, network
+> access, and write access — none of pfind's [sandbox](safety.md) protections apply.
+> Only run files you have reviewed and trust. When in doubt, replay with `pfind --run`,
+> which keeps the read-only mount, network block, and resource limits.
+
+Notes and limits:
+
+- `--run` takes no `PROMPT` and ignores `--model`; it can't be combined with `--save`,
+  `--confirm`, or `--macos-meta` (using them together exits with code 2).
+- `--macos-meta` is **not** available on the replay path — `META` is collected on the
+  host during generation and isn't reconstructed for saved filters.
+- **Node.js** filters are saved with a `//` provenance/safety comment header plus the
+  raw `filterPaths` code. There's no PEP 723 equivalent for Node, so the standalone
+  `uv run` path is Python-only; Node filters still replay with `pfind --run`.
 
 ## Output modes
 

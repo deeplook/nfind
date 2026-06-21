@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Saveable, replayable filters.** `--save PATH` now writes the generated filter as a
+  self-describing [PEP 723](https://peps.python.org/pep-0723/) script (Python runtime):
+  a `# /// script` block declaring its dependencies, a module docstring carrying the
+  original prompt, provenance and a safety warning, and a `__main__` harness so it runs
+  directly via `uv run FILE [PATH]`. The new `--run PATH` replays a saved filter through
+  the sandbox with no LLM call (dependencies still gated by the whitelist). Node filters
+  are saved with a provenance/safety comment header plus the raw code (standalone
+  `uv run` is Python-only; they still replay with `--run`). `render_saved_filter()` and
+  `run_saved()` are exposed from the Python API. See
+  [Saving & replaying filters](docs/cli.md#saving--replaying-filters).
 - **Multi-provider model selection.** `--model` now accepts a `provider/model` selector
   to use any OpenAI-compatible provider — `openai` (default, bare names), `anthropic`,
   `gemini`, `groq`, `mistral`, `deepseek`, `xai`, `openrouter`, and local `ollama` /

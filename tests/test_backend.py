@@ -1,5 +1,6 @@
 import json
 import plistlib
+import subprocess
 import sys
 from unittest.mock import Mock, patch
 
@@ -803,7 +804,9 @@ def test_cli_save_writes_generated_code(tmp_path):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--save", str(out)])
 
     assert result.exit_code == 0
-    assert out.read_text() == "def filter_paths(paths): return []"
+    written = out.read_text()
+    assert "def filter_paths(paths): return []" in written
+    compile(written, "saved.py", "exec")  # the saved script is valid Python
 
 
 def _invoke_with_results(args, records):
@@ -889,3 +892,153 @@ def test_run_filter_uses_security_and_resource_flags(tmp_path):
     ]
     assert "no-new-privileges" in command
     assert f"type=bind,src={tmp_path.resolve()},dst=/data,readonly" in command
+
+
+# --- saved filters: render / parse / replay -------------------------------------
+
+def test_render_saved_filter_python_is_valid_pep723_script():
+    code = "def filter_paths(paths):\n    import mutagen\n    return paths"
+    src = MODULE.render_saved_filter(_gen(code, ["mutagen"]), "MP3 files", "gpt-4o-mini")
+
+    # Valid Python and a parseable PEP 723 block declaring the dependency.
+    compile(src, "saved.py", "exec")
+    match = MODULE._PEP723_RE.search(src)
+    assert match is not None
+    assert '"mutagen"' in match.group("body")
+    # Docstring carries the prompt and the safety warning; code is included verbatim.
+    assert "Prompt:  MP3 files" in src
+    assert "OUTSIDE the pfind Docker sandbox" in src
+    assert "def filter_paths(paths):" in src
+    assert 'if __name__ == "__main__":' in src
+
+
+def test_render_saved_filter_escapes_triple_quotes_in_prompt():
+    src = MODULE.render_saved_filter(_gen("def filter_paths(paths): return paths"),
+                                     'a """ quote', "gpt-4o-mini")
+    compile(src, "saved.py", "exec")
+
+
+def test_render_saved_filter_node_has_comment_header_and_raw_code():
+    code = "function filterPaths(paths){ return paths; }"
+    src = MODULE.render_saved_filter(_gen_node(code, ["ts-morph"]), "TS files", "gpt-4o-mini")
+
+    assert src.startswith("// pfind filter")
+    assert "// Prompt:  TS files" in src
+    assert "python-only" in src
+    assert code in src
+    assert "# /// script" not in src  # no PEP 723 block for node
+
+
+def test_saved_filter_standalone_harness_runs(tmp_path):
+    (tmp_path / "a.mp3").write_text("x")
+    (tmp_path / "b.txt").write_text("x")
+    code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".mp3")]'
+    script = tmp_path / "mp3.py"
+    script.write_text(MODULE.render_saved_filter(_gen(code), "mp3 files", "gpt-4o-mini"))
+
+    out = subprocess.run(  # noqa: S603
+        [sys.executable, str(script), str(tmp_path)],
+        capture_output=True, text=True, check=True,
+    )
+    assert out.stdout.strip().endswith("a.mp3")
+    assert "b.txt" not in out.stdout
+
+
+def test_parse_saved_filter_round_trips_python_dependencies():
+    src = MODULE.render_saved_filter(_gen("def filter_paths(paths): return paths", ["mutagen"]),
+                                     "mp3", "gpt-4o-mini")
+    parsed = MODULE.parse_saved_filter(src, filename="mp3.py")
+    assert parsed.runtime == "python"
+    assert parsed.dependencies == ["mutagen"]
+
+
+def test_parse_saved_filter_detects_node_by_extension():
+    src = MODULE.render_saved_filter(_gen_node("function filterPaths(paths){return paths;}"),
+                                     "ts", "gpt-4o-mini")
+    parsed = MODULE.parse_saved_filter(src, filename="filter.cjs")
+    assert parsed.runtime == "node"
+
+
+def test_run_saved_replays_without_generating(tmp_path):
+    (tmp_path / "a.mp3").write_text("x")
+    code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".mp3")]'
+    script = tmp_path / "mp3.py"
+    script.write_text(MODULE.render_saved_filter(_gen(code, ["mutagen"]), "mp3", "gpt-4o-mini"))
+
+    container = "/data/a.mp3"
+    with (
+        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "build_worker_image", return_value="img:deps"),
+        patch.object(MODULE, "generate_filter") as generate,
+        patch.object(MODULE, "run_filter", return_value=[{"path": container}]) as run_filter,
+        patch.object(MODULE, "enumerate_paths",
+                     return_value=([container], {container: str(tmp_path / "a.mp3")})),
+    ):
+        records = MODULE.run_saved(script, str(tmp_path))
+
+    generate.assert_not_called()
+    run_filter.assert_called_once()
+    assert records == [{"path": str(tmp_path / "a.mp3")}]
+
+
+def test_run_saved_gates_unapproved_dependencies(tmp_path):
+    code = "def filter_paths(paths): return paths"
+    script = tmp_path / "f.py"
+    script.write_text(MODULE.render_saved_filter(_gen(code, ["sketchy-pkg"]), "x", "gpt-4o-mini"))
+
+    container = "/data/a"
+    with (
+        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "build_worker_image") as build,
+        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
+        pytest.raises(MODULE.DependencyError, match="sketchy-pkg"),
+    ):
+        MODULE.run_saved(script, str(tmp_path), whitelist=set())
+
+    build.assert_not_called()
+    run_filter.assert_not_called()
+
+
+def test_cli_save_writes_replayable_script(tmp_path):
+    from typer.testing import CliRunner
+
+    (tmp_path / "file.txt").write_text("content")
+    out = tmp_path / "saved.py"
+    runner = CliRunner()
+    with (
+        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(cli.backend, "generate_filter",
+                     return_value=_gen("def filter_paths(paths): return []")),
+        patch.object(cli.backend, "run_filter", return_value=[]),
+    ):
+        result = runner.invoke(cli.app, ["files", str(tmp_path), "--save", str(out)])
+
+    assert result.exit_code == 0
+    written = out.read_text()
+    assert "# /// script" in written
+    assert "Prompt:  files" in written
+
+
+def test_cli_run_rejects_prompt_and_save(tmp_path):
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    script = tmp_path / "f.py"
+    script.write_text("def filter_paths(paths): return paths")
+
+    with_prompt = runner.invoke(cli.app, ["files", "--run", str(script)])
+    assert with_prompt.exit_code == 2
+
+    with_save = runner.invoke(
+        cli.app, ["--run", str(script), "--save", str(tmp_path / "o.py")]
+    )
+    assert with_save.exit_code == 2
+
+
+def test_cli_requires_prompt_without_run():
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(cli.app, [])
+    assert result.exit_code == 2

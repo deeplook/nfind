@@ -7,6 +7,8 @@ from .backend import (
     DockerError,
     DockerUnavailableError,
     load_whitelist,
+    render_saved_filter,
+    run_saved,
     search,
 )
 
@@ -17,6 +19,8 @@ __all__ = [
     "DockerError",
     "DockerUnavailableError",
     "load_whitelist",
+    "render_saved_filter",
+    "run_saved",
     "search",
     "__version__",
 ]

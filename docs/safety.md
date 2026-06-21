@@ -67,7 +67,10 @@ filter still has no network. See [Dependencies & the whitelist](dependencies.md)
 For an extra layer of human control, inspect the code before it executes:
 
 - [`--show-code`](cli.md#reviewing-the-generated-code) prints the generated filter.
-- [`--save`](cli.md#reviewing-the-generated-code) writes it to a file for review.
+- [`--save`](cli.md#saving--replaying-filters) writes it to a self-describing,
+  replayable script for review (and later `--run`). Note that running a saved filter
+  directly with `uv run` executes it **outside** this sandbox — only do so for filters
+  you trust; use `pfind --run` to replay it sandboxed.
 - [`--confirm` / `-i`](cli.md#reviewing-the-generated-code) shows it and asks for
   approval; declining aborts before anything runs.
 

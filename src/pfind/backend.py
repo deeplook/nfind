@@ -29,6 +29,7 @@ import tempfile
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -1080,11 +1081,52 @@ def search(
     check_docker_available()
     meta = collect_macos_metadata(host_by_container) if macos_meta else {}
     generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
-    runtime = RUNTIMES[generated.runtime]
     generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
     if on_generated is not None:
         on_generated(generated)
 
+    return _run_generated(
+        generated,
+        root,
+        container_paths,
+        host_by_container,
+        meta=meta,
+        image=image,
+        timeout=timeout,
+        memory=memory,
+        cpus=cpus,
+        pids_limit=pids_limit,
+        rebuild=rebuild,
+        build_timeout=build_timeout,
+        approve_dependencies=approve_dependencies,
+        whitelist=whitelist,
+    )
+
+
+def _run_generated(
+    generated: GeneratedFilter,
+    root: Path,
+    container_paths: list[str],
+    host_by_container: dict[str, str],
+    *,
+    meta: dict[str, dict[str, Any]],
+    image: str | None,
+    timeout: float,
+    memory: str,
+    cpus: float,
+    pids_limit: int,
+    rebuild: bool,
+    build_timeout: float,
+    approve_dependencies: Callable[[list[str]], bool] | None,
+    whitelist: set[str] | None,
+) -> list[dict[str, Any]]:
+    """Build the sandbox image for a filter and run it, returning host-path records.
+
+    Shared by ``search`` (freshly generated filters) and ``run_saved`` (filters
+    replayed from a saved file). Unapproved third-party packages are gated through
+    ``approve_dependencies``/the whitelist exactly as for a fresh generation.
+    """
+    runtime = RUNTIMES[generated.runtime]
     approved = whitelist if whitelist is not None else load_whitelist(runtime.name)
     new_packages = [pkg for pkg in generated.dependencies if pkg not in approved]
     if new_packages:
@@ -1119,6 +1161,168 @@ def search(
         mapped["path"] = host_by_container[record["path"]]
         host_records.append(mapped)
     return host_records
+
+
+# Standalone harness appended to a saved python filter so it can run via `uv run`
+# outside the sandbox. The worker never runs this block (it sets __name__ to
+# "generated_filter"), so the same file replays unchanged through pfind --run.
+_PYTHON_HARNESS = '''\
+if __name__ == "__main__":
+    import os
+    import sys
+
+    root = sys.argv[1] if len(sys.argv) > 1 else "."
+    paths = [
+        os.path.abspath(os.path.join(dirpath, name))
+        for dirpath, dirnames, filenames in os.walk(root)
+        for name in (*dirnames, *filenames)
+    ]
+    for record in filter_paths(paths):
+        print(record if isinstance(record, str) else record["path"])
+'''
+
+# PEP 723 inline script-metadata block: `uv run` reads dependencies from here.
+_PEP723_RE = re.compile(
+    r"^# /// script\s*$\n(?P<body>(?:^#(?: .*)?$\n)*)^# ///\s*$",
+    re.MULTILINE,
+)
+_PEP723_DEP_RE = re.compile(r'"(?P<name>[^"]+)"')
+
+
+def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
+    """Provenance + safety lines for a saved filter, each prefixed with ``comment``."""
+    warning = (
+        "WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the "
+        "pfind Docker sandbox -- no read-only mount, no network block, full user "
+        "privileges. Only run filters you have reviewed and trust. To replay it "
+        "sandboxed instead, use `pfind --run`."
+    )
+    lines = [
+        "pfind filter",
+        "",
+        f"Prompt:  {prompt}",
+        f"Model:   {model}",
+        f"Runtime: {runtime}",
+        f"Saved:   {date.today().isoformat()}",
+        "",
+        warning,
+    ]
+    return [f"{comment} {line}".rstrip() for line in lines]
+
+
+def render_saved_filter(generated: GeneratedFilter, prompt: str, model: str) -> str:
+    """Render a generated filter as a self-describing, replayable script.
+
+    For the python runtime the result is a PEP 723 script: a ``# /// script`` block
+    declaring the filter's dependencies, a module docstring carrying the prompt,
+    provenance and a safety warning, the ``filter_paths`` source, and a ``__main__``
+    harness so it runs via ``uv run FILE [PATH]`` outside the sandbox.
+
+    For the node runtime (which has no uv/PEP 723 equivalent) the result is the raw
+    ``filterPaths`` source preceded by a ``//`` provenance/safety comment block. Either
+    form can be replayed through the sandbox with :func:`run_saved`.
+    """
+    if generated.runtime == "node":
+        header = "\n".join(_saved_header(prompt, model, generated.runtime, "//"))
+        note = (
+            "// Note: standalone `uv run` is python-only; replay this file sandboxed "
+            "with `pfind --run`."
+        )
+        return f"{header}\n{note}\n\n{generated.code.rstrip()}\n"
+
+    lines = ["# /// script", '# requires-python = ">=3.12"']
+    if generated.dependencies:
+        deps = ", ".join(f'"{pkg}"' for pkg in generated.dependencies)
+        lines.append(f"# dependencies = [{deps}]")
+    else:
+        lines.append("# dependencies = []")
+    lines.append("# ///")
+    pep723 = "\n".join(lines)
+
+    # Docstring carries the same provenance/warning, without the comment prefix.
+    doc_lines = [line.lstrip() for line in _saved_header(prompt, model, generated.runtime, "")]
+    body = "\n".join(doc_lines).replace('"""', '\\"\\"\\"')
+    docstring = f'"""\n{body}\n"""'
+
+    return f"{pep723}\n{docstring}\n\n\n{generated.code.rstrip()}\n\n\n{_PYTHON_HARNESS}"
+
+
+def parse_saved_filter(source: str, *, filename: str = "") -> GeneratedFilter:
+    """Reconstruct a :class:`GeneratedFilter` from a saved filter file.
+
+    The runtime is node when the file is a ``.cjs``/``.js`` or has no PEP 723 block but
+    defines ``filterPaths``; otherwise python. Dependencies are read from the PEP 723
+    ``dependencies`` list (python) and otherwise left empty. The full source is used as
+    the filter code -- the sandbox worker extracts ``filter_paths``/``filterPaths`` and
+    never runs the standalone ``__main__`` harness.
+    """
+    is_node = filename.endswith((".cjs", ".js")) or (
+        not _PEP723_RE.search(source) and "filterPaths" in source
+    )
+    if is_node:
+        return GeneratedFilter(code=source, dependencies=[], runtime="node")
+
+    dependencies: list[str] = []
+    match = _PEP723_RE.search(source)
+    if match:
+        for line in match.group("body").splitlines():
+            stripped = line.lstrip("#").strip()
+            if stripped.startswith("dependencies"):
+                _, _, rest = stripped.partition("=")
+                dependencies = _PEP723_DEP_RE.findall(rest)
+                break
+    return GeneratedFilter(code=source, dependencies=dependencies, runtime="python")
+
+
+def run_saved(
+    filter_path: str | Path,
+    path: str | Path = ".",
+    *,
+    image: str | None = None,
+    timeout: float = 10.0,
+    memory: str = "256m",
+    cpus: float = 1.0,
+    pids_limit: int = 64,
+    rebuild: bool = False,
+    build_timeout: float = DEFAULT_BUILD_TIMEOUT,
+    approve_dependencies: Callable[[list[str]], bool] | None = None,
+    whitelist: set[str] | None = None,
+    on_generated: Callable[[GeneratedFilter], None] | None = None,
+) -> list[dict[str, Any]]:
+    """Replay a previously saved filter through the sandbox, skipping the LLM.
+
+    The file written by ``--save``/:func:`render_saved_filter` is parsed back into a
+    filter and run in the same hardened container as :func:`search`. Any third-party
+    packages it declares are still gated through ``approve_dependencies``/the whitelist,
+    so a saved filter cannot silently pull new packages. macOS metadata is not exposed
+    on the replay path.
+    """
+    saved = Path(filter_path).expanduser()
+    generated = parse_saved_filter(saved.read_text(), filename=saved.name)
+    if on_generated is not None:
+        on_generated(generated)
+
+    root = Path(path).expanduser().resolve(strict=True)
+    container_paths, host_by_container = enumerate_paths(root)
+    if not container_paths:
+        return []
+    check_docker_available()
+    return _run_generated(
+        generated,
+        root,
+        container_paths,
+        host_by_container,
+        meta={},
+        image=image,
+        timeout=timeout,
+        memory=memory,
+        cpus=cpus,
+        pids_limit=pids_limit,
+        rebuild=rebuild,
+        build_timeout=build_timeout,
+        approve_dependencies=approve_dependencies,
+        whitelist=whitelist,
+    )
 
 
 def _worker_response(payload: dict[str, Any]) -> dict[str, Any]:
