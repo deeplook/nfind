@@ -1029,6 +1029,30 @@ def test_cli_save_writes_replayable_script(tmp_path):
     assert "Prompt:  files" in written
 
 
+def test_cli_show_code_renders_full_saved_script(tmp_path):
+    from typer.testing import CliRunner
+
+    (tmp_path / "file.txt").write_text("content")
+    runner = CliRunner()
+    with (
+        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(
+            cli.backend,
+            "generate_filter",
+            return_value=_gen("def filter_paths(paths): return []"),
+        ),
+        patch.object(cli.backend, "run_filter", return_value=[]),
+    ):
+        result = runner.invoke(cli.app, ["epub files", str(tmp_path), "--show-code"])
+
+    assert result.exit_code == 0
+    # --show-code previews the full script --save would write, not just the function.
+    assert "# /// script" in result.output
+    assert "Prompt:  epub files" in result.output
+    assert "def filter_paths(paths): return []" in result.output
+
+
 def test_cli_run_uses_single_positional_as_path(tmp_path):
     from typer.testing import CliRunner
 

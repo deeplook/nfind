@@ -76,6 +76,11 @@ pfind "files with no extension" --save filter.py
 pfind "files with no extension" -i        # or --confirm
 ```
 
+`--show-code` and `--confirm` print the **full script as [`--save`](#saving--replaying-filters)
+would write it** — the PEP 723 metadata, the prompt/provenance docstring, the
+`filter_paths` function, and the run harness — so the preview matches the saved
+artifact exactly. (On a `--run` replay the saved file is shown as-is.)
+
 The code is printed to **stderr**, so stdout stays a clean, pipeable list of paths
 even with `--show-code`. On a terminal the code is syntax-highlighted with Pygments;
 highlighting is disabled when [`NO_COLOR`](https://no-color.org/) is set or when
