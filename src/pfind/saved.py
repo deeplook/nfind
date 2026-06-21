@@ -1,0 +1,128 @@
+"""Serialization of generated filters to and from self-describing replay scripts.
+
+``render_saved_filter`` writes a filter as a PEP 723 script (python) or a commented
+source file (node); ``parse_saved_filter`` reconstructs a :class:`GeneratedFilter`
+from such a file. Replaying a saved filter through the sandbox lives in
+``backend.run_saved``.
+"""
+
+from __future__ import annotations
+
+import re
+import textwrap
+from datetime import date
+
+from ._constants import FILTER_LINE_LENGTH
+from .runtimes import GeneratedFilter
+
+_PYTHON_HARNESS = """\
+if __name__ == "__main__":
+    import os
+    import sys
+
+    root = sys.argv[1] if len(sys.argv) > 1 else "."
+    paths = [
+        os.path.abspath(os.path.join(dirpath, name))
+        for dirpath, dirnames, filenames in os.walk(root)
+        for name in (*dirnames, *filenames)
+    ]
+    for record in filter_paths(paths):
+        print(record if isinstance(record, str) else record["path"])
+"""
+
+# PEP 723 inline script-metadata block: `uv run` reads dependencies from here.
+_PEP723_RE = re.compile(
+    r"^# /// script\s*$\n(?P<body>(?:^#(?: .*)?$\n)*)^# ///\s*$",
+    re.MULTILINE,
+)
+_PEP723_DEP_RE = re.compile(r'"(?P<name>[^"]+)"')
+
+
+def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
+    """Provenance + safety lines for a saved filter, each prefixed with ``comment``."""
+    warning = (
+        "WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the "
+        "pfind Docker sandbox -- no read-only mount, no network block, full user "
+        "privileges. Only run filters you have reviewed and trust. To replay it "
+        "sandboxed instead, use `pfind --run`."
+    )
+    # ruff formats code but not prose, so wrap the warning paragraph ourselves to the
+    # same width (accounting for the comment prefix). The aligned key/value lines are
+    # left verbatim so their two-space column alignment is preserved.
+    prefix_len = len(comment) + 1 if comment else 0
+    warning_lines = textwrap.wrap(warning, width=FILTER_LINE_LENGTH - prefix_len)
+    lines = [
+        "pfind filter",
+        "",
+        f"Prompt:  {prompt}",
+        f"Model:   {model}",
+        f"Runtime: {runtime}",
+        f"Saved:   {date.today().isoformat()}",
+        "",
+        *warning_lines,
+    ]
+    return [f"{comment} {line}".rstrip() for line in lines]
+
+
+def render_saved_filter(generated: GeneratedFilter, prompt: str, model: str) -> str:
+    """Render a generated filter as a self-describing, replayable script.
+
+    For the python runtime the result is a PEP 723 script: a ``# /// script`` block
+    declaring the filter's dependencies, a module docstring carrying the prompt,
+    provenance and a safety warning, the ``filter_paths`` source, and a ``__main__``
+    harness so it runs via ``uv run FILE [PATH]`` outside the sandbox.
+
+    For the node runtime (which has no uv/PEP 723 equivalent) the result is the raw
+    ``filterPaths`` source preceded by a ``//`` provenance/safety comment block. Either
+    form can be replayed through the sandbox with :func:`backend.run_saved`.
+    """
+    if generated.runtime == "node":
+        header = "\n".join(_saved_header(prompt, model, generated.runtime, "//"))
+        note = (
+            "// Note: standalone `uv run` is python-only; replay this file sandboxed "
+            "with `pfind --run`."
+        )
+        return f"{header}\n{note}\n\n{generated.code.rstrip()}\n"
+
+    lines = ["# /// script", '# requires-python = ">=3.12"']
+    if generated.dependencies:
+        deps = ", ".join(f'"{pkg}"' for pkg in generated.dependencies)
+        lines.append(f"# dependencies = [{deps}]")
+    else:
+        lines.append("# dependencies = []")
+    lines.append("# ///")
+    pep723 = "\n".join(lines)
+
+    # Docstring carries the same provenance/warning, without the comment prefix.
+    doc_lines = [line.lstrip() for line in _saved_header(prompt, model, generated.runtime, "")]
+    body = "\n".join(doc_lines).replace('"""', '\\"\\"\\"')
+    docstring = f'"""\n{body}\n"""'
+
+    return f"{pep723}\n{docstring}\n\n\n{generated.code.rstrip()}\n\n\n{_PYTHON_HARNESS}"
+
+
+def parse_saved_filter(source: str, *, filename: str = "") -> GeneratedFilter:
+    """Reconstruct a :class:`GeneratedFilter` from a saved filter file.
+
+    The runtime is node when the file is a ``.cjs``/``.js`` or has no PEP 723 block but
+    defines ``filterPaths``; otherwise python. Dependencies are read from the PEP 723
+    ``dependencies`` list (python) and otherwise left empty. The full source is used as
+    the filter code -- the sandbox worker extracts ``filter_paths``/``filterPaths`` and
+    never runs the standalone ``__main__`` harness.
+    """
+    is_node = filename.endswith((".cjs", ".js")) or (
+        not _PEP723_RE.search(source) and "filterPaths" in source
+    )
+    if is_node:
+        return GeneratedFilter(code=source, dependencies=[], runtime="node")
+
+    dependencies: list[str] = []
+    match = _PEP723_RE.search(source)
+    if match:
+        for line in match.group("body").splitlines():
+            stripped = line.lstrip("#").strip()
+            if stripped.startswith("dependencies"):
+                _, _, rest = stripped.partition("=")
+                dependencies = _PEP723_DEP_RE.findall(rest)
+                break
+    return GeneratedFilter(code=source, dependencies=dependencies, runtime="python")

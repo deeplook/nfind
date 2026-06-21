@@ -5,196 +5,64 @@ The host enumerates the search tree and asks the model for code.  The generated
 code runs in a disposable container with the search root mounted at /data as
 read-only.  Only paths supplied by the host may be returned.
 
-This module is also the entry point for the in-container worker: the packaged
-``Dockerfile`` runs ``python backend.py --worker``, which reads a JSON request on
-stdin and writes a JSON response on stdout.
+The in-container worker that runs the generated code lives in :mod:`pfind.worker`,
+a self-contained, standard-library-only module the Docker image ships and runs as
+``python worker.py --worker``.
 """
 
 from __future__ import annotations
 
-import ast
 import contextlib
-import ctypes
-import ctypes.util
 import hashlib
-import io
 import json
 import os
-import plistlib
 import re
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
-import textwrap
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-DEFAULT_IMAGE = "pfind-search-paths:latest"
-DEFAULT_NODE_IMAGE = "pfind-search-node:latest"
-DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_RUNTIME = "python"
-DEFAULT_PROVIDER = "openai"
-
-# Providers reachable through the OpenAI-compatible chat-completions API. A model is
-# selected as "provider/model" (e.g. "anthropic/claude-3-5-sonnet-latest"); a bare name
-# means the default provider. Each entry is (base_url, api-key env var); a None base_url
-# uses the OpenAI SDK default, and a None env var marks a local server needing no key.
-# OpenRouter is a near-universal escape hatch: "openrouter/<vendor>/<model>".
-PROVIDERS: dict[str, tuple[str | None, str | None]] = {
-    "openai": (None, "OPENAI_API_KEY"),
-    "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-    "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
-    "mistral": ("https://api.mistral.ai/v1", "MISTRAL_API_KEY"),
-    "deepseek": ("https://api.deepseek.com", "DEEPSEEK_API_KEY"),
-    "xai": ("https://api.x.ai/v1", "XAI_API_KEY"),
-    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/", "GEMINI_API_KEY"),
-    "anthropic": ("https://api.anthropic.com/v1/", "ANTHROPIC_API_KEY"),
-    "ollama": ("http://localhost:11434/v1", None),
-    "lmstudio": ("http://localhost:1234/v1", None),
-}
-
-# How many times to ask the model in total when its reply fails validation. The
-# first attempt runs at temperature 0; retries feed the error back and nudge the
-# temperature up so the model diverges from the response that just failed.
-DEFAULT_GENERATION_ATTEMPTS = 3
-_RETRY_TEMPERATURE = 0.3
-MAX_RESULT_BYTES = 1_000_000
-DOCKER_CHECK_TIMEOUT = 10.0
-DEFAULT_BUILD_TIMEOUT = 120.0
-# Line length ruff wraps generated filters to (matches pfind's own style; pinned so the
-# output is stable regardless of ruff's default).
-FILTER_LINE_LENGTH = 100
-
-# Python packages the filter may request without an explicit approval prompt. These
-# are common, well-known, read-only analysis libraries. Anything outside this set
-# (and outside the user's saved whitelist) must be confirmed before it is installed.
-DEFAULT_ALLOWED_PACKAGES = frozenset(
-    {
-        "chardet",
-        "mutagen",
-        "pillow",
-        "pillow-heif",
-        "pdfminer-six",
-        "pypdf",
-        "python-magic",
-        "pyyaml",
-        "tinytag",
-        "tomli",
-        # Multi-language syntactic parsing: tree-sitter core plus per-language grammar
-        # wheels. Each wheel bundles its compiled grammar, so parsing works offline in
-        # the no-network, read-only sandbox (unlike tree-sitter-language-pack, which
-        # downloads grammars at runtime). Filters use the standard API:
-        # Parser(Language(tree_sitter_python.language())).
-        "tree-sitter",
-        "tree-sitter-bash",
-        "tree-sitter-c",
-        "tree-sitter-dart",
-        "tree-sitter-go",
-        "tree-sitter-java",
-        "tree-sitter-javascript",
-        "tree-sitter-kotlin",
-        "tree-sitter-python",
-        "tree-sitter-rust",
-        "tree-sitter-swift",
-        "tree-sitter-typescript",
-    }
-)
-
-# npm packages pre-approved for the Node.js runtime: source-analysis tooling.
-DEFAULT_NODE_PACKAGES = frozenset(
-    {
-        "@babel/parser",
-        "acorn",
-        "esprima",
-        "fast-xml-parser",
-        "ts-morph",
-        "typescript",
-        "yaml",
-    }
-)
-
-# macOS extended attributes surfaced by --macos-meta. These live on the host and do
-# not reliably survive Docker's file-sharing layer into the Linux container, so they
-# are read host-side and passed into the sandbox alongside the paths.
-_XATTR_TAGS = "com.apple.metadata:_kMDItemUserTags"
-_XATTR_WHERE_FROMS = "com.apple.metadata:kMDItemWhereFroms"
-_XATTR_QUARANTINE = "com.apple.quarantine"
-_XATTR_NOFOLLOW = 0x0001  # macOS getxattr option: do not follow symlinks
-
-# A conservative pip/PEP 503 package name: no version specifiers, URLs, or options.
-_PACKAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
-# An npm package name, optionally scoped (@scope/name).
-_NPM_NAME = re.compile(r"^(@[a-z0-9][a-z0-9._-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,99}$")
-
-
-def _normalize_pip_name(name: str) -> str:
-    """Canonicalize a PyPI name per PEP 503: collapse runs of -, _, . to - and lowercase.
-
-    pip treats ``tree_sitter_python``, ``Tree-Sitter-Python``, and ``tree-sitter-python``
-    as the same distribution; storing the canonical form keeps the whitelist free of
-    near-duplicates and lets the model's wording match the built-in defaults.
-    """
-    return re.sub(r"[-_.]+", "-", name).lower()
-
-
-def _normalize_npm_name(name: str) -> str:
-    """Canonicalize an npm name: lowercase only (npm treats ``-`` and ``_`` as distinct)."""
-    return name.lower()
-
-
-class DockerError(RuntimeError):
-    """Base class for actionable Docker lifecycle failures."""
-
-
-class DockerUnavailableError(DockerError):
-    """Raised when the Docker CLI or daemon cannot be reached."""
-
-
-class DependencyError(RuntimeError):
-    """Raised when a filter needs packages that were not approved for install."""
-
-
-@dataclass(frozen=True)
-class Runtime:
-    """A language ecosystem the generated filter can run in (Python or Node.js)."""
-
-    name: str
-    base_image: str
-    dockerfile: str  # filename packaged next to this module
-    final_user: str  # unprivileged user the worker runs as
-    default_packages: frozenset[str]
-    _package_name: re.Pattern[str]
-    _validate_code: Callable[[str], None]
-    _install: Callable[[Sequence[str]], str]  # derived-image install instructions
-    _normalize: Callable[[str], str]  # canonicalize a package name for this ecosystem
-
-    def validate_code(self, code: str) -> None:
-        self._validate_code(code)
-
-    def validate_packages(self, dependencies: Any) -> list[str]:
-        return _validate_dependencies(dependencies, self._package_name, self._normalize)
-
-    def normalize_name(self, name: str) -> str:
-        return self._normalize(name)
-
-    def derived_dockerfile(self, base: str, packages: Sequence[str]) -> str:
-        return f"FROM {base}\nUSER root\n{self._install(packages)}\nUSER {self.final_user}\n"
-
-
-@dataclass
-class GeneratedFilter:
-    """A generated filter: its source, runtime, and any packages it needs."""
-
-    code: str
-    dependencies: list[str] = field(default_factory=list)
-    runtime: str = DEFAULT_RUNTIME
-
+from ._constants import _RETRY_TEMPERATURE as _RETRY_TEMPERATURE
+from ._constants import DEFAULT_ALLOWED_PACKAGES as DEFAULT_ALLOWED_PACKAGES
+from ._constants import DEFAULT_BUILD_TIMEOUT as DEFAULT_BUILD_TIMEOUT
+from ._constants import DEFAULT_GENERATION_ATTEMPTS as DEFAULT_GENERATION_ATTEMPTS
+from ._constants import DEFAULT_IMAGE as DEFAULT_IMAGE
+from ._constants import DEFAULT_MODEL as DEFAULT_MODEL
+from ._constants import DEFAULT_NODE_IMAGE as DEFAULT_NODE_IMAGE
+from ._constants import DEFAULT_PROVIDER as DEFAULT_PROVIDER
+from ._constants import DEFAULT_RUNTIME as DEFAULT_RUNTIME
+from ._constants import DOCKER_CHECK_TIMEOUT as DOCKER_CHECK_TIMEOUT
+from ._constants import FILTER_LINE_LENGTH as FILTER_LINE_LENGTH
+from ._constants import PROVIDERS as PROVIDERS
+from .errors import DependencyError as DependencyError
+from .errors import DockerError as DockerError
+from .errors import DockerUnavailableError as DockerUnavailableError
+from .metadata import collect_macos_metadata as collect_macos_metadata
+from .runtimes import NODE_RUNTIME as NODE_RUNTIME
+from .runtimes import PYTHON_RUNTIME as PYTHON_RUNTIME
+from .runtimes import RUNTIMES as RUNTIMES
+from .runtimes import GeneratedFilter as GeneratedFilter
+from .runtimes import Runtime as Runtime
+from .runtimes import _imply_packages as _imply_packages
+from .runtimes import _validate_code_shape as _validate_code_shape
+from .runtimes import _validate_dependencies as _validate_dependencies
+from .saved import _PEP723_RE as _PEP723_RE
+from .saved import parse_saved_filter as parse_saved_filter
+from .saved import render_saved_filter as render_saved_filter
+from .whitelist import _whitelist_path as _whitelist_path
+from .whitelist import approve_packages as approve_packages
+from .whitelist import load_whitelist as load_whitelist
+from .worker import MAX_RESULT_BYTES as MAX_RESULT_BYTES
+from .worker import _module_main as _module_main
+from .worker import _normalize_results as _normalize_results
+from .worker import _worker_response as _worker_response
+from .worker import execute_worker_main as execute_worker_main
+from .worker import worker_main as worker_main
 
 _SYSTEM = """\
 You generate a file-filtering program. Given a description of which paths to select,
@@ -284,34 +152,6 @@ Fix the problem and respond again with only the JSON object containing
 """
 
 
-def _normalize_results(results: Any, allowed: set[str]) -> list[dict[str, Any]]:
-    """Coerce filter output into path records and verify each path was supplied.
-
-    Accepts either a list of path strings or a list of dicts carrying a "path"
-    key plus extra fields. Returns a list of dicts that always contain "path".
-    """
-    if not isinstance(results, list):
-        raise ValueError("filter_paths must return a list.")
-    records: list[dict[str, Any]] = []
-    for item in results:
-        if isinstance(item, str):
-            record: dict[str, Any] = {"path": item}
-        elif isinstance(item, dict):
-            path = item.get("path")
-            if not isinstance(path, str):
-                raise ValueError("each result dict must have a string 'path'.")
-            record = dict(item)
-            record["path"] = path
-        else:
-            raise ValueError("filter_paths results must be strings or dicts with a 'path'.")
-        if record["path"] not in allowed:
-            raise ValueError("filter_paths returned a path outside its input set.")
-        records.append(record)
-    if len(records) > len(allowed):
-        raise ValueError("filter_paths returned more results than input paths.")
-    return records
-
-
 def _strip_code_fence(code: str) -> str:
     code = code.strip()
     if not code.startswith("```"):
@@ -320,112 +160,6 @@ def _strip_code_fence(code: str) -> str:
     if lines and lines[-1].strip() == "```":
         lines = lines[:-1]
     return "\n".join(lines[1:]).strip()
-
-
-def _validate_code_shape(code: str) -> None:
-    """Require one undecorated top-level filter function.
-
-    This is an interface check, not a security boundary. Docker provides the
-    isolation for the intentionally expressive generated Python.
-    """
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as exc:
-        raise ValueError(f"Generated code has a syntax error: {exc}") from exc
-
-    if len(tree.body) != 1 or not isinstance(tree.body[0], (ast.FunctionDef, ast.AsyncFunctionDef)):
-        raise ValueError("Generated code must contain exactly one top-level function definition.")
-    function = tree.body[0]
-    if isinstance(function, ast.AsyncFunctionDef):
-        raise ValueError("filter_paths must be a synchronous function.")
-    if function.name != "filter_paths":
-        raise ValueError("Generated function must be named filter_paths.")
-    if function.decorator_list:
-        raise ValueError("filter_paths must not have decorators.")
-    args = function.args
-    if (
-        len(args.args) != 1
-        or args.args[0].arg != "paths"
-        or args.posonlyargs
-        or args.kwonlyargs
-        or args.vararg is not None
-        or args.kwarg is not None
-        or args.defaults
-        or args.kw_defaults
-    ):
-        raise ValueError("filter_paths must take exactly one argument named paths.")
-
-
-_NODE_FILTER = re.compile(r"\bfilterPaths\b")
-
-
-def _validate_node_code(code: str) -> None:
-    """Light interface check for Node.js filters.
-
-    Like the Python check, this is an interface check rather than a security
-    boundary -- the container provides the isolation. We only confirm the code is
-    non-empty and defines something named ``filterPaths``.
-    """
-    if not code.strip():
-        raise ValueError("Generated code is empty.")
-    if not _NODE_FILTER.search(code):
-        raise ValueError("Generated code must define a filterPaths function.")
-
-
-def _pip_install(packages: Sequence[str]) -> str:
-    return "RUN pip install --no-cache-dir " + " ".join(packages)
-
-
-def _npm_install(packages: Sequence[str]) -> str:
-    return "WORKDIR /app\nRUN npm install --no-audit --no-fund --no-save " + " ".join(packages)
-
-
-PYTHON_RUNTIME = Runtime(
-    name="python",
-    base_image=DEFAULT_IMAGE,
-    dockerfile="Dockerfile.python",
-    final_user="worker",
-    default_packages=DEFAULT_ALLOWED_PACKAGES,
-    _package_name=_PACKAGE_NAME,
-    _validate_code=_validate_code_shape,
-    _install=_pip_install,
-    _normalize=_normalize_pip_name,
-)
-
-NODE_RUNTIME = Runtime(
-    name="node",
-    base_image=DEFAULT_NODE_IMAGE,
-    dockerfile="Dockerfile.node",
-    final_user="node",
-    default_packages=DEFAULT_NODE_PACKAGES,
-    _package_name=_NPM_NAME,
-    _validate_code=_validate_node_code,
-    _install=_npm_install,
-    _normalize=_normalize_npm_name,
-)
-
-RUNTIMES: dict[str, Runtime] = {
-    PYTHON_RUNTIME.name: PYTHON_RUNTIME,
-    NODE_RUNTIME.name: NODE_RUNTIME,
-}
-
-
-def _imply_packages(runtime_name: str, dependencies: Sequence[str]) -> list[str]:
-    """Add packages implied by others that pip won't pull in automatically.
-
-    The tree-sitter grammar wheels (``tree-sitter-<lang>``) declare the ``tree-sitter``
-    core only as an optional extra, so installing a grammar alone leaves ``import
-    tree_sitter`` failing. Whenever a grammar wheel is requested for the Python runtime,
-    ensure the core is installed too.
-    """
-    deps = set(dependencies)
-    if (
-        runtime_name == DEFAULT_RUNTIME
-        and any(d.startswith("tree-sitter-") for d in deps)
-        and "tree-sitter" not in deps
-    ):
-        deps.add("tree-sitter")
-    return sorted(deps)
 
 
 def _ruff_path() -> str | None:
@@ -490,23 +224,6 @@ def _format_generated_code(code: str, runtime: str) -> str:
     except ValueError:
         return code
     return cleaned
-
-
-def _validate_dependencies(
-    dependencies: Any,
-    pattern: re.Pattern[str] = _PACKAGE_NAME,
-    normalize: Callable[[str], str] = _normalize_pip_name,
-) -> list[str]:
-    """Validate and canonicalize a requested dependency list to bare package names."""
-    if not isinstance(dependencies, list) or not all(isinstance(d, str) for d in dependencies):
-        raise ValueError("dependencies must be a list of package-name strings.")
-    names: list[str] = []
-    for dependency in dependencies:
-        name = dependency.strip()
-        if not pattern.match(name.lower()):
-            raise ValueError(f"Invalid package name requested: {dependency!r}")
-        names.append(normalize(name))
-    return sorted(set(names))
 
 
 def _split_model(model: str) -> tuple[str, str]:
@@ -683,83 +400,6 @@ def enumerate_paths(search_root: Path) -> tuple[list[str], dict[str, str]]:
             container_paths.append(container_path)
             host_by_container[container_path] = str(host_path)
     return container_paths, host_by_container
-
-
-_libc_getxattr: Callable[..., int] | None = None
-
-
-def _getxattr(path: str, name: str) -> bytes | None:
-    """Read a single macOS extended attribute, or None if it is absent.
-
-    Uses libc ``getxattr`` directly (CPython's ``os.getxattr`` is Linux-only) and
-    does not follow symlinks, matching the symlink-free host enumeration.
-    """
-    global _libc_getxattr
-    if _libc_getxattr is None:
-        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-        libc.getxattr.restype = ctypes.c_ssize_t
-        libc.getxattr.argtypes = [
-            ctypes.c_char_p,
-            ctypes.c_char_p,
-            ctypes.c_void_p,
-            ctypes.c_size_t,
-            ctypes.c_uint32,
-            ctypes.c_int,
-        ]
-        _libc_getxattr = libc.getxattr
-
-    path_bytes = os.fsencode(path)
-    name_bytes = name.encode()
-    size = _libc_getxattr(path_bytes, name_bytes, None, 0, 0, _XATTR_NOFOLLOW)
-    if size < 0:
-        return None
-    if size == 0:
-        return b""
-    buffer = ctypes.create_string_buffer(size)
-    read = _libc_getxattr(path_bytes, name_bytes, buffer, size, 0, _XATTR_NOFOLLOW)
-    if read < 0:
-        return None
-    return buffer.raw[:read]
-
-
-def _plist_strings(raw: bytes | None) -> list[str]:
-    """Decode a binary-plist array of strings, tolerating malformed values."""
-    if not raw:
-        return []
-    try:
-        values = plistlib.loads(raw)
-    except Exception:  # noqa: BLE001 - any decode failure means "no usable value"
-        return []
-    return [v for v in values if isinstance(v, str)] if isinstance(values, list) else []
-
-
-def collect_macos_metadata(host_by_container: dict[str, str]) -> dict[str, dict[str, Any]]:
-    """Read selected macOS attributes per path, keyed by container path.
-
-    Returns a mapping from container path to a metadata dict for the paths that have
-    any. Each value may contain "tags" (Finder tag names), "quarantined" (True when
-    the file carries a download-quarantine flag), and "where_froms" (source URLs).
-    Returns an empty mapping on non-macOS hosts so callers degrade gracefully.
-    """
-    if sys.platform != "darwin":
-        return {}
-    metadata: dict[str, dict[str, Any]] = {}
-    for container_path, host_path in host_by_container.items():
-        entry: dict[str, Any] = {}
-        # Finder tags are stored as "Name" or "Name\n<color-index>"; keep the name.
-        tags = [
-            value.split("\n", 1)[0] for value in _plist_strings(_getxattr(host_path, _XATTR_TAGS))
-        ]
-        if tags:
-            entry["tags"] = tags
-        if _getxattr(host_path, _XATTR_QUARANTINE) is not None:
-            entry["quarantined"] = True
-        where_froms = _plist_strings(_getxattr(host_path, _XATTR_WHERE_FROMS))
-        if where_froms:
-            entry["where_froms"] = where_froms
-        if entry:
-            metadata[container_path] = entry
-    return metadata
 
 
 def _dockerfile_path(name: str = PYTHON_RUNTIME.dockerfile) -> Path:
@@ -989,57 +629,6 @@ def build_worker_image(
             f"({', '.join(packages)}); exit status {completed.returncode}."
         )
     return derived
-
-
-def _whitelist_path() -> Path:
-    """Location of the persisted package whitelist."""
-    override = os.environ.get("PFIND_WHITELIST")
-    if override:
-        return Path(override)
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "pfind" / "whitelist.json"
-
-
-def _read_whitelist_file() -> dict[str, Any]:
-    path = _whitelist_path()
-    if path.exists():
-        with contextlib.suppress(json.JSONDecodeError, OSError):
-            data = json.loads(path.read_text())
-            if isinstance(data, dict):
-                return data
-    return {}
-
-
-def _saved_packages(data: dict[str, Any], runtime: str) -> set[str]:
-    # Canonicalize on read so older files with non-normalized names (e.g. an underscore
-    # variant alongside its dash form) collapse to one entry and match the defaults.
-    normalize = RUNTIMES[runtime].normalize_name
-    saved = {normalize(p) for p in data.get(runtime, []) if isinstance(p, str)}
-    if runtime == DEFAULT_RUNTIME:
-        # Absorb the pre-runtime flat format, {"packages": [...]}, as Python.
-        saved |= {normalize(p) for p in data.get("packages", []) if isinstance(p, str)}
-    return saved
-
-
-def load_whitelist(runtime: str = DEFAULT_RUNTIME) -> set[str]:
-    """Return approved package names for a runtime: defaults plus saved approvals."""
-    defaults = set(RUNTIMES[runtime].default_packages)
-    return defaults | _saved_packages(_read_whitelist_file(), runtime)
-
-
-def approve_packages(packages: Sequence[str], runtime: str = DEFAULT_RUNTIME) -> None:
-    """Persist newly approved packages for a runtime to the user's whitelist file."""
-    if not packages:
-        return
-    data = _read_whitelist_file()
-    normalize = RUNTIMES[runtime].normalize_name
-    existing = _saved_packages(data, runtime)
-    existing |= {normalize(p) for p in packages}
-    data[runtime] = sorted(existing)
-    data.pop("packages", None)  # migrate away from the legacy flat format
-    path = _whitelist_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n")
 
 
 def _remove_container(name: str) -> None:
@@ -1275,122 +864,6 @@ def _run_generated(
     return host_records
 
 
-# Standalone harness appended to a saved python filter so it can run via `uv run`
-# outside the sandbox. The worker never runs this block (it sets __name__ to
-# "generated_filter"), so the same file replays unchanged through pfind --run.
-_PYTHON_HARNESS = """\
-if __name__ == "__main__":
-    import os
-    import sys
-
-    root = sys.argv[1] if len(sys.argv) > 1 else "."
-    paths = [
-        os.path.abspath(os.path.join(dirpath, name))
-        for dirpath, dirnames, filenames in os.walk(root)
-        for name in (*dirnames, *filenames)
-    ]
-    for record in filter_paths(paths):
-        print(record if isinstance(record, str) else record["path"])
-"""
-
-# PEP 723 inline script-metadata block: `uv run` reads dependencies from here.
-_PEP723_RE = re.compile(
-    r"^# /// script\s*$\n(?P<body>(?:^#(?: .*)?$\n)*)^# ///\s*$",
-    re.MULTILINE,
-)
-_PEP723_DEP_RE = re.compile(r'"(?P<name>[^"]+)"')
-
-
-def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
-    """Provenance + safety lines for a saved filter, each prefixed with ``comment``."""
-    warning = (
-        "WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the "
-        "pfind Docker sandbox -- no read-only mount, no network block, full user "
-        "privileges. Only run filters you have reviewed and trust. To replay it "
-        "sandboxed instead, use `pfind --run`."
-    )
-    # ruff formats code but not prose, so wrap the warning paragraph ourselves to the
-    # same width (accounting for the comment prefix). The aligned key/value lines are
-    # left verbatim so their two-space column alignment is preserved.
-    prefix_len = len(comment) + 1 if comment else 0
-    warning_lines = textwrap.wrap(warning, width=FILTER_LINE_LENGTH - prefix_len)
-    lines = [
-        "pfind filter",
-        "",
-        f"Prompt:  {prompt}",
-        f"Model:   {model}",
-        f"Runtime: {runtime}",
-        f"Saved:   {date.today().isoformat()}",
-        "",
-        *warning_lines,
-    ]
-    return [f"{comment} {line}".rstrip() for line in lines]
-
-
-def render_saved_filter(generated: GeneratedFilter, prompt: str, model: str) -> str:
-    """Render a generated filter as a self-describing, replayable script.
-
-    For the python runtime the result is a PEP 723 script: a ``# /// script`` block
-    declaring the filter's dependencies, a module docstring carrying the prompt,
-    provenance and a safety warning, the ``filter_paths`` source, and a ``__main__``
-    harness so it runs via ``uv run FILE [PATH]`` outside the sandbox.
-
-    For the node runtime (which has no uv/PEP 723 equivalent) the result is the raw
-    ``filterPaths`` source preceded by a ``//`` provenance/safety comment block. Either
-    form can be replayed through the sandbox with :func:`run_saved`.
-    """
-    if generated.runtime == "node":
-        header = "\n".join(_saved_header(prompt, model, generated.runtime, "//"))
-        note = (
-            "// Note: standalone `uv run` is python-only; replay this file sandboxed "
-            "with `pfind --run`."
-        )
-        return f"{header}\n{note}\n\n{generated.code.rstrip()}\n"
-
-    lines = ["# /// script", '# requires-python = ">=3.12"']
-    if generated.dependencies:
-        deps = ", ".join(f'"{pkg}"' for pkg in generated.dependencies)
-        lines.append(f"# dependencies = [{deps}]")
-    else:
-        lines.append("# dependencies = []")
-    lines.append("# ///")
-    pep723 = "\n".join(lines)
-
-    # Docstring carries the same provenance/warning, without the comment prefix.
-    doc_lines = [line.lstrip() for line in _saved_header(prompt, model, generated.runtime, "")]
-    body = "\n".join(doc_lines).replace('"""', '\\"\\"\\"')
-    docstring = f'"""\n{body}\n"""'
-
-    return f"{pep723}\n{docstring}\n\n\n{generated.code.rstrip()}\n\n\n{_PYTHON_HARNESS}"
-
-
-def parse_saved_filter(source: str, *, filename: str = "") -> GeneratedFilter:
-    """Reconstruct a :class:`GeneratedFilter` from a saved filter file.
-
-    The runtime is node when the file is a ``.cjs``/``.js`` or has no PEP 723 block but
-    defines ``filterPaths``; otherwise python. Dependencies are read from the PEP 723
-    ``dependencies`` list (python) and otherwise left empty. The full source is used as
-    the filter code -- the sandbox worker extracts ``filter_paths``/``filterPaths`` and
-    never runs the standalone ``__main__`` harness.
-    """
-    is_node = filename.endswith((".cjs", ".js")) or (
-        not _PEP723_RE.search(source) and "filterPaths" in source
-    )
-    if is_node:
-        return GeneratedFilter(code=source, dependencies=[], runtime="node")
-
-    dependencies: list[str] = []
-    match = _PEP723_RE.search(source)
-    if match:
-        for line in match.group("body").splitlines():
-            stripped = line.lstrip("#").strip()
-            if stripped.startswith("dependencies"):
-                _, _, rest = stripped.partition("=")
-                dependencies = _PEP723_DEP_RE.findall(rest)
-                break
-    return GeneratedFilter(code=source, dependencies=dependencies, runtime="python")
-
-
 def run_saved(
     filter_path: str | Path,
     path: str | Path = ".",
@@ -1440,106 +913,3 @@ def run_saved(
         approve_dependencies=approve_dependencies,
         whitelist=whitelist,
     )
-
-
-def _worker_response(payload: dict[str, Any]) -> dict[str, Any]:
-    code = payload.get("code")
-    paths = payload.get("paths")
-    if (
-        not isinstance(code, str)
-        or not isinstance(paths, list)
-        or not all(isinstance(path, str) for path in paths)
-    ):
-        raise ValueError("Worker request must contain code and a list of path strings.")
-    meta = payload.get("meta") or {}
-    if not isinstance(meta, dict):
-        raise ValueError("Worker request 'meta' must be an object.")
-
-    # META is host-collected macOS metadata (empty unless --macos-meta). The generated
-    # filter may read it via META.get(path, {}); see _MACOS_META_SYSTEM.
-    namespace: dict[str, Any] = {"__name__": "generated_filter", "META": meta}
-    # Suppress ordinary generated-code output so stdout remains a JSON protocol.
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        exec(compile(code, "<generated-filter>", "exec"), namespace)  # noqa: S102
-        function = namespace.get("filter_paths")
-        if not callable(function):
-            raise ValueError("Generated code did not define filter_paths.")
-        results = function(paths)
-
-    return {"ok": True, "results": _normalize_results(results, set(paths))}
-
-
-def worker_main() -> int:
-    """Container supervisor: keep generated-code output off the host protocol."""
-    request = sys.stdin.buffer.read()
-    response_path: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(prefix="response-", dir="/tmp", delete=False) as file:
-            response_path = file.name
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-I",
-                str(Path(__file__).resolve()),
-                "--execute-worker",
-                response_path,
-            ],
-            input=request,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        if completed.returncode != 0:
-            raise RuntimeError(f"filter process exited with status {completed.returncode}")
-        with open(response_path, "rb") as file:
-            encoded = file.read(MAX_RESULT_BYTES + 1)
-        if len(encoded) > MAX_RESULT_BYTES:
-            raise RuntimeError("filter response exceeded the allowed size")
-        response = json.loads(encoded)
-    except BaseException as exc:
-        response = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    finally:
-        if response_path is not None:
-            Path(response_path).unlink(missing_ok=True)
-
-    json.dump(response, sys.stdout, separators=(",", ":"))
-    return 0
-
-
-def execute_worker_main(response_path: str) -> int:
-    """Child entry point that executes generated code and writes a response file."""
-    try:
-        payload = json.load(sys.stdin)
-        if not isinstance(payload, dict):
-            raise ValueError("Worker request must be a JSON object.")
-        response = _worker_response(payload)
-    except BaseException as exc:
-        response = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-
-    encoded = json.dumps(response, separators=(",", ":")).encode()
-    if len(encoded) > MAX_RESULT_BYTES:
-        encoded = b'{"ok":false,"error":"filter response exceeded the allowed size"}'
-    Path(response_path).write_bytes(encoded)
-    return 0
-
-
-def _module_main() -> int:
-    """In-container entry point: handle only the worker dispatch modes.
-
-    The host-facing command line lives in ``pfind.cli``. Inside the Docker image
-    the module is invoked as ``python backend.py --worker`` (which in turn
-    re-invokes itself with ``--execute-worker``).
-    """
-    if sys.argv[1:] == ["--worker"]:
-        return worker_main()
-    if len(sys.argv) == 3 and sys.argv[1] == "--execute-worker":
-        return execute_worker_main(sys.argv[2])
-    print(
-        "backend.py is the in-container worker; use the 'pfind' command on the host.",
-        file=sys.stderr,
-    )
-    return 2
-
-
-if __name__ == "__main__":
-    raise SystemExit(_module_main())

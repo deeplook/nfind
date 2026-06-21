@@ -1,3 +1,5 @@
+import ctypes
+import ctypes.util
 import io
 import json
 import plistlib
@@ -8,7 +10,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from pfind import backend as MODULE
-from pfind import cli
+from pfind import cli, metadata, worker
 
 
 def _gen(code, dependencies=()):
@@ -246,7 +248,7 @@ def test_execute_worker_main_truncates_oversized_response(tmp_path, monkeypatch)
         "paths": [f"/data/{i}" for i in range(1000)],
     }
     monkeypatch.setattr(MODULE.sys, "stdin", io.StringIO(json.dumps(payload)))
-    monkeypatch.setattr(MODULE, "MAX_RESULT_BYTES", 10)
+    monkeypatch.setattr(worker, "MAX_RESULT_BYTES", 10)
 
     assert MODULE.execute_worker_main(str(response)) == 0
     assert json.loads(response.read_text()) == {
@@ -256,22 +258,22 @@ def test_execute_worker_main_truncates_oversized_response(tmp_path, monkeypatch)
 
 
 def test_module_main_dispatches_worker(monkeypatch):
-    monkeypatch.setattr(MODULE.sys, "argv", ["backend.py", "--worker"])
-    with patch.object(MODULE, "worker_main", return_value=0) as worker:
-        assert MODULE._module_main() == 0
-    worker.assert_called_once_with()
+    monkeypatch.setattr(MODULE.sys, "argv", ["worker.py", "--worker"])
+    with patch.object(worker, "worker_main", return_value=0) as worker_main:
+        assert worker._module_main() == 0
+    worker_main.assert_called_once_with()
 
 
 def test_module_main_dispatches_execute_worker(monkeypatch):
-    monkeypatch.setattr(MODULE.sys, "argv", ["backend.py", "--execute-worker", "/tmp/resp"])
-    with patch.object(MODULE, "execute_worker_main", return_value=0) as execute:
-        assert MODULE._module_main() == 0
+    monkeypatch.setattr(MODULE.sys, "argv", ["worker.py", "--execute-worker", "/tmp/resp"])
+    with patch.object(worker, "execute_worker_main", return_value=0) as execute:
+        assert worker._module_main() == 0
     execute.assert_called_once_with("/tmp/resp")
 
 
 def test_module_main_rejects_unknown_invocation(monkeypatch, capsys):
-    monkeypatch.setattr(MODULE.sys, "argv", ["backend.py"])
-    assert MODULE._module_main() == 2
+    monkeypatch.setattr(MODULE.sys, "argv", ["worker.py"])
+    assert worker._module_main() == 2
     assert "in-container worker" in capsys.readouterr().err
 
 
@@ -841,29 +843,29 @@ def test_collect_macos_metadata_empty_off_darwin(monkeypatch):
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="reads macOS extended attributes")
 def test_collect_macos_metadata_reads_tags_and_quarantine(tmp_path):
-    libc = MODULE.ctypes.CDLL(MODULE.ctypes.util.find_library("c"), use_errno=True)
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
     libc.setxattr.argtypes = [
-        MODULE.ctypes.c_char_p,
-        MODULE.ctypes.c_char_p,
-        MODULE.ctypes.c_void_p,
-        MODULE.ctypes.c_size_t,
-        MODULE.ctypes.c_uint32,
-        MODULE.ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_uint32,
+        ctypes.c_int,
     ]
 
     def setxattr(path, name, value):
         rc = libc.setxattr(str(path).encode(), name.encode(), value, len(value), 0, 0)
-        assert rc == 0, MODULE.ctypes.get_errno()
+        assert rc == 0, ctypes.get_errno()
 
     tagged = tmp_path / "tagged.txt"
     tagged.write_text("x")
     setxattr(
-        tagged, MODULE._XATTR_TAGS, plistlib.dumps(["Red\n6", "Work"], fmt=plistlib.FMT_BINARY)
+        tagged, metadata._XATTR_TAGS, plistlib.dumps(["Red\n6", "Work"], fmt=plistlib.FMT_BINARY)
     )
-    setxattr(tagged, MODULE._XATTR_QUARANTINE, b"0083;0;Safari;")
+    setxattr(tagged, metadata._XATTR_QUARANTINE, b"0083;0;Safari;")
     setxattr(
         tagged,
-        MODULE._XATTR_WHERE_FROMS,
+        metadata._XATTR_WHERE_FROMS,
         plistlib.dumps(["https://example.com/x"], fmt=plistlib.FMT_BINARY),
     )
     plain = tmp_path / "plain.txt"
