@@ -90,9 +90,29 @@ pfind "images larger than 4000px on a side" ~/Photos --yes                 # app
 pfind "files containing TODO" . --no-deps                                  # standard library only
 ```
 
-Packages are installed at image-build time (which needs network); the container that
-runs the filter still has no network. See
+The Python defaults include `tree-sitter` and `tree-sitter-language-pack`, so a filter
+can parse source *structure* — functions, imports, classes — across many languages
+without a dedicated runtime (the Node.js runtime is reserved for type-aware TS/JS
+analysis). Packages are installed at image-build time (which needs network); the
+container that runs the filter still has no network. See
 [docs/dependencies.md](docs/dependencies.md).
+
+### macOS metadata
+
+On macOS, `--macos-meta` exposes a small slice of macOS-specific metadata — **Finder
+tags** and **download provenance** (the quarantine flag and "where from" URLs) — to the
+filter. These live on the host and aren't visible inside the Linux sandbox, so pfind
+reads them host-side (read-only) and passes them in. This unlocks queries that
+*combine* macOS metadata with file contents — something neither Spotlight nor a
+container-only filter can do alone:
+
+```bash
+pfind "PDFs I downloaded from the web that mention 'invoice', using pypdf" ~/Downloads --macos-meta
+pfind "files tagged Red whose contents contain a TODO" ~/Projects --macos-meta
+```
+
+For pure-metadata lookups ("everything tagged Red"), Spotlight (`mdfind`) is faster.
+The flag is a no-op off macOS. See [docs/macos-metadata.md](docs/macos-metadata.md).
 
 ### Reviewing the generated code
 
@@ -113,6 +133,10 @@ The code is printed to **stderr**, so stdout stays a clean, pipeable list of pat
 even with `--show-code`. On a terminal it is syntax-highlighted with Pygments; the
 highlighting is disabled when `NO_COLOR` is set or when stderr is redirected.
 
+If the model's reply doesn't validate (malformed JSON, wrong function shape, an invalid
+package name), pfind feeds the error back and retries a few times before giving up;
+`--verbose` reports when a retry happens.
+
 The first run builds the worker image for the chosen runtime
 (`pfind-search-paths:latest` for Python, `pfind-search-node:latest` for Node.js);
 later runs reuse it. Pass `--rebuild` to force a fresh build.
@@ -131,6 +155,7 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | `--json` | off | Output records (path + extra fields) as JSON |
 | `--yes` / `-y` | off | Approve any requested packages without prompting |
 | `--no-deps` | off | Reject third-party packages (standard library only) |
+| `--macos-meta` | off | macOS: expose Finder tags and download metadata to the filter |
 | `--show-code` | off | Print the generated filter before running |
 | `--save` | — | Write the generated filter to a file |
 | `--confirm` / `-i` | off | Show the code and confirm before running |
