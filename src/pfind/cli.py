@@ -173,8 +173,16 @@ def main(
     if macos_meta and sys.platform != "darwin":
         typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
     if run is not None:
+        # With --run there is no PROMPT, so a single positional is the search PATH.
+        # Typer binds the first positional to `prompt`; shift it over to `path`.
+        if prompt is not None and path == ".":
+            path, prompt = prompt, None
         if prompt is not None:
-            typer.echo("error: PROMPT is not used with --run (the filter is replayed).", err=True)
+            typer.echo(
+                "error: with --run, pass only the search PATH (the filter is replayed, "
+                "there is no PROMPT).",
+                err=True,
+            )
             raise typer.Exit(2)
         for flag, used in (
             ("--save", save is not None),

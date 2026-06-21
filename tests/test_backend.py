@@ -1029,15 +1029,32 @@ def test_cli_save_writes_replayable_script(tmp_path):
     assert "Prompt:  files" in written
 
 
-def test_cli_run_rejects_prompt_and_save(tmp_path):
+def test_cli_run_uses_single_positional_as_path(tmp_path):
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    script = tmp_path / "f.py"
+    script.write_text("def filter_paths(paths): return paths")
+    target = tmp_path / "sub"
+    target.mkdir()
+
+    with patch.object(cli.backend, "run_saved", return_value=[]) as run_saved:
+        result = runner.invoke(cli.app, ["--run", str(script), str(target)])
+
+    assert result.exit_code == 0
+    # The lone positional is the search PATH (not a PROMPT) when --run is used.
+    assert run_saved.call_args.args[1] == str(target)
+
+
+def test_cli_run_rejects_extra_positional_and_save(tmp_path):
     from typer.testing import CliRunner
 
     runner = CliRunner()
     script = tmp_path / "f.py"
     script.write_text("def filter_paths(paths): return paths")
 
-    with_prompt = runner.invoke(cli.app, ["files", "--run", str(script)])
-    assert with_prompt.exit_code == 2
+    two_positionals = runner.invoke(cli.app, ["prompt", "path", "--run", str(script)])
+    assert two_positionals.exit_code == 2
 
     with_save = runner.invoke(cli.app, ["--run", str(script), "--save", str(tmp_path / "o.py")])
     assert with_save.exit_code == 2
