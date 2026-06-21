@@ -1,3 +1,4 @@
+import io
 import json
 import plistlib
 import subprocess
@@ -217,6 +218,167 @@ def test_worker_returns_extra_fields(tmp_path):
         "ok": True,
         "results": [{"path": str(path), "lines": 3}],
     }
+
+
+def test_execute_worker_main_writes_response_file(tmp_path, monkeypatch):
+    response = tmp_path / "response.json"
+    payload = {"code": "def filter_paths(paths): return paths", "paths": ["/data/a"]}
+    monkeypatch.setattr(MODULE.sys, "stdin", io.StringIO(json.dumps(payload)))
+
+    assert MODULE.execute_worker_main(str(response)) == 0
+    assert json.loads(response.read_text()) == {"ok": True, "results": [{"path": "/data/a"}]}
+
+
+def test_execute_worker_main_records_error_for_bad_request(tmp_path, monkeypatch):
+    response = tmp_path / "response.json"
+    monkeypatch.setattr(MODULE.sys, "stdin", io.StringIO("not json"))
+
+    assert MODULE.execute_worker_main(str(response)) == 0
+    written = json.loads(response.read_text())
+    assert written["ok"] is False
+    assert "error" in written
+
+
+def test_execute_worker_main_truncates_oversized_response(tmp_path, monkeypatch):
+    response = tmp_path / "response.json"
+    payload = {
+        "code": "def filter_paths(paths): return paths",
+        "paths": [f"/data/{i}" for i in range(1000)],
+    }
+    monkeypatch.setattr(MODULE.sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(MODULE, "MAX_RESULT_BYTES", 10)
+
+    assert MODULE.execute_worker_main(str(response)) == 0
+    assert json.loads(response.read_text()) == {
+        "ok": False,
+        "error": "filter response exceeded the allowed size",
+    }
+
+
+def test_module_main_dispatches_worker(monkeypatch):
+    monkeypatch.setattr(MODULE.sys, "argv", ["backend.py", "--worker"])
+    with patch.object(MODULE, "worker_main", return_value=0) as worker:
+        assert MODULE._module_main() == 0
+    worker.assert_called_once_with()
+
+
+def test_module_main_dispatches_execute_worker(monkeypatch):
+    monkeypatch.setattr(MODULE.sys, "argv", ["backend.py", "--execute-worker", "/tmp/resp"])
+    with patch.object(MODULE, "execute_worker_main", return_value=0) as execute:
+        assert MODULE._module_main() == 0
+    execute.assert_called_once_with("/tmp/resp")
+
+
+def test_module_main_rejects_unknown_invocation(monkeypatch, capsys):
+    monkeypatch.setattr(MODULE.sys, "argv", ["backend.py"])
+    assert MODULE._module_main() == 2
+    assert "in-container worker" in capsys.readouterr().err
+
+
+def test_worker_main_relays_child_response(monkeypatch):
+    monkeypatch.setattr(MODULE.sys, "stdin", Mock(buffer=Mock(read=lambda: b"{}")))
+    out = io.StringIO()
+    monkeypatch.setattr(MODULE.sys, "stdout", out)
+
+    def fake_run(args, **kwargs):
+        # The child writes its response file; emulate that side effect.
+        MODULE.Path(args[args.index("--execute-worker") + 1]).write_text('{"ok":true,"results":[]}')
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(MODULE.subprocess, "run", fake_run)
+    assert MODULE.worker_main() == 0
+    assert json.loads(out.getvalue()) == {"ok": True, "results": []}
+
+
+def test_worker_main_reports_nonzero_child_exit(monkeypatch):
+    monkeypatch.setattr(MODULE.sys, "stdin", Mock(buffer=Mock(read=lambda: b"{}")))
+    out = io.StringIO()
+    monkeypatch.setattr(MODULE.sys, "stdout", out)
+    monkeypatch.setattr(
+        MODULE.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 137),
+    )
+
+    assert MODULE.worker_main() == 0
+    written = json.loads(out.getvalue())
+    assert written["ok"] is False
+    assert "137" in written["error"]
+
+
+def _docker_result(stdout=b"", stderr=b"", returncode=0):
+    return subprocess.CompletedProcess(["docker"], returncode, stdout, stderr)
+
+
+def test_run_filter_returns_normalized_results(tmp_path):
+    with patch.object(
+        MODULE, "_run_docker", return_value=_docker_result(b'{"ok":true,"results":["/data/a"]}')
+    ):
+        results = MODULE.run_filter("code", tmp_path, ["/data/a"])
+    assert results == [{"path": "/data/a"}]
+
+
+@pytest.mark.parametrize("bad", [0, -1.5])
+def test_run_filter_rejects_nonpositive_limits(tmp_path, bad):
+    with pytest.raises(ValueError):
+        MODULE.run_filter("code", tmp_path, [], timeout=bad)
+
+
+def test_run_filter_maps_timeout_to_timeouterror(tmp_path):
+    with (
+        patch.object(MODULE, "_run_docker", side_effect=subprocess.TimeoutExpired("docker", 10)),
+        patch.object(MODULE, "_remove_container") as remove,
+        pytest.raises(TimeoutError, match="exceeded"),
+    ):
+        MODULE.run_filter("code", tmp_path, [], timeout=10)
+    remove.assert_called_once()
+
+
+def test_run_filter_rejects_oversized_output(tmp_path, monkeypatch):
+    monkeypatch.setattr(MODULE, "MAX_RESULT_BYTES", 4)
+    with (
+        patch.object(MODULE, "_run_docker", return_value=_docker_result(b'{"ok":true}')),
+        pytest.raises(RuntimeError, match="exceeded the allowed size"),
+    ):
+        MODULE.run_filter("code", tmp_path, [])
+
+
+def test_run_filter_reports_nonzero_worker_exit(tmp_path):
+    with (
+        patch.object(
+            MODULE, "_run_docker", return_value=_docker_result(stderr=b"boom", returncode=1)
+        ),
+        pytest.raises(RuntimeError, match="Docker worker failed: boom"),
+    ):
+        MODULE.run_filter("code", tmp_path, [])
+
+
+def test_run_filter_rejects_invalid_json(tmp_path):
+    with (
+        patch.object(MODULE, "_run_docker", return_value=_docker_result(b"not json")),
+        pytest.raises(RuntimeError, match="invalid response"),
+    ):
+        MODULE.run_filter("code", tmp_path, [])
+
+
+def test_run_filter_propagates_worker_error(tmp_path):
+    with (
+        patch.object(
+            MODULE, "_run_docker", return_value=_docker_result(b'{"ok":false,"error":"nope"}')
+        ),
+        pytest.raises(RuntimeError, match="Generated filter failed: nope"),
+    ):
+        MODULE.run_filter("code", tmp_path, [])
+
+
+def test_run_filter_rejects_disallowed_result_path(tmp_path):
+    with (
+        patch.object(
+            MODULE, "_run_docker", return_value=_docker_result(b'{"ok":true,"results":["/evil"]}')
+        ),
+        pytest.raises(RuntimeError, match="invalid result"),
+    ):
+        MODULE.run_filter("code", tmp_path, ["/data/a"])
 
 
 def test_search_maps_host_paths_in_records(tmp_path):
