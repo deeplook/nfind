@@ -57,6 +57,11 @@ DEFAULT_ALLOWED_PACKAGES = frozenset(
         "pyyaml",
         "tinytag",
         "tomli",
+        # Multi-language syntactic parsing: tree-sitter core plus a bundle of
+        # precompiled grammars, so filters can query source structure (functions,
+        # imports, ...) across many languages from the Python runtime.
+        "tree-sitter",
+        "tree-sitter-language-pack",
     }
 )
 

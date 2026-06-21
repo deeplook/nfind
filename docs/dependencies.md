@@ -3,9 +3,15 @@
 ← [Home](index.md)
 
 Some questions can't be answered from names and raw bytes alone — reading MP3 tags,
-image dimensions, or PDF text needs a library. pfind lets the generated filter
-**declare the third-party packages it needs**, then installs them into a sandboxed
-image — but only after the package has been approved.
+image dimensions, PDF text, or the structure of source code needs a library. pfind
+lets the generated filter **declare the third-party packages it needs**, then installs
+them into a sandboxed image — but only after the package has been approved.
+
+The defaults include `tree-sitter` plus `tree-sitter-language-pack` (a bundle of
+precompiled grammars), so a Python filter can parse source *structure* — functions,
+imports, classes — across many languages without a dedicated runtime. Reach for the
+[Node.js runtime](runtimes.md) only when you need type-aware TypeScript/JS analysis
+that the compiler API provides.
 
 ## How it works
 
@@ -56,7 +62,8 @@ These common, read-only analysis packages are pre-approved and install without a
 prompt.
 
 **Python (pip):** `chardet`, `mutagen`, `pdfminer-six`, `pillow`, `pillow-heif`,
-`pypdf`, `python-magic`, `pyyaml`, `tinytag`, `tomli`
+`pypdf`, `python-magic`, `pyyaml`, `tinytag`, `tomli`, `tree-sitter`,
+`tree-sitter-language-pack`
 
 **Node.js (npm):** `@babel/parser`, `acorn`, `esprima`, `fast-xml-parser`, `ts-morph`,
 `typescript`, `yaml`

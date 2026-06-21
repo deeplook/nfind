@@ -501,6 +501,7 @@ def test_whitelist_round_trip(tmp_path, monkeypatch):
     monkeypatch.setenv("PFIND_WHITELIST", str(tmp_path / "whitelist.json"))
     assert "rarfile" not in MODULE.load_whitelist()
     assert "mutagen" in MODULE.load_whitelist()  # built-in default
+    assert "tree-sitter-language-pack" in MODULE.load_whitelist()  # multi-language parsing
     MODULE.approve_packages(["rarfile"])
     assert "rarfile" in MODULE.load_whitelist()
 
