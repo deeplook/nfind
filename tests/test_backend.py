@@ -440,6 +440,26 @@ def test_whitelist_is_per_runtime(tmp_path, monkeypatch):
     assert "ts-morph" in MODULE.load_whitelist("node")  # node default
 
 
+def test_whitelist_path_prefers_pfind_whitelist_override(tmp_path, monkeypatch):
+    override = tmp_path / "custom" / "wl.json"
+    monkeypatch.setenv("PFIND_WHITELIST", str(override))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert MODULE._whitelist_path() == override
+
+
+def test_whitelist_path_uses_xdg_config_home(tmp_path, monkeypatch):
+    monkeypatch.delenv("PFIND_WHITELIST", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert MODULE._whitelist_path() == tmp_path / "xdg" / "pfind" / "whitelist.json"
+
+
+def test_whitelist_path_falls_back_to_home_config(tmp_path, monkeypatch):
+    monkeypatch.delenv("PFIND_WHITELIST", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setattr(MODULE.Path, "home", classmethod(lambda cls: tmp_path))
+    assert MODULE._whitelist_path() == tmp_path / ".config" / "pfind" / "whitelist.json"
+
+
 def test_pip_dependencies_are_pep503_normalized():
     # Underscores, dots, and case collapse to one canonical dash-lowercase form.
     assert MODULE.PYTHON_RUNTIME.validate_packages(
