@@ -475,9 +475,7 @@ def _fake_openai(*contents):
     Patches ``_make_client`` so the tests exercise the generate/retry logic without
     needing real provider credentials.
     """
-    responses = [
-        Mock(choices=[Mock(message=Mock(content=content))]) for content in contents
-    ]
+    responses = [Mock(choices=[Mock(message=Mock(content=content))]) for content in contents]
     client = Mock()
     client.chat.completions.create.side_effect = responses
     return patch.object(MODULE, "_make_client", return_value=client), client
@@ -576,9 +574,7 @@ def test_generate_filter_retries_on_invalid_then_succeeds():
     patcher, client = _fake_openai("not json", good)
     retries = []
     with patcher:
-        result = MODULE.generate_filter(
-            "anything", on_retry=lambda n, exc: retries.append(n)
-        )
+        result = MODULE.generate_filter("anything", on_retry=lambda n, exc: retries.append(n))
     assert result.code == "def filter_paths(paths): return paths"
     assert client.chat.completions.create.call_count == 2
     assert retries == [1]
@@ -642,7 +638,9 @@ def test_collect_macos_metadata_reads_tags_and_quarantine(tmp_path):
 
     tagged = tmp_path / "tagged.txt"
     tagged.write_text("x")
-    setxattr(tagged, MODULE._XATTR_TAGS, plistlib.dumps(["Red\n6", "Work"], fmt=plistlib.FMT_BINARY))
+    setxattr(
+        tagged, MODULE._XATTR_TAGS, plistlib.dumps(["Red\n6", "Work"], fmt=plistlib.FMT_BINARY)
+    )
     setxattr(tagged, MODULE._XATTR_QUARANTINE, b"0083;0;Safari;")
     setxattr(
         tagged,
@@ -896,6 +894,7 @@ def test_run_filter_uses_security_and_resource_flags(tmp_path):
 
 # --- saved filters: render / parse / replay -------------------------------------
 
+
 def test_render_saved_filter_python_is_valid_pep723_script():
     code = "def filter_paths(paths):\n    import mutagen\n    return paths"
     src = MODULE.render_saved_filter(_gen(code, ["mutagen"]), "MP3 files", "gpt-4o-mini")
@@ -913,8 +912,9 @@ def test_render_saved_filter_python_is_valid_pep723_script():
 
 
 def test_render_saved_filter_escapes_triple_quotes_in_prompt():
-    src = MODULE.render_saved_filter(_gen("def filter_paths(paths): return paths"),
-                                     'a """ quote', "gpt-4o-mini")
+    src = MODULE.render_saved_filter(
+        _gen("def filter_paths(paths): return paths"), 'a """ quote', "gpt-4o-mini"
+    )
     compile(src, "saved.py", "exec")
 
 
@@ -938,23 +938,27 @@ def test_saved_filter_standalone_harness_runs(tmp_path):
 
     out = subprocess.run(  # noqa: S603
         [sys.executable, str(script), str(tmp_path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert out.stdout.strip().endswith("a.mp3")
     assert "b.txt" not in out.stdout
 
 
 def test_parse_saved_filter_round_trips_python_dependencies():
-    src = MODULE.render_saved_filter(_gen("def filter_paths(paths): return paths", ["mutagen"]),
-                                     "mp3", "gpt-4o-mini")
+    src = MODULE.render_saved_filter(
+        _gen("def filter_paths(paths): return paths", ["mutagen"]), "mp3", "gpt-4o-mini"
+    )
     parsed = MODULE.parse_saved_filter(src, filename="mp3.py")
     assert parsed.runtime == "python"
     assert parsed.dependencies == ["mutagen"]
 
 
 def test_parse_saved_filter_detects_node_by_extension():
-    src = MODULE.render_saved_filter(_gen_node("function filterPaths(paths){return paths;}"),
-                                     "ts", "gpt-4o-mini")
+    src = MODULE.render_saved_filter(
+        _gen_node("function filterPaths(paths){return paths;}"), "ts", "gpt-4o-mini"
+    )
     parsed = MODULE.parse_saved_filter(src, filename="filter.cjs")
     assert parsed.runtime == "node"
 
@@ -971,8 +975,11 @@ def test_run_saved_replays_without_generating(tmp_path):
         patch.object(MODULE, "build_worker_image", return_value="img:deps"),
         patch.object(MODULE, "generate_filter") as generate,
         patch.object(MODULE, "run_filter", return_value=[{"path": container}]) as run_filter,
-        patch.object(MODULE, "enumerate_paths",
-                     return_value=([container], {container: str(tmp_path / "a.mp3")})),
+        patch.object(
+            MODULE,
+            "enumerate_paths",
+            return_value=([container], {container: str(tmp_path / "a.mp3")}),
+        ),
     ):
         records = MODULE.run_saved(script, str(tmp_path))
 
@@ -1009,8 +1016,9 @@ def test_cli_save_writes_replayable_script(tmp_path):
     with (
         patch.object(cli.backend, "check_docker_available"),
         patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
-        patch.object(cli.backend, "generate_filter",
-                     return_value=_gen("def filter_paths(paths): return []")),
+        patch.object(
+            cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
+        ),
         patch.object(cli.backend, "run_filter", return_value=[]),
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--save", str(out)])
@@ -1031,9 +1039,7 @@ def test_cli_run_rejects_prompt_and_save(tmp_path):
     with_prompt = runner.invoke(cli.app, ["files", "--run", str(script)])
     assert with_prompt.exit_code == 2
 
-    with_save = runner.invoke(
-        cli.app, ["--run", str(script), "--save", str(tmp_path / "o.py")]
-    )
+    with_save = runner.invoke(cli.app, ["--run", str(script), "--save", str(tmp_path / "o.py")])
     assert with_save.exit_code == 2
 
 

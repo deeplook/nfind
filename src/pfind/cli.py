@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
 
@@ -41,7 +41,8 @@ def _highlight(code: str, runtime: str = "python") -> str:
     except ImportError:
         return code
     lexer = JavascriptLexer() if runtime == "node" else PythonLexer()
-    return highlight(code, lexer, TerminalFormatter()).rstrip("\n")
+    highlighted: str = highlight(code, lexer, TerminalFormatter())
+    return highlighted.rstrip("\n")
 
 
 def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool) -> None:
@@ -67,7 +68,7 @@ def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool) -> Non
 @app.command()
 def main(
     prompt: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(
             help="Natural-language description of the paths to find. "
             "Omit when replaying a saved filter with --run.",
@@ -86,7 +87,7 @@ def main(
         ),
     ] = DEFAULT_MODEL,
     image: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(help="Override the base image tag for the chosen runtime."),
     ] = None,
     timeout: Annotated[
@@ -118,11 +119,11 @@ def main(
         typer.Option("--show-code", help="Print the generated filter code before running it."),
     ] = False,
     save: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(help="Save the generated filter as a self-describing, replayable script."),
     ] = None,
     run: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--run",
             help="Replay a previously saved filter through the sandbox instead of "
@@ -175,8 +176,11 @@ def main(
         if prompt is not None:
             typer.echo("error: PROMPT is not used with --run (the filter is replayed).", err=True)
             raise typer.Exit(2)
-        for flag, used in (("--save", save is not None), ("--confirm", confirm),
-                           ("--macos-meta", macos_meta)):
+        for flag, used in (
+            ("--save", save is not None),
+            ("--confirm", confirm),
+            ("--macos-meta", macos_meta),
+        ):
             if used:
                 typer.echo(f"error: {flag} cannot be combined with --run.", err=True)
                 raise typer.Exit(2)
@@ -231,6 +235,7 @@ def main(
                 on_generated=hook,
             )
         else:
+            assert prompt is not None  # guaranteed by the validation above
             results = backend.search(
                 path,
                 prompt,

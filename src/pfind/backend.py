@@ -157,12 +157,7 @@ class Runtime:
         return _validate_dependencies(dependencies, self._package_name)
 
     def derived_dockerfile(self, base: str, packages: Sequence[str]) -> str:
-        return (
-            f"FROM {base}\n"
-            "USER root\n"
-            f"{self._install(packages)}\n"
-            f"USER {self.final_user}\n"
-        )
+        return f"FROM {base}\nUSER root\n{self._install(packages)}\nUSER {self.final_user}\n"
 
 
 @dataclass
@@ -376,7 +371,10 @@ NODE_RUNTIME = Runtime(
     _install=_npm_install,
 )
 
-RUNTIMES: dict[str, Runtime] = {PYTHON_RUNTIME.name: PYTHON_RUNTIME, NODE_RUNTIME.name: NODE_RUNTIME}
+RUNTIMES: dict[str, Runtime] = {
+    PYTHON_RUNTIME.name: PYTHON_RUNTIME,
+    NODE_RUNTIME.name: NODE_RUNTIME,
+}
 
 
 def _imply_packages(runtime_name: str, dependencies: Sequence[str]) -> list[str]:
@@ -397,7 +395,9 @@ def _imply_packages(runtime_name: str, dependencies: Sequence[str]) -> list[str]
     return sorted(deps)
 
 
-def _validate_dependencies(dependencies: Any, pattern: re.Pattern[str] = _PACKAGE_NAME) -> list[str]:
+def _validate_dependencies(
+    dependencies: Any, pattern: re.Pattern[str] = _PACKAGE_NAME
+) -> list[str]:
     """Validate and normalize a requested dependency list to bare package names."""
     if not isinstance(dependencies, list) or not all(isinstance(d, str) for d in dependencies):
         raise ValueError("dependencies must be a list of package-name strings.")
@@ -648,7 +648,9 @@ def collect_macos_metadata(host_by_container: dict[str, str]) -> dict[str, dict[
     for container_path, host_path in host_by_container.items():
         entry: dict[str, Any] = {}
         # Finder tags are stored as "Name" or "Name\n<color-index>"; keep the name.
-        tags = [value.split("\n", 1)[0] for value in _plist_strings(_getxattr(host_path, _XATTR_TAGS))]
+        tags = [
+            value.split("\n", 1)[0] for value in _plist_strings(_getxattr(host_path, _XATTR_TAGS))
+        ]
         if tags:
             entry["tags"] = tags
         if _getxattr(host_path, _XATTR_QUARANTINE) is not None:
@@ -1132,8 +1134,7 @@ def _run_generated(
     if new_packages:
         if approve_dependencies is None or not approve_dependencies(new_packages):
             raise DependencyError(
-                "filter requires packages that were not approved: "
-                + ", ".join(new_packages)
+                "filter requires packages that were not approved: " + ", ".join(new_packages)
             )
         approve_packages(new_packages, runtime.name)
 
@@ -1166,7 +1167,7 @@ def _run_generated(
 # Standalone harness appended to a saved python filter so it can run via `uv run`
 # outside the sandbox. The worker never runs this block (it sets __name__ to
 # "generated_filter"), so the same file replays unchanged through pfind --run.
-_PYTHON_HARNESS = '''\
+_PYTHON_HARNESS = """\
 if __name__ == "__main__":
     import os
     import sys
@@ -1179,7 +1180,7 @@ if __name__ == "__main__":
     ]
     for record in filter_paths(paths):
         print(record if isinstance(record, str) else record["path"])
-'''
+"""
 
 # PEP 723 inline script-metadata block: `uv run` reads dependencies from here.
 _PEP723_RE = re.compile(
