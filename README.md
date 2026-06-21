@@ -2,8 +2,9 @@
 
 **Find files by describing them in natural language.**
 
-`pfind` ("prompt find") takes a plain-English description, asks an LLM to write a
-small filter function for it — in Python (`filter_paths`) or Node.js (`filterPaths`) —
+The name is short for **p**rompt(ed)-**find** — `find`, but driven by a prompt instead
+of a filter expression. `pfind` takes a plain-English description, asks an LLM to write
+a small filter function for it — in Python (`filter_paths`) or Node.js (`filterPaths`) —
 and runs that function against your file tree to print the matching paths — a
 natural-language cousin of `find`.
 

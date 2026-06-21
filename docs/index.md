@@ -1,6 +1,7 @@
 # pfind
 
-**pfind** ("prompt find") finds files by describing them in plain language. You give
+**pfind** — short for **p**rompt(ed)-**find** — finds files by describing them in plain
+language (it's `find`, but driven by a prompt instead of a filter expression). You give
 a natural-language prompt; an LLM writes a small Python filter for it; that filter
 runs against your file tree inside a hardened, disposable Docker container and prints
 the matching paths — a natural-language cousin of `find`.
