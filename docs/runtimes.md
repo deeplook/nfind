@@ -59,6 +59,54 @@ Use [`--show-code`](cli.md#reviewing-the-generated-code) to see which runtime wa
 chosen and the generated source (Python or JavaScript, syntax-highlighted
 accordingly).
 
+## Why these two runtimes (and what about others)
+
+A new runtime is real, ongoing surface area: another Dockerfile, an in-container
+worker, a package-manager integration, a default whitelist to curate, validation, and
+another base image to pull — plus one more choice the model can get wrong. So the bar
+for adding one is deliberately high.
+
+**The bar:** a runtime earns its place only when its *native toolchain* provides
+analysis that neither existing runtime can match. The decisive distinction is
+**syntactic** versus **semantic**:
+
+- **Syntactic** questions — "functions named `Test*`", "files importing package Y",
+  "classes with no methods" — need only a parser, not the language itself. The Python
+  runtime already covers these for *many* languages via `tree-sitter` and
+  `tree-sitter-language-pack` (both pre-approved; see
+  [Dependencies](dependencies.md)). Adding a Go or Ruby runtime *just* to parse Go or
+  Ruby source would duplicate what tree-sitter already does from Python.
+- **Semantic** questions — type resolution, symbol/binding resolution, macro
+  expansion — need the language's own compiler. This is exactly why **Node.js** exists
+  here: `ts-morph` / the TypeScript compiler API give *type-aware* analysis of TS/JS
+  that no syntactic parser can replicate.
+
+Between them, **Python** (a deep standard library, the broadest analysis ecosystem,
+and tree-sitter for cross-language *structure*) and **Node.js** (type-aware TS/JS)
+cover essentially the whole practical space of file-search queries. That is why the
+model is told to pick Node only when the JS/TS ecosystem is *clearly* better, and to
+prefer Python otherwise.
+
+### Languages that don't clear the bar
+
+- **Compiled languages (Rust, Java, C)** fight pfind's model: it *generates code and
+  runs it immediately* in a disposable container. A per-filter compile step is slow
+  and needs a heavy toolchain image. `syn` is excellent for Rust ASTs, but a
+  `cargo build` per query is the wrong shape.
+- **Interpreted niche languages (Ruby, PHP, Perl)** execute fine but fail the bar:
+  tree-sitter already covers their *syntax*, and there's little demand for the
+  *semantic* analysis only their own runtime could add.
+
+### The one candidate worth considering: Go
+
+Go is the least-bad next runtime, for the same reason Node is justified: its standard
+library ships first-class **semantic** tooling — `go/parser`, `go/types` — that gives
+type- and symbol-aware analysis of Go source which tree-sitter (syntactic only) can't.
+And `go run` is fast enough to keep the generate-then-run model viable, unlike the
+compiled languages above. Even so, it would only be worth adding on real demand for
+deep Go-codebase queries — not preemptively. Until then, tree-sitter from the Python
+runtime handles structural Go questions well enough.
+
 ## Overriding the base image
 
 `--image` overrides the base image tag for whichever runtime the model selects (an
