@@ -72,8 +72,8 @@ analysis that neither existing runtime can match. The decisive distinction is
 
 - **Syntactic** questions — "functions named `Test*`", "files importing package Y",
   "classes with no methods" — need only a parser, not the language itself. The Python
-  runtime already covers these for *many* languages via `tree-sitter` and
-  `tree-sitter-language-pack` (both pre-approved; see
+  runtime already covers these for many languages via `tree-sitter` and the
+  per-language grammar wheels (`tree-sitter-python`, `-go`, …; all pre-approved, see
   [Dependencies](dependencies.md)). Adding a Go or Ruby runtime *just* to parse Go or
   Ruby source would duplicate what tree-sitter already does from Python.
 - **Semantic** questions — type resolution, symbol/binding resolution, macro

@@ -581,6 +581,20 @@ def test_collect_macos_metadata_reads_tags_and_quarantine(tmp_path):
     }
 
 
+def test_imply_packages_adds_tree_sitter_core_for_grammar_wheels():
+    # A grammar wheel alone leaves `import tree_sitter` failing; core must be added.
+    assert MODULE._imply_packages("python", ["tree-sitter-go"]) == ["tree-sitter", "tree-sitter-go"]
+    # Already present: unchanged (deduplicated/sorted).
+    assert MODULE._imply_packages("python", ["tree-sitter", "tree-sitter-go"]) == [
+        "tree-sitter",
+        "tree-sitter-go",
+    ]
+    # No grammar wheel: untouched.
+    assert MODULE._imply_packages("python", ["mutagen"]) == ["mutagen"]
+    # Node runtime: the Python implication does not apply.
+    assert MODULE._imply_packages("node", ["tree-sitter-go"]) == ["tree-sitter-go"]
+
+
 def test_validate_dependencies_rejects_specifiers():
     with pytest.raises(ValueError):
         MODULE._validate_dependencies(["mutagen==1.0"])
@@ -599,7 +613,7 @@ def test_whitelist_round_trip(tmp_path, monkeypatch):
     monkeypatch.setenv("PFIND_WHITELIST", str(tmp_path / "whitelist.json"))
     assert "rarfile" not in MODULE.load_whitelist()
     assert "mutagen" in MODULE.load_whitelist()  # built-in default
-    assert "tree-sitter-language-pack" in MODULE.load_whitelist()  # multi-language parsing
+    assert "tree-sitter-python" in MODULE.load_whitelist()  # multi-language parsing
     MODULE.approve_packages(["rarfile"])
     assert "rarfile" in MODULE.load_whitelist()
 

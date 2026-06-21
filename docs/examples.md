@@ -78,7 +78,7 @@ the stdlib-only base image; prompts that need libraries use a cached derived ima
 | `directories that contain only audio files` | Python | — | `pfind-search-paths:latest` (base) |
 | `MP3 files whose title tag contains 'live', using mutagen` | Python | `mutagen` (pip) | `pfind-search-paths:deps-<hash>` |
 | `images larger than 4000px on a side` | Python | `pillow` (pip) | `pfind-search-paths:deps-<hash>` |
-| `Go files defining a function named Test*, using tree-sitter` | Python | `tree-sitter`, `tree-sitter-language-pack` (pip) | `pfind-search-paths:deps-<hash>` |
+| `Go files defining a function named Test*, using tree-sitter` | Python | `tree-sitter`, `tree-sitter-go` (pip) | `pfind-search-paths:deps-<hash>` |
 | `PDFs I downloaded that mention 'invoice', using pypdf` (with `--macos-meta`) | Python | `pypdf` (pip) | `pfind-search-paths:deps-<hash>` |
 | `TypeScript files that declare an interface, using the node runtime, no packages` | Node.js | — | `pfind-search-node:latest` (base) |
 | `TypeScript files that export a default, using ts-morph` | Node.js | `ts-morph` (npm) | `pfind-search-node:deps-<hash>` |

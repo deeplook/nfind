@@ -60,11 +60,20 @@ DEFAULT_ALLOWED_PACKAGES = frozenset(
         "pyyaml",
         "tinytag",
         "tomli",
-        # Multi-language syntactic parsing: tree-sitter core plus a bundle of
-        # precompiled grammars, so filters can query source structure (functions,
-        # imports, ...) across many languages from the Python runtime.
+        # Multi-language syntactic parsing: tree-sitter core plus per-language grammar
+        # wheels. Each wheel bundles its compiled grammar, so parsing works offline in
+        # the no-network, read-only sandbox (unlike tree-sitter-language-pack, which
+        # downloads grammars at runtime). Filters use the standard API:
+        # Parser(Language(tree_sitter_python.language())).
         "tree-sitter",
-        "tree-sitter-language-pack",
+        "tree-sitter-bash",
+        "tree-sitter-c",
+        "tree-sitter-go",
+        "tree-sitter-java",
+        "tree-sitter-javascript",
+        "tree-sitter-python",
+        "tree-sitter-rust",
+        "tree-sitter-typescript",
     }
 )
 
@@ -172,6 +181,23 @@ For "python": name the function `filter_paths`; "code" must contain only that
 function definition (no markdown, no decorators, no top-level statements).
 "dependencies" lists any third-party PyPI packages it imports (pip names), e.g.
 ["mutagen"] to read audio tags; use [] when the standard library suffices.
+
+To parse source code structure (functions, imports, classes) in the python runtime,
+use tree-sitter with the per-language grammar wheel (named tree-sitter-<lang>, e.g.
+tree-sitter-go). The installed tree-sitter is modern (>= 0.22); use EXACTLY this API
+and nothing older (keep all imports inside filter_paths, per the rule above):
+
+    def filter_paths(paths):
+        import tree_sitter_go
+        from tree_sitter import Language, Parser
+        parser = Parser(Language(tree_sitter_go.language()))
+        tree = parser.parse(open(paths[0], "rb").read())   # parse() takes bytes
+        ...
+
+Do NOT call Parser().set_language(...), Language(path, name), or
+Language.build_library(...) -- all removed. List BOTH "tree-sitter" and the
+"tree-sitter-<lang>" wheel in "dependencies". Do not use tree-sitter-language-pack
+(it downloads grammars at runtime, which the no-network sandbox forbids).
 
 For "node": write CommonJS that defines a function `filterPaths(paths)` and uses
 `require(...)` for any packages. "dependencies" lists npm package names, e.g.
@@ -330,6 +356,24 @@ NODE_RUNTIME = Runtime(
 )
 
 RUNTIMES: dict[str, Runtime] = {PYTHON_RUNTIME.name: PYTHON_RUNTIME, NODE_RUNTIME.name: NODE_RUNTIME}
+
+
+def _imply_packages(runtime_name: str, dependencies: Sequence[str]) -> list[str]:
+    """Add packages implied by others that pip won't pull in automatically.
+
+    The tree-sitter grammar wheels (``tree-sitter-<lang>``) declare the ``tree-sitter``
+    core only as an optional extra, so installing a grammar alone leaves ``import
+    tree_sitter`` failing. Whenever a grammar wheel is requested for the Python runtime,
+    ensure the core is installed too.
+    """
+    deps = set(dependencies)
+    if (
+        runtime_name == DEFAULT_RUNTIME
+        and any(d.startswith("tree-sitter-") for d in deps)
+        and "tree-sitter" not in deps
+    ):
+        deps.add("tree-sitter")
+    return sorted(deps)
 
 
 def _validate_dependencies(dependencies: Any, pattern: re.Pattern[str] = _PACKAGE_NAME) -> list[str]:
@@ -940,6 +984,7 @@ def search(
     meta = collect_macos_metadata(host_by_container) if macos_meta else {}
     generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
     runtime = RUNTIMES[generated.runtime]
+    generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
     if on_generated is not None:
         on_generated(generated)
 

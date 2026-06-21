@@ -91,11 +91,11 @@ pfind "images larger than 4000px on a side" ~/Photos --yes                 # app
 pfind "files containing TODO" . --no-deps                                  # standard library only
 ```
 
-The Python defaults include `tree-sitter` and `tree-sitter-language-pack`, so a filter
-can parse source *structure* — functions, imports, classes — across many languages
-without a dedicated runtime (the Node.js runtime is reserved for type-aware TS/JS
-analysis). Packages are installed at image-build time (which needs network); the
-container that runs the filter still has no network. See
+The Python defaults include `tree-sitter` and per-language grammar wheels
+(`tree-sitter-python`, `-go`, `-rust`, …), so a filter can parse source *structure* —
+functions, imports, classes — without a dedicated runtime (the Node.js runtime is
+reserved for type-aware TS/JS analysis). Packages are installed at image-build time
+(which needs network); the container that runs the filter still has no network. See
 [docs/dependencies.md](docs/dependencies.md).
 
 ### macOS metadata
