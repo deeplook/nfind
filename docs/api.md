@@ -51,6 +51,12 @@ The model picks the [runtime](runtimes.md) (Python or Node.js) and the matching 
 image is used unless `image` overrides it. The keyword arguments mirror the
 [CLI options](cli.md#options).
 
+`model` accepts a bare name (OpenAI) or a `provider/model` selector for any
+OpenAI-compatible provider in `backend.PROVIDERS` (`anthropic/…`, `gemini/…`,
+`groq/…`, `ollama/…`, `openrouter/<vendor>/<model>`, …). pfind reuses the OpenAI SDK
+against the provider's base URL and reads its `*_API_KEY`; see
+[Providers](cli.md#providers).
+
 ### Reviewing or gating the generated code
 
 `on_generated`, if given, is called with the `GeneratedFilter` **after** it is

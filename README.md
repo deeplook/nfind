@@ -18,7 +18,8 @@ network.
 
 - Python 3.12+
 - [Docker](https://docs.docker.com/get-docker/) installed and running
-- An OpenAI API key in the `OPENAI_API_KEY` environment variable
+- An API key for your provider — `OPENAI_API_KEY` by default, or the matching key for
+  another [provider](#providers)
 
 ## Install
 
@@ -146,7 +147,7 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `--model` | `gpt-4o-mini` | OpenAI model used to generate the filter |
+| `--model` | `gpt-4o-mini` | Model used to generate the filter; `provider/model` for non-OpenAI (see [Providers](#providers)) |
 | `--timeout` | `10.0` | Seconds the filter may run before it is killed |
 | `--memory` | `256m` | Worker container memory limit |
 | `--cpus` | `1.0` | Worker container CPU limit |
@@ -160,6 +161,27 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | `--show-code` | off | Print the generated filter before running |
 | `--save` | — | Write the generated filter to a file |
 | `--confirm` / `-i` | off | Show the code and confirm before running |
+
+### Providers
+
+By default pfind uses OpenAI. To use another provider, pass `--model provider/model`;
+pfind reuses the OpenAI SDK against that provider's OpenAI-compatible endpoint, so there
+is no extra dependency to install — just set the provider's API key.
+
+```bash
+pfind "files with no extension"                          # OpenAI (OPENAI_API_KEY)
+pfind "..." --model anthropic/claude-sonnet-4-6          # ANTHROPIC_API_KEY
+pfind "..." --model gemini/gemini-2.5-flash              # GEMINI_API_KEY
+pfind "..." --model groq/llama-3.3-70b-versatile         # GROQ_API_KEY
+pfind "..." --model openrouter/<vendor>/<model>          # OPENROUTER_API_KEY (near-universal)
+pfind "..." --model ollama/llama3.1                      # local, no key
+```
+
+Supported prefixes: `openai`, `anthropic`, `gemini`, `groq`, `mistral`, `deepseek`,
+`xai`, `openrouter`, `ollama`, `lmstudio`. Each reads its own `*_API_KEY` (local
+servers need none). pfind handles providers without strict JSON mode automatically.
+Capable models follow the filter contract best; weaker ones may need a retry or a
+stronger model.
 
 ## Example prompts
 

@@ -76,7 +76,11 @@ def main(
     ] = ".",
     model: Annotated[
         str,
-        typer.Option(help="OpenAI model used to generate the filter."),
+        typer.Option(
+            help="Model used to generate the filter. Bare name uses OpenAI; use "
+            "'provider/model' for others (e.g. anthropic/claude-3-5-sonnet-latest, "
+            "ollama/llama3.1, openrouter/<vendor>/<model>).",
+        ),
     ] = DEFAULT_MODEL,
     image: Annotated[
         Optional[str],

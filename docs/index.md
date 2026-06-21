@@ -78,7 +78,7 @@ See [Examples](examples.md) for the full prompt gallery.
 
 - Python 3.12+
 - [Docker](https://docs.docker.com/get-docker/) installed and running
-- An OpenAI API key in `OPENAI_API_KEY`
+- An OpenAI API key in `OPENAI_API_KEY` (or another [provider's](cli.md#providers) key)
 
 See [Installation](installation.md) for details.
 

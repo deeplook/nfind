@@ -469,13 +469,96 @@ def test_parse_generation_rejects_invalid(content):
 
 
 def _fake_openai(*contents):
-    """Patch openai.OpenAI with a client returning the given reply contents in order."""
+    """Patch the generation client to return the given reply contents in order.
+
+    Patches ``_make_client`` so the tests exercise the generate/retry logic without
+    needing real provider credentials.
+    """
     responses = [
         Mock(choices=[Mock(message=Mock(content=content))]) for content in contents
     ]
     client = Mock()
     client.chat.completions.create.side_effect = responses
-    return patch("openai.OpenAI", return_value=client), client
+    return patch.object(MODULE, "_make_client", return_value=client), client
+
+
+def test_split_model_defaults_to_openai_for_bare_name():
+    assert MODULE._split_model("gpt-4o-mini") == ("openai", "gpt-4o-mini")
+
+
+def test_split_model_parses_provider_prefix():
+    assert MODULE._split_model("anthropic/claude-3-5-sonnet") == (
+        "anthropic",
+        "claude-3-5-sonnet",
+    )
+    # Only the first slash splits; vendor-qualified names pass through.
+    assert MODULE._split_model("openrouter/anthropic/claude-3") == (
+        "openrouter",
+        "anthropic/claude-3",
+    )
+    # Stray whitespace and an empty half fall back to the default provider.
+    assert MODULE._split_model("  groq/llama-3.3  ") == ("groq", "llama-3.3")
+    assert MODULE._split_model("/oops") == ("openai", "/oops")
+
+
+def test_make_client_unknown_provider_raises():
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        MODULE._make_client("nope")
+
+
+def test_make_client_missing_key_raises(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+        MODULE._make_client("anthropic")
+
+
+def test_make_client_uses_base_url_and_key(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "secret")
+    with patch("openai.OpenAI") as ctor:
+        MODULE._make_client("groq")
+    assert ctor.call_args.kwargs == {
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key": "secret",
+    }
+
+
+def test_make_client_local_provider_needs_no_key(monkeypatch):
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    with patch("openai.OpenAI") as ctor:
+        MODULE._make_client("ollama")
+    assert ctor.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
+    assert ctor.call_args.kwargs["api_key"]  # non-empty placeholder
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        '{"code": "x"}',
+        '```json\n{"code": "x"}\n```',
+        'Here you go:\n```\n{"code": "x"}\n```',
+        'Sure! {"code": "x"} hope that helps',
+    ],
+)
+def test_extract_json_object_recovers_object(content):
+    assert json.loads(MODULE._extract_json_object(content)) == {"code": "x"}
+
+
+def test_generate_filter_drops_json_mode_when_provider_rejects_it():
+    good = json.dumps({"code": "def filter_paths(paths): return paths"})
+    client = Mock()
+    # First call (with response_format) errors; the retry without it succeeds.
+    client.chat.completions.create.side_effect = [
+        Exception("response_format not supported"),
+        Mock(choices=[Mock(message=Mock(content=good))]),
+    ]
+    with patch.object(MODULE, "_make_client", return_value=client):
+        result = MODULE.generate_filter("anything", model="groq/llama-3.3")
+    assert result.code == "def filter_paths(paths): return paths"
+    assert client.chat.completions.create.call_count == 2
+    first, second = client.chat.completions.create.call_args_list
+    assert "response_format" in first.kwargs
+    assert "response_format" not in second.kwargs
+    assert first.kwargs["model"] == "llama-3.3"  # provider prefix stripped
 
 
 def test_generate_filter_succeeds_on_first_attempt():

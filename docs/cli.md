@@ -38,7 +38,7 @@ pfind "files larger than 1 MB, with their size" --verbose
 
 | Option | Default | Description |
 |---|---|---|
-| `--model` | `gpt-4o-mini` | OpenAI model used to generate the filter. |
+| `--model` | `gpt-4o-mini` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
 | `--image` | per-runtime | Override the base image tag for the chosen [runtime](runtimes.md). |
 | `--timeout` | `10.0` | Seconds the generated filter may run before it is killed. |
 | `--memory` | `256m` | Memory limit for the worker container. |
@@ -105,6 +105,41 @@ pfind "files containing TODO" . --no-deps                                  # std
 `--yes` and `--no-deps` are mutually exclusive. See
 [Dependencies & the whitelist](dependencies.md) for the approval flow, the default
 package list, and the whitelist file.
+
+## Providers
+
+`--model` selects the model that writes the filter. A bare name uses OpenAI (so
+existing usage is unchanged); a `provider/model` selector targets any
+OpenAI-compatible provider — pfind reuses the OpenAI SDK against the provider's
+base URL, so no extra dependency is needed.
+
+```bash
+pfind "files with no extension"                                   # OpenAI (default)
+pfind "..." --model anthropic/claude-sonnet-4-6                   # Anthropic
+pfind "..." --model gemini/gemini-2.5-flash                       # Google Gemini
+pfind "..." --model groq/llama-3.3-70b-versatile                  # Groq
+pfind "..." --model openrouter/<vendor>/<model>                   # OpenRouter (near-universal)
+pfind "..." --model ollama/llama3.1                               # local Ollama
+```
+
+| Provider | Selector prefix | API key env var |
+|---|---|---|
+| OpenAI | *(bare name)* or `openai/` | `OPENAI_API_KEY` |
+| Anthropic | `anthropic/` | `ANTHROPIC_API_KEY` |
+| Google Gemini | `gemini/` | `GEMINI_API_KEY` |
+| Groq | `groq/` | `GROQ_API_KEY` |
+| Mistral | `mistral/` | `MISTRAL_API_KEY` |
+| DeepSeek | `deepseek/` | `DEEPSEEK_API_KEY` |
+| xAI (Grok) | `xai/` | `XAI_API_KEY` |
+| OpenRouter | `openrouter/` | `OPENROUTER_API_KEY` |
+| Ollama (local) | `ollama/` | *(none; needs a running server)* |
+| LM Studio (local) | `lmstudio/` | *(none; needs a running server)* |
+
+Only the selected provider's key is needed. Providers vary in whether they support
+strict JSON mode; pfind drops it automatically and recovers the JSON from the reply
+when a provider doesn't, so generation still works. Some non-OpenAI models follow the
+filter contract less reliably — if a model misbehaves, try a stronger one or route
+through `openrouter/`.
 
 ## Exit codes
 

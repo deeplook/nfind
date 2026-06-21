@@ -36,6 +36,26 @@ DEFAULT_IMAGE = "pfind-search-paths:latest"
 DEFAULT_NODE_IMAGE = "pfind-search-node:latest"
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_RUNTIME = "python"
+DEFAULT_PROVIDER = "openai"
+
+# Providers reachable through the OpenAI-compatible chat-completions API. A model is
+# selected as "provider/model" (e.g. "anthropic/claude-3-5-sonnet-latest"); a bare name
+# means the default provider. Each entry is (base_url, api-key env var); a None base_url
+# uses the OpenAI SDK default, and a None env var marks a local server needing no key.
+# OpenRouter is a near-universal escape hatch: "openrouter/<vendor>/<model>".
+PROVIDERS: dict[str, tuple[str | None, str | None]] = {
+    "openai": (None, "OPENAI_API_KEY"),
+    "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+    "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+    "mistral": ("https://api.mistral.ai/v1", "MISTRAL_API_KEY"),
+    "deepseek": ("https://api.deepseek.com", "DEEPSEEK_API_KEY"),
+    "xai": ("https://api.x.ai/v1", "XAI_API_KEY"),
+    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/", "GEMINI_API_KEY"),
+    "anthropic": ("https://api.anthropic.com/v1/", "ANTHROPIC_API_KEY"),
+    "ollama": ("http://localhost:11434/v1", None),
+    "lmstudio": ("http://localhost:1234/v1", None),
+}
+
 # How many times to ask the model in total when its reply fails validation. The
 # first attempt runs at temperature 0; retries feed the error back and nudge the
 # temperature up so the model diverges from the response that just failed.
@@ -389,10 +409,71 @@ def _validate_dependencies(dependencies: Any, pattern: re.Pattern[str] = _PACKAG
     return sorted(set(names))
 
 
+def _split_model(model: str) -> tuple[str, str]:
+    """Split a "provider/model" selector into (provider, model_name).
+
+    A bare name (no slash) uses the default provider, preserving existing behaviour.
+    Only the first slash separates the provider, so vendor-qualified names pass through
+    (e.g. "openrouter/anthropic/claude-3-5-sonnet").
+    """
+    if "/" in model:
+        provider, _, name = model.partition("/")
+        provider, name = provider.strip(), name.strip()
+        if provider and name:
+            return provider, name
+    return DEFAULT_PROVIDER, model.strip()
+
+
+def _make_client(provider: str) -> Any:
+    """Build an OpenAI-SDK client pointed at the given provider's compatible endpoint."""
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("The host requires the 'openai' package to generate a filter.") from exc
+
+    if provider not in PROVIDERS:
+        known = ", ".join(sorted(PROVIDERS))
+        raise ValueError(f"Unknown model provider {provider!r}. Known providers: {known}.")
+    base_url, key_env = PROVIDERS[provider]
+    if key_env is None:
+        # Local server (ollama/lmstudio): the SDK still requires a non-empty key string.
+        return OpenAI(base_url=base_url, api_key="local")
+    api_key = os.environ.get(key_env)
+    if not api_key:
+        raise RuntimeError(f"Set {key_env} to use the {provider!r} provider.")
+    return OpenAI(base_url=base_url, api_key=api_key)
+
+
+# A ```json ... ``` or ``` ... ``` fenced block, used to recover JSON from providers
+# that ignore response_format and wrap the object in markdown.
+_JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+
+def _extract_json_object(content: str) -> str:
+    """Best-effort recovery of a JSON object from a possibly chatty/fenced reply.
+
+    Providers without strict JSON mode may wrap the object in a code fence or add prose.
+    Returns the original content when it already parses or no object can be located.
+    """
+    text = content.strip()
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        pass
+    fence = _JSON_FENCE.search(text)
+    if fence:
+        return fence.group(1).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        return text[start : end + 1]
+    return content
+
+
 def _parse_generation(content: str) -> GeneratedFilter:
     """Parse and validate the model's JSON response into a GeneratedFilter."""
     try:
-        payload = json.loads(content)
+        payload = json.loads(_extract_json_object(content))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Model response was not valid JSON: {exc}") from exc
     if not isinstance(payload, dict):
@@ -423,6 +504,10 @@ def generate_filter(
     Returns the filter source together with any third-party packages the model
     says it needs.
 
+    ``model`` may be a bare name (default provider) or ``provider/model`` to target any
+    OpenAI-compatible provider in ``PROVIDERS`` (e.g. ``anthropic/...``, ``ollama/...``,
+    ``openrouter/vendor/...``). The matching base URL and API-key env var are used.
+
     When the model's reply fails validation (malformed JSON, wrong function shape,
     an invalid package name, ...), the error is fed back to the model and the
     request retried up to ``attempts`` times in total. The first attempt runs at
@@ -432,26 +517,38 @@ def generate_filter(
     """
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("The host requires the 'openai' package to generate a filter.") from exc
-
-    client = OpenAI()
+    provider, model_name = _split_model(model)
+    client = _make_client(provider)
     system = _SYSTEM + "\n" + _MACOS_META_SYSTEM if macos_meta else _SYSTEM
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system},
         {"role": "user", "content": _USER_TEMPLATE.format(prompt=prompt)},
     ]
+    # Not every OpenAI-compatible endpoint honours JSON mode; drop it on the first
+    # rejection and rely on _extract_json_object plus the retry loop instead.
+    use_json_mode = True
     last_error: ValueError | None = None
     for attempt in range(attempts):
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=4096,
-            temperature=0 if attempt == 0 else _RETRY_TEMPERATURE,
-            response_format={"type": "json_object"},
-        )
+        kwargs: dict[str, Any] = {
+            "model": model_name,
+            "messages": messages,
+            "max_tokens": 4096,
+            "temperature": 0 if attempt == 0 else _RETRY_TEMPERATURE,
+        }
+        if use_json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        try:
+            response = client.chat.completions.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001 - SDK/provider error types vary
+            if not use_json_mode:
+                raise RuntimeError(f"Model request to {provider!r} failed: {exc}") from exc
+            # The provider may reject response_format; drop it and try once more.
+            use_json_mode = False
+            kwargs.pop("response_format", None)
+            try:
+                response = client.chat.completions.create(**kwargs)
+            except Exception as exc2:  # noqa: BLE001 - SDK/provider error types vary
+                raise RuntimeError(f"Model request to {provider!r} failed: {exc2}") from exc2
         content = response.choices[0].message.content or ""
         try:
             return _parse_generation(content)
