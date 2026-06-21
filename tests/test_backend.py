@@ -910,6 +910,15 @@ def test_format_generated_code_removes_unused_imports_and_formats():
     MODULE._validate_code_shape(cleaned)  # still a valid single-function filter
 
 
+def test_format_generated_code_wraps_at_configured_line_length():
+    # A body line of 89-100 chars wraps at ruff's default (88) but stays whole at 100.
+    body = '    return [p for p in paths if p.endswith(".epub") or p.endswith(".mobi") or p.endswith(".azw")]'  # noqa: E501
+    assert MODULE.FILTER_LINE_LENGTH == 100
+    assert 88 < len(body) <= MODULE.FILTER_LINE_LENGTH
+    cleaned = MODULE._format_generated_code(f"def filter_paths(paths):\n{body}\n", "python")
+    assert body in cleaned  # left on a single line, so line-length 100 took effect
+
+
 def test_format_generated_code_leaves_node_unchanged():
     code = "function filterPaths(paths){ return paths; }"
     assert MODULE._format_generated_code(code, "node") == code

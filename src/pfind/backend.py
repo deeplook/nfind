@@ -66,6 +66,9 @@ _RETRY_TEMPERATURE = 0.3
 MAX_RESULT_BYTES = 1_000_000
 DOCKER_CHECK_TIMEOUT = 10.0
 DEFAULT_BUILD_TIMEOUT = 120.0
+# Line length ruff wraps generated filters to (matches pfind's own style; pinned so the
+# output is stable regardless of ruff's default).
+FILTER_LINE_LENGTH = 100
 
 # Python packages the filter may request without an explicit approval prompt. These
 # are common, well-known, read-only analysis libraries. Anything outside this set
@@ -414,14 +417,22 @@ def _format_generated_code(code: str, runtime: str) -> str:
     is handled (ruff is a Python tool); Node code is returned as-is. Any problem -- ruff
     missing, a non-zero exit, or a result that no longer satisfies the filter contract --
     falls back to the original code. ``--isolated`` keeps any ruff config in the user's
-    working directory from influencing the result.
+    working directory from influencing the result, and ``--line-length`` is pinned so the
+    output does not depend on ruff's evolving default.
     """
     if runtime != DEFAULT_RUNTIME:
         return code
     ruff = _ruff_path()
     if ruff is None:
         return code
-    tail = ["--isolated", "--stdin-filename", "filter_paths.py", "-"]
+    tail = [
+        "--isolated",
+        "--line-length",
+        str(FILTER_LINE_LENGTH),
+        "--stdin-filename",
+        "filter_paths.py",
+        "-",
+    ]
     try:
         fixed = subprocess.run(
             [ruff, "check", "--quiet", "--fix-only", "--select", "F401,I", *tail],
