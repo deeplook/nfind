@@ -36,6 +36,10 @@ write code once, then runs that code locally over the full tree. It scales to la
 directories, can read file contents, and keeps you in control: you can review, save,
 or confirm the generated code before it runs.
 
+Unlike Spotlight (`mdfind`), which queries a pre-built metadata index, pfind generates
+and runs a program per question — so it can answer structural and computed queries an
+attribute index can't express. See [How pfind compares](comparison.md).
+
 ## Features
 
 - **Natural-language search** over any directory tree.
@@ -82,6 +86,7 @@ See [Installation](installation.md) for details.
 - [Output modes](output-modes.md)
 - [Dependencies & the whitelist](dependencies.md)
 - [Runtimes (Python & Node.js)](runtimes.md)
+- [How pfind compares](comparison.md)
 - [Safety model](safety.md)
 - [Python API](api.md)
 - [Troubleshooting](troubleshooting.md)
