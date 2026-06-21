@@ -53,6 +53,35 @@ dates) — with zero setup and a system-wide UI.
   are not** — the actual file access happens locally in a no-network sandbox. Spotlight
   indexes locally and never leaves the machine.
 
+## Other tools in the space
+
+Beyond Spotlight, pfind brushes up against several tool categories — but it's the only
+one that combines **natural language**, **a real generated program** (not a one-liner),
+and **local sandboxed execution that reads file contents**. Each neighbour has only part
+of that:
+
+| Tool category | Natural language | Reads contents / structure | Runs locally |
+| --- | :---: | :---: | :---: |
+| `find` / `fd` / `ripgrep`, Spotlight (`mdfind`) | ✗ | partial | ✓ |
+| `fselect` / osquery (SQL over files) | ✗ | ✓ | ✓ |
+| NL→command helpers (`sgpt`, `gh copilot suggest`) | ✓ | ✗ (just a one-liner) | ✓ |
+| Send-the-file-list-to-an-LLM tools (e.g. lfind) | ✓ | ✗ (filenames only) | ✗ |
+| NL→code runners ([Open Interpreter](https://github.com/OpenInterpreter/open-interpreter), Code Interpreter) | ✓ | ✓ | partial / not sandboxed-by-default |
+| **pfind** | **✓** | **✓** | **✓ (hardened sandbox)** |
+
+- **`fselect` / osquery** answer pfind's *structural* questions deterministically (SQL
+  like `select name from /path where size gt 1mb`) — no API key, no LLM — but you write
+  the query in their grammar, and they can't read content semantically.
+- **NL→command helpers** (`sgpt`, `aichat`, `gh copilot suggest`, Warp AI) turn a prompt
+  into a `find`/`fd` one-liner you review and run. Lower fidelity than a generated
+  program, and no sandbox.
+- **NL→code runners** (Open Interpreter; ChatGPT Code Interpreter / Claude's analysis
+  tool) share pfind's "write a program per question, then run it" model, but they're
+  general-purpose task runners — not filesystem search — and aren't built around a
+  read-only, no-network sandbox over your live tree.
+- **lfind** is the closest goal-mate (find files by description) but sends the file list
+  to the model and filters by name; it doesn't scale and never sees file contents.
+
 ## The mental model
 
 - Spotlight ≈ search-engine for your disk (indexed, instant, ranked).
