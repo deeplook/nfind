@@ -49,6 +49,16 @@ pfind "macOS .app bundles (name ends in .app and contains Contents/Info.plist)"
 pfind "directories that contain at least one audio file and no files of any other type"
 ```
 
+Source structure is fair game too — these parse the code with a bundled tree-sitter
+grammar (no network needed). The `.tsx` example uses `tree-sitter-typescript`, whose
+grammar is selected with `language_tsx()`:
+
+```bash
+pfind "regular .tsx files (skip directories) that define a React function component returning JSX, using tree-sitter-typescript"
+pfind "regular .ts files (skip directories) that declare an exported interface, using tree-sitter-typescript"
+pfind "Kotlin files that declare a data class, using tree-sitter-kotlin"
+```
+
 ## With extra data
 
 When the prompt asks for per-file information, surface it with `--verbose` or
@@ -79,6 +89,7 @@ the stdlib-only base image; prompts that need libraries use a cached derived ima
 | `MP3 files whose title tag contains 'live', using mutagen` | Python | `mutagen` (pip) | `pfind-search-paths:deps-<hash>` |
 | `images larger than 4000px on a side` | Python | `pillow` (pip) | `pfind-search-paths:deps-<hash>` |
 | `Go files defining a function named Test*, using tree-sitter` | Python | `tree-sitter`, `tree-sitter-go` (pip) | `pfind-search-paths:deps-<hash>` |
+| `.tsx files that define a React function component, using tree-sitter-typescript` | Python | `tree-sitter`, `tree-sitter-typescript` (pip) | `pfind-search-paths:deps-<hash>` |
 | `PDFs I downloaded that mention 'invoice', using pypdf` (with `--macos-meta`) | Python | `pypdf` (pip) | `pfind-search-paths:deps-<hash>` |
 | `TypeScript files that declare an interface, using the node runtime, no packages` | Node.js | — | `pfind-search-node:latest` (base) |
 | `TypeScript files that export a default, using ts-morph` | Node.js | `ts-morph` (npm) | `pfind-search-node:deps-<hash>` |
