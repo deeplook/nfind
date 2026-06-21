@@ -440,6 +440,43 @@ def test_whitelist_is_per_runtime(tmp_path, monkeypatch):
     assert "ts-morph" in MODULE.load_whitelist("node")  # node default
 
 
+def test_pip_dependencies_are_pep503_normalized():
+    # Underscores, dots, and case collapse to one canonical dash-lowercase form.
+    assert MODULE.PYTHON_RUNTIME.validate_packages(
+        ["Tree_Sitter_Python", "tree-sitter-python", "tree.sitter.python"]
+    ) == ["tree-sitter-python"]
+
+
+def test_npm_dependencies_lowercase_but_keep_separators():
+    # npm treats - and _ as distinct, so only case is normalized.
+    assert MODULE.NODE_RUNTIME.validate_packages(["Ts-Morph", "left_pad"]) == [
+        "left_pad",
+        "ts-morph",
+    ]
+
+
+def test_load_whitelist_self_heals_non_normalized_names(tmp_path, monkeypatch):
+    path = tmp_path / "wl.json"
+    monkeypatch.setenv("PFIND_WHITELIST", str(path))
+    # A legacy file with an underscore variant of a dash package.
+    path.write_text(json.dumps({"python": ["tree_sitter_language_pack", "Mutagen"]}))
+
+    loaded = MODULE.load_whitelist("python")
+
+    assert "tree-sitter-language-pack" in loaded  # canonicalized
+    assert "tree_sitter_language_pack" not in loaded  # underscore form gone
+    assert "mutagen" in loaded
+
+
+def test_approve_packages_writes_canonical_names(tmp_path, monkeypatch):
+    path = tmp_path / "wl.json"
+    monkeypatch.setenv("PFIND_WHITELIST", str(path))
+    MODULE.approve_packages(["Tree_Sitter_Go"], "python")
+
+    saved = json.loads(path.read_text())
+    assert saved["python"] == ["tree-sitter-go"]
+
+
 def test_parse_generation_extracts_code_and_dependencies():
     content = json.dumps(
         {"dependencies": ["Mutagen", "mutagen"], "code": "def filter_paths(paths): return paths"}

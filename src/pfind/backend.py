@@ -130,6 +130,21 @@ _PACKAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _NPM_NAME = re.compile(r"^(@[a-z0-9][a-z0-9._-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,99}$")
 
 
+def _normalize_pip_name(name: str) -> str:
+    """Canonicalize a PyPI name per PEP 503: collapse runs of -, _, . to - and lowercase.
+
+    pip treats ``tree_sitter_python``, ``Tree-Sitter-Python``, and ``tree-sitter-python``
+    as the same distribution; storing the canonical form keeps the whitelist free of
+    near-duplicates and lets the model's wording match the built-in defaults.
+    """
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _normalize_npm_name(name: str) -> str:
+    """Canonicalize an npm name: lowercase only (npm treats ``-`` and ``_`` as distinct)."""
+    return name.lower()
+
+
 class DockerError(RuntimeError):
     """Base class for actionable Docker lifecycle failures."""
 
@@ -154,12 +169,16 @@ class Runtime:
     _package_name: re.Pattern[str]
     _validate_code: Callable[[str], None]
     _install: Callable[[Sequence[str]], str]  # derived-image install instructions
+    _normalize: Callable[[str], str]  # canonicalize a package name for this ecosystem
 
     def validate_code(self, code: str) -> None:
         self._validate_code(code)
 
     def validate_packages(self, dependencies: Any) -> list[str]:
-        return _validate_dependencies(dependencies, self._package_name)
+        return _validate_dependencies(dependencies, self._package_name, self._normalize)
+
+    def normalize_name(self, name: str) -> str:
+        return self._normalize(name)
 
     def derived_dockerfile(self, base: str, packages: Sequence[str]) -> str:
         return f"FROM {base}\nUSER root\n{self._install(packages)}\nUSER {self.final_user}\n"
@@ -363,6 +382,7 @@ PYTHON_RUNTIME = Runtime(
     _package_name=_PACKAGE_NAME,
     _validate_code=_validate_code_shape,
     _install=_pip_install,
+    _normalize=_normalize_pip_name,
 )
 
 NODE_RUNTIME = Runtime(
@@ -374,6 +394,7 @@ NODE_RUNTIME = Runtime(
     _package_name=_NPM_NAME,
     _validate_code=_validate_node_code,
     _install=_npm_install,
+    _normalize=_normalize_npm_name,
 )
 
 RUNTIMES: dict[str, Runtime] = {
@@ -465,9 +486,11 @@ def _format_generated_code(code: str, runtime: str) -> str:
 
 
 def _validate_dependencies(
-    dependencies: Any, pattern: re.Pattern[str] = _PACKAGE_NAME
+    dependencies: Any,
+    pattern: re.Pattern[str] = _PACKAGE_NAME,
+    normalize: Callable[[str], str] = _normalize_pip_name,
 ) -> list[str]:
-    """Validate and normalize a requested dependency list to bare package names."""
+    """Validate and canonicalize a requested dependency list to bare package names."""
     if not isinstance(dependencies, list) or not all(isinstance(d, str) for d in dependencies):
         raise ValueError("dependencies must be a list of package-name strings.")
     names: list[str] = []
@@ -475,7 +498,7 @@ def _validate_dependencies(
         name = dependency.strip()
         if not pattern.match(name.lower()):
             raise ValueError(f"Invalid package name requested: {dependency!r}")
-        names.append(name.lower())
+        names.append(normalize(name))
     return sorted(set(names))
 
 
@@ -981,10 +1004,13 @@ def _read_whitelist_file() -> dict[str, Any]:
 
 
 def _saved_packages(data: dict[str, Any], runtime: str) -> set[str]:
-    saved = {p for p in data.get(runtime, []) if isinstance(p, str)}
+    # Canonicalize on read so older files with non-normalized names (e.g. an underscore
+    # variant alongside its dash form) collapse to one entry and match the defaults.
+    normalize = RUNTIMES[runtime].normalize_name
+    saved = {normalize(p) for p in data.get(runtime, []) if isinstance(p, str)}
     if runtime == DEFAULT_RUNTIME:
         # Absorb the pre-runtime flat format, {"packages": [...]}, as Python.
-        saved |= {p for p in data.get("packages", []) if isinstance(p, str)}
+        saved |= {normalize(p) for p in data.get("packages", []) if isinstance(p, str)}
     return saved
 
 
@@ -999,8 +1025,9 @@ def approve_packages(packages: Sequence[str], runtime: str = DEFAULT_RUNTIME) ->
     if not packages:
         return
     data = _read_whitelist_file()
+    normalize = RUNTIMES[runtime].normalize_name
     existing = _saved_packages(data, runtime)
-    existing |= set(packages)
+    existing |= {normalize(p) for p in packages}
     data[runtime] = sorted(existing)
     data.pop("packages", None)  # migrate away from the legacy flat format
     path = _whitelist_path()
