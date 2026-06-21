@@ -41,6 +41,7 @@ def search(
     on_retry: Callable[[int, ValueError], None] | None = None,
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
+    macos_meta: bool = False,            # macOS: expose tags/quarantine to the filter
 ) -> list[dict[str, Any]]:
 ```
 
@@ -111,6 +112,14 @@ records = search(
 
 See [Dependencies & the whitelist](dependencies.md) for the full model.
 
+### macOS metadata
+
+With `macos_meta=True` on a macOS host, pfind reads selected per-path attributes
+(Finder tags, quarantine/where-from) during enumeration and exposes them to a Python
+filter as a global `META` dict, so filters can combine macOS metadata with file
+contents. It is a no-op on other platforms. See
+[macOS metadata](macos-metadata.md) for the field schema and examples.
+
 ## Errors
 
 ```python
@@ -149,6 +158,7 @@ records = backend.run_filter(generated.code, root, container_paths, image=image)
 | Function | Purpose |
 |---|---|
 | `enumerate_paths(root)` | Walk the tree; return container paths and a container→host map. |
+| `collect_macos_metadata(host_by_container)` | macOS: read tags/quarantine/where-from per path; `{}` off macOS. |
 | `generate_filter(prompt, model=…, attempts=…, on_retry=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape; retries on invalid replies. |
 | `build_image(image=…, rebuild=…, build_timeout=…)` | Build the stdlib-only base worker image when absent or on request. |
 | `build_worker_image(image=…, dependencies=…, …)` | Ensure a runnable image (base, or a derived image with packages); return the tag to run. |

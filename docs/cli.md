@@ -53,6 +53,7 @@ pfind "files larger than 1 MB, with their size" --verbose
 | `--json` | off | Output results as JSON (path plus any extra fields). |
 | `--yes`, `-y` | off | Approve any requested packages without prompting. |
 | `--no-deps` | off | Reject any third-party packages (standard library only). |
+| `--macos-meta` | off | macOS only: expose Finder tags and download metadata to the filter (see [macOS metadata](macos-metadata.md)). |
 | `-h`, `--help` | — | Show help and exit. |
 
 ## Reviewing the generated code

@@ -37,6 +37,10 @@ dates) — with zero setup and a system-wide UI.
   `ts-morph` for TypeScript) via its [runtimes](runtimes.md) and
   [dependencies](dependencies.md).
 - **Cross-platform** and scriptable to a clean stdout path list.
+- **macOS metadata × content** — with [`--macos-meta`](macos-metadata.md), filters can
+  combine Finder tags and download provenance with content/structure conditions (e.g.
+  "PDFs I downloaded that mention 'invoice'") — the one place pfind reaches into the
+  same metadata Spotlight indexes, to ask questions the index alone can't answer.
 
 ## Trade-offs pfind makes
 

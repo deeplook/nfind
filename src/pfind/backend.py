@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import ctypes
+import ctypes.util
 import hashlib
 import io
 import json
 import os
+import plistlib
 import re
 import signal
 import subprocess
@@ -77,6 +80,14 @@ DEFAULT_NODE_PACKAGES = frozenset(
         "yaml",
     }
 )
+
+# macOS extended attributes surfaced by --macos-meta. These live on the host and do
+# not reliably survive Docker's file-sharing layer into the Linux container, so they
+# are read host-side and passed into the sandbox alongside the paths.
+_XATTR_TAGS = "com.apple.metadata:_kMDItemUserTags"
+_XATTR_WHERE_FROMS = "com.apple.metadata:kMDItemWhereFroms"
+_XATTR_QUARANTINE = "com.apple.quarantine"
+_XATTR_NOFOLLOW = 0x0001  # macOS getxattr option: do not follow symlinks
 
 # A conservative pip/PEP 503 package name: no version specifiers, URLs, or options.
 _PACKAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
@@ -176,6 +187,20 @@ Generate a filter that includes only the paths matching this description:
 {prompt}
 
 Respond with the JSON object containing "runtime", "dependencies", and "code".
+"""
+
+_MACOS_META_SYSTEM = """\
+macOS metadata is available for this run. When you choose the "python" runtime, a
+global dict named META is in scope (do not define it yourself). It maps a path string
+-- one of the values in `paths` -- to that path's macOS metadata. Only paths that have
+metadata appear, so always use META.get(path, {}). Each value is a dict that may
+contain:
+  * "tags": list of Finder tag names, e.g. ["Red", "Work"]
+  * "quarantined": true when the file carries a download (quarantine) flag
+  * "where_froms": list of source URLs the file was downloaded from
+Example: return [p for p in paths if META.get(p, {}).get("quarantined")]
+META exists only in the python runtime; prefer python when the description mentions
+Finder tags, downloads / where-from, or other macOS metadata.
 """
 
 _RETRY_TEMPLATE = """\
@@ -347,6 +372,7 @@ def generate_filter(
     *,
     attempts: int = DEFAULT_GENERATION_ATTEMPTS,
     on_retry: Callable[[int, ValueError], None] | None = None,
+    macos_meta: bool = False,
 ) -> GeneratedFilter:
     """Generate a filter on the host, where the API credentials remain.
 
@@ -368,8 +394,9 @@ def generate_filter(
         raise RuntimeError("The host requires the 'openai' package to generate a filter.") from exc
 
     client = OpenAI()
+    system = _SYSTEM + "\n" + _MACOS_META_SYSTEM if macos_meta else _SYSTEM
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": _SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": _USER_TEMPLATE.format(prompt=prompt)},
     ]
     last_error: ValueError | None = None
@@ -415,6 +442,81 @@ def enumerate_paths(search_root: Path) -> tuple[list[str], dict[str, str]]:
             container_paths.append(container_path)
             host_by_container[container_path] = str(host_path)
     return container_paths, host_by_container
+
+
+_libc_getxattr: Callable[..., int] | None = None
+
+
+def _getxattr(path: str, name: str) -> bytes | None:
+    """Read a single macOS extended attribute, or None if it is absent.
+
+    Uses libc ``getxattr`` directly (CPython's ``os.getxattr`` is Linux-only) and
+    does not follow symlinks, matching the symlink-free host enumeration.
+    """
+    global _libc_getxattr
+    if _libc_getxattr is None:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        libc.getxattr.restype = ctypes.c_ssize_t
+        libc.getxattr.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_uint32,
+            ctypes.c_int,
+        ]
+        _libc_getxattr = libc.getxattr
+
+    path_bytes = os.fsencode(path)
+    name_bytes = name.encode()
+    size = _libc_getxattr(path_bytes, name_bytes, None, 0, 0, _XATTR_NOFOLLOW)
+    if size < 0:
+        return None
+    if size == 0:
+        return b""
+    buffer = ctypes.create_string_buffer(size)
+    read = _libc_getxattr(path_bytes, name_bytes, buffer, size, 0, _XATTR_NOFOLLOW)
+    if read < 0:
+        return None
+    return buffer.raw[:read]
+
+
+def _plist_strings(raw: bytes | None) -> list[str]:
+    """Decode a binary-plist array of strings, tolerating malformed values."""
+    if not raw:
+        return []
+    try:
+        values = plistlib.loads(raw)
+    except Exception:  # noqa: BLE001 - any decode failure means "no usable value"
+        return []
+    return [v for v in values if isinstance(v, str)] if isinstance(values, list) else []
+
+
+def collect_macos_metadata(host_by_container: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """Read selected macOS attributes per path, keyed by container path.
+
+    Returns a mapping from container path to a metadata dict for the paths that have
+    any. Each value may contain "tags" (Finder tag names), "quarantined" (True when
+    the file carries a download-quarantine flag), and "where_froms" (source URLs).
+    Returns an empty mapping on non-macOS hosts so callers degrade gracefully.
+    """
+    if sys.platform != "darwin":
+        return {}
+    metadata: dict[str, dict[str, Any]] = {}
+    for container_path, host_path in host_by_container.items():
+        entry: dict[str, Any] = {}
+        # Finder tags are stored as "Name" or "Name\n<color-index>"; keep the name.
+        tags = [value.split("\n", 1)[0] for value in _plist_strings(_getxattr(host_path, _XATTR_TAGS))]
+        if tags:
+            entry["tags"] = tags
+        if _getxattr(host_path, _XATTR_QUARANTINE) is not None:
+            entry["quarantined"] = True
+        where_froms = _plist_strings(_getxattr(host_path, _XATTR_WHERE_FROMS))
+        if where_froms:
+            entry["where_froms"] = where_froms
+        if entry:
+            metadata[container_path] = entry
+    return metadata
 
 
 def _dockerfile_path(name: str = PYTHON_RUNTIME.dockerfile) -> Path:
@@ -713,6 +815,7 @@ def run_filter(
     memory: str = "256m",
     cpus: float = 1.0,
     pids_limit: int = 64,
+    meta: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Execute generated code in a constrained, disposable container."""
     if timeout <= 0 or cpus <= 0 or pids_limit <= 0:
@@ -720,7 +823,7 @@ def run_filter(
 
     root = search_root.expanduser().resolve(strict=True)
     name = f"pfind-search-{uuid.uuid4().hex}"
-    request = json.dumps({"code": code, "paths": container_paths}).encode()
+    request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
     command = [
         "docker",
         "run",
@@ -802,6 +905,7 @@ def search(
     on_retry: Callable[[int, ValueError], None] | None = None,
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
+    macos_meta: bool = False,
 ) -> list[dict[str, Any]]:
     """Generate and execute a filter, returning host-path result records.
 
@@ -821,6 +925,11 @@ def search(
     True the packages are installed into a derived image and remembered; otherwise
     a ``DependencyError`` is raised. Without an approver, unapproved packages are
     rejected.
+
+    When ``macos_meta`` is true and the host is macOS, selected per-path attributes
+    (Finder tags, quarantine/where-from) are read on the host and exposed to a Python
+    filter as a global ``META`` dict, enabling queries that combine macOS metadata with
+    file contents. It is a no-op on other platforms.
     """
     root = Path(path).expanduser().resolve(strict=True)
     container_paths, host_by_container = enumerate_paths(root)
@@ -828,7 +937,8 @@ def search(
         return []
     # Verify Docker up front so a missing daemon fails before any API call.
     check_docker_available()
-    generated = generate_filter(prompt, model=model, on_retry=on_retry)
+    meta = collect_macos_metadata(host_by_container) if macos_meta else {}
+    generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
     runtime = RUNTIMES[generated.runtime]
     if on_generated is not None:
         on_generated(generated)
@@ -859,6 +969,7 @@ def search(
         memory=memory,
         cpus=cpus,
         pids_limit=pids_limit,
+        meta=meta,
     )
     host_records: list[dict[str, Any]] = []
     for record in records:
@@ -877,8 +988,13 @@ def _worker_response(payload: dict[str, Any]) -> dict[str, Any]:
         or not all(isinstance(path, str) for path in paths)
     ):
         raise ValueError("Worker request must contain code and a list of path strings.")
+    meta = payload.get("meta") or {}
+    if not isinstance(meta, dict):
+        raise ValueError("Worker request 'meta' must be an object.")
 
-    namespace: dict[str, Any] = {"__name__": "generated_filter"}
+    # META is host-collected macOS metadata (empty unless --macos-meta). The generated
+    # filter may read it via META.get(path, {}); see _MACOS_META_SYSTEM.
+    namespace: dict[str, Any] = {"__name__": "generated_filter", "META": meta}
     # Suppress ordinary generated-code output so stdout remains a JSON protocol.
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         exec(compile(code, "<generated-filter>", "exec"), namespace)  # noqa: S102

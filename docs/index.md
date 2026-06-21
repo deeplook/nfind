@@ -57,6 +57,9 @@ attribute index can't express. See [How pfind compares](comparison.md).
 - **[Python & Node.js runtimes](runtimes.md)** — the model picks the ecosystem per
   prompt (e.g. TypeScript analysis with `ts-morph`); pfind runs the filter in the
   matching sandbox image.
+- **[macOS metadata](macos-metadata.md)** — `--macos-meta` exposes Finder tags and
+  download provenance to the filter, enabling queries that combine them with file
+  contents.
 - **[Python API](api.md)** — call `search()` from your own code.
 
 ## Quick start
@@ -87,6 +90,7 @@ See [Installation](installation.md) for details.
 - [Output modes](output-modes.md)
 - [Dependencies & the whitelist](dependencies.md)
 - [Runtimes (Python & Node.js)](runtimes.md)
+- [macOS metadata](macos-metadata.md)
 - [How pfind compares](comparison.md)
 - [Safety model](safety.md)
 - [Python API](api.md)

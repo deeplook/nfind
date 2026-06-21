@@ -138,6 +138,14 @@ def main(
         bool,
         typer.Option("--no-deps", help="Reject any third-party packages (standard library only)."),
     ] = False,
+    macos_meta: Annotated[
+        bool,
+        typer.Option(
+            "--macos-meta",
+            help="macOS only: expose Finder tags and download (quarantine/where-from) "
+            "metadata to the filter.",
+        ),
+    ] = False,
 ) -> None:
     """Search PATH for files matching PROMPT and print one path per line."""
     if as_json and verbose:
@@ -146,6 +154,8 @@ def main(
     if yes and no_deps:
         typer.echo("error: --yes and --no-deps are mutually exclusive.", err=True)
         raise typer.Exit(2)
+    if macos_meta and sys.platform != "darwin":
+        typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
 
     def on_generated(generated: GeneratedFilter) -> None:
         if save is not None:
@@ -193,6 +203,7 @@ def main(
             on_generated=hook,
             on_retry=on_retry,
             approve_dependencies=approve_dependencies,
+            macos_meta=macos_meta,
         )
     except (typer.Exit, typer.Abort):
         # Control-flow exceptions (e.g. a declined --confirm) subclass RuntimeError;

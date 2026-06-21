@@ -1,4 +1,6 @@
 import json
+import plistlib
+import sys
 from unittest.mock import Mock, patch
 
 import pytest
@@ -66,6 +68,40 @@ def test_worker_filter_can_read_file_content(tmp_path):
     }
 
     assert MODULE._worker_response(payload) == {"ok": True, "results": [{"path": str(path)}]}
+
+
+def test_worker_exposes_macos_meta_as_global():
+    payload = {
+        "code": (
+            "def filter_paths(paths):\n"
+            "    return [p for p in paths if META.get(p, {}).get('quarantined')]"
+        ),
+        "paths": ["/data/a", "/data/b"],
+        "meta": {"/data/a": {"quarantined": True}},
+    }
+
+    assert MODULE._worker_response(payload) == {"ok": True, "results": [{"path": "/data/a"}]}
+
+
+def test_worker_meta_defaults_to_empty_dict():
+    # Without "meta", META must still be defined so referencing it does not NameError.
+    payload = {
+        "code": "def filter_paths(paths):\n    return [p for p in paths if META.get(p)]",
+        "paths": ["/data/a"],
+    }
+
+    assert MODULE._worker_response(payload) == {"ok": True, "results": []}
+
+
+def test_worker_rejects_non_object_meta():
+    payload = {
+        "code": "def filter_paths(paths): return paths",
+        "paths": ["/data/a"],
+        "meta": ["not", "a", "dict"],
+    }
+
+    with pytest.raises(ValueError, match="meta"):
+        MODULE._worker_response(payload)
 
 
 def test_build_image_loads_locally_runnable_image():
@@ -481,6 +517,68 @@ def test_generate_filter_raises_after_exhausting_attempts():
 def test_generate_filter_rejects_nonpositive_attempts():
     with pytest.raises(ValueError, match="attempts must be at least 1"):
         MODULE.generate_filter("anything", attempts=0)
+
+
+def test_generate_filter_appends_macos_meta_guidance_only_when_enabled():
+    good = json.dumps({"code": "def filter_paths(paths): return paths"})
+
+    patcher, client = _fake_openai(good)
+    with patcher:
+        MODULE.generate_filter("anything", macos_meta=True)
+    system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "META" in system and "quarantined" in system
+
+    patcher, client = _fake_openai(good)
+    with patcher:
+        MODULE.generate_filter("anything")
+    system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "META" not in system
+
+
+def test_collect_macos_metadata_empty_off_darwin(monkeypatch):
+    monkeypatch.setattr(MODULE.sys, "platform", "linux")
+    assert MODULE.collect_macos_metadata({"/data/a": "/host/a"}) == {}
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="reads macOS extended attributes")
+def test_collect_macos_metadata_reads_tags_and_quarantine(tmp_path):
+    libc = MODULE.ctypes.CDLL(MODULE.ctypes.util.find_library("c"), use_errno=True)
+    libc.setxattr.argtypes = [
+        MODULE.ctypes.c_char_p,
+        MODULE.ctypes.c_char_p,
+        MODULE.ctypes.c_void_p,
+        MODULE.ctypes.c_size_t,
+        MODULE.ctypes.c_uint32,
+        MODULE.ctypes.c_int,
+    ]
+
+    def setxattr(path, name, value):
+        rc = libc.setxattr(str(path).encode(), name.encode(), value, len(value), 0, 0)
+        assert rc == 0, MODULE.ctypes.get_errno()
+
+    tagged = tmp_path / "tagged.txt"
+    tagged.write_text("x")
+    setxattr(tagged, MODULE._XATTR_TAGS, plistlib.dumps(["Red\n6", "Work"], fmt=plistlib.FMT_BINARY))
+    setxattr(tagged, MODULE._XATTR_QUARANTINE, b"0083;0;Safari;")
+    setxattr(
+        tagged,
+        MODULE._XATTR_WHERE_FROMS,
+        plistlib.dumps(["https://example.com/x"], fmt=plistlib.FMT_BINARY),
+    )
+    plain = tmp_path / "plain.txt"
+    plain.write_text("x")
+
+    meta = MODULE.collect_macos_metadata(
+        {"/data/tagged.txt": str(tagged), "/data/plain.txt": str(plain)}
+    )
+
+    assert meta == {
+        "/data/tagged.txt": {
+            "tags": ["Red", "Work"],
+            "quarantined": True,
+            "where_froms": ["https://example.com/x"],
+        }
+    }
 
 
 def test_validate_dependencies_rejects_specifiers():
