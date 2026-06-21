@@ -3,8 +3,9 @@
 **Find files by describing them in natural language.**
 
 `pfind` ("prompt find") takes a plain-English description, asks an LLM to write a
-small `filter_paths(paths)` Python function for it, and runs that function against
-your file tree to print the matching paths — a natural-language cousin of `find`.
+small filter function for it — in Python (`filter_paths`) or Node.js (`filterPaths`) —
+and runs that function against your file tree to print the matching paths — a
+natural-language cousin of `find`.
 
 The generated code is never executed on your machine directly. It runs inside a
 **disposable, hardened Docker container** with the search directory bind-mounted
