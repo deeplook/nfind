@@ -61,6 +61,14 @@ All notable changes to this project are documented here. The format is based on
 - The system prompt guides tree-sitter usage toward the modern API and the
   per-language grammar wheels, and auto-adds the `tree-sitter` core when a grammar
   wheel is requested (pip does not pull it in automatically).
+- **Internal: `backend.py` split into focused modules.** The monolithic backend was
+  broken into `errors`, `_constants`, `runtimes`, `metadata`, `whitelist`, and `saved`
+  modules; `backend` keeps generation, Docker, and orchestration and re-exports the
+  moved names, so the public Python API (`pfind.search`, `run_saved`, etc.) is
+  unchanged. The in-container worker now lives in a standalone, standard-library-only
+  `worker.py` that the Docker image ships and runs (`python worker.py --worker`),
+  mirroring the existing `worker_node.cjs` design; `Dockerfile.python` copies `worker.py`
+  instead of `backend.py`.
 
 ## [0.1.0]
 
