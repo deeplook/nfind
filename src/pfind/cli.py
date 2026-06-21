@@ -172,6 +172,10 @@ def main(
             return True
         return typer.confirm("Install and remember them?", default=False, err=True)
 
+    def on_retry(retry: int, error: ValueError) -> None:
+        if verbose:
+            typer.echo(f"generation attempt failed, retrying (retry {retry}): {error}", err=True)
+
     hook = on_generated if (show_code or save is not None or confirm) else None
 
     try:
@@ -187,6 +191,7 @@ def main(
             rebuild=rebuild,
             build_timeout=build_timeout,
             on_generated=hook,
+            on_retry=on_retry,
             approve_dependencies=approve_dependencies,
         )
     except (typer.Exit, typer.Abort):

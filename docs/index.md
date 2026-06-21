@@ -19,6 +19,7 @@ pfind "Python files that import requests" ./src
 2. **Generate** — it asks an LLM to write a filter function matching your prompt (the
    path list itself is *not* sent — only your description). The model also picks the
    [runtime](runtimes.md) — Python or Node.js — and declares any packages it needs.
+   If the reply doesn't validate, pfind feeds the error back and retries a few times.
 3. **Run safely** — the generated code executes in a throwaway Docker container with
    the search root bind-mounted **read-only**, networking disabled, all Linux
    capabilities dropped, and CPU/memory/process limits applied.

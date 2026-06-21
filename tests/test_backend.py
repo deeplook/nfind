@@ -432,6 +432,57 @@ def test_parse_generation_rejects_invalid(content):
         MODULE._parse_generation(content)
 
 
+def _fake_openai(*contents):
+    """Patch openai.OpenAI with a client returning the given reply contents in order."""
+    responses = [
+        Mock(choices=[Mock(message=Mock(content=content))]) for content in contents
+    ]
+    client = Mock()
+    client.chat.completions.create.side_effect = responses
+    return patch("openai.OpenAI", return_value=client), client
+
+
+def test_generate_filter_succeeds_on_first_attempt():
+    good = json.dumps({"code": "def filter_paths(paths): return paths"})
+    patcher, client = _fake_openai(good)
+    with patcher:
+        result = MODULE.generate_filter("anything")
+    assert result.code == "def filter_paths(paths): return paths"
+    assert client.chat.completions.create.call_count == 1
+
+
+def test_generate_filter_retries_on_invalid_then_succeeds():
+    good = json.dumps({"code": "def filter_paths(paths): return paths"})
+    patcher, client = _fake_openai("not json", good)
+    retries = []
+    with patcher:
+        result = MODULE.generate_filter(
+            "anything", on_retry=lambda n, exc: retries.append(n)
+        )
+    assert result.code == "def filter_paths(paths): return paths"
+    assert client.chat.completions.create.call_count == 2
+    assert retries == [1]
+    # The corrective message is fed back before retrying.
+    second_call = client.chat.completions.create.call_args_list[1]
+    messages = second_call.kwargs["messages"]
+    assert messages[-2]["role"] == "assistant" and messages[-2]["content"] == "not json"
+    assert messages[-1]["role"] == "user"
+    # Retries leave temperature 0 behind so the model diverges.
+    assert second_call.kwargs["temperature"] == MODULE._RETRY_TEMPERATURE
+
+
+def test_generate_filter_raises_after_exhausting_attempts():
+    patcher, client = _fake_openai("not json", "still not json")
+    with patcher, pytest.raises(ValueError, match="after 2 attempt"):
+        MODULE.generate_filter("anything", attempts=2)
+    assert client.chat.completions.create.call_count == 2
+
+
+def test_generate_filter_rejects_nonpositive_attempts():
+    with pytest.raises(ValueError, match="attempts must be at least 1"):
+        MODULE.generate_filter("anything", attempts=0)
+
+
 def test_validate_dependencies_rejects_specifiers():
     with pytest.raises(ValueError):
         MODULE._validate_dependencies(["mutagen==1.0"])

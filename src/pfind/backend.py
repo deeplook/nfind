@@ -33,6 +33,11 @@ DEFAULT_IMAGE = "pfind-search-paths:latest"
 DEFAULT_NODE_IMAGE = "pfind-search-node:latest"
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_RUNTIME = "python"
+# How many times to ask the model in total when its reply fails validation. The
+# first attempt runs at temperature 0; retries feed the error back and nudge the
+# temperature up so the model diverges from the response that just failed.
+DEFAULT_GENERATION_ATTEMPTS = 3
+_RETRY_TEMPERATURE = 0.3
 MAX_RESULT_BYTES = 1_000_000
 DOCKER_CHECK_TIMEOUT = 10.0
 DEFAULT_BUILD_TIMEOUT = 120.0
@@ -166,6 +171,13 @@ Generate a filter that includes only the paths matching this description:
 {prompt}
 
 Respond with the JSON object containing "runtime", "dependencies", and "code".
+"""
+
+_RETRY_TEMPLATE = """\
+Your previous response was rejected: {error}
+
+Fix the problem and respond again with only the JSON object containing
+"runtime", "dependencies", and "code", matching the required shape exactly.
 """
 
 
@@ -324,29 +336,61 @@ def _parse_generation(content: str) -> GeneratedFilter:
     return GeneratedFilter(code=code, dependencies=dependencies, runtime=runtime_name)
 
 
-def generate_filter(prompt: str, model: str = DEFAULT_MODEL) -> GeneratedFilter:
+def generate_filter(
+    prompt: str,
+    model: str = DEFAULT_MODEL,
+    *,
+    attempts: int = DEFAULT_GENERATION_ATTEMPTS,
+    on_retry: Callable[[int, ValueError], None] | None = None,
+) -> GeneratedFilter:
     """Generate a filter on the host, where the API credentials remain.
 
     Returns the filter source together with any third-party packages the model
     says it needs.
+
+    When the model's reply fails validation (malformed JSON, wrong function shape,
+    an invalid package name, ...), the error is fed back to the model and the
+    request retried up to ``attempts`` times in total. The first attempt runs at
+    temperature 0; retries nudge the temperature up so the model diverges from the
+    reply that just failed. ``on_retry``, if given, is called with the 1-based
+    retry number and the validation error before each retry.
     """
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
     try:
         from openai import OpenAI
     except ImportError as exc:
         raise RuntimeError("The host requires the 'openai' package to generate a filter.") from exc
 
     client = OpenAI()
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": _USER_TEMPLATE.format(prompt=prompt)},
-        ],
-        max_tokens=4096,
-        temperature=0,
-        response_format={"type": "json_object"},
-    )
-    return _parse_generation(response.choices[0].message.content or "")
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": _USER_TEMPLATE.format(prompt=prompt)},
+    ]
+    last_error: ValueError | None = None
+    for attempt in range(attempts):
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=4096,
+            temperature=0 if attempt == 0 else _RETRY_TEMPERATURE,
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content or ""
+        try:
+            return _parse_generation(content)
+        except ValueError as exc:
+            last_error = exc
+            if attempt + 1 < attempts:
+                if on_retry is not None:
+                    on_retry(attempt + 1, exc)
+                messages.append({"role": "assistant", "content": content})
+                messages.append({"role": "user", "content": _RETRY_TEMPLATE.format(error=exc)})
+
+    assert last_error is not None  # the loop only exits early via return
+    raise ValueError(
+        f"Model did not return a valid filter after {attempts} attempt(s): {last_error}"
+    ) from last_error
 
 
 def enumerate_paths(search_root: Path) -> tuple[list[str], dict[str, str]]:
@@ -750,6 +794,7 @@ def search(
     rebuild: bool = False,
     build_timeout: float = DEFAULT_BUILD_TIMEOUT,
     on_generated: Callable[[GeneratedFilter], None] | None = None,
+    on_retry: Callable[[int, ValueError], None] | None = None,
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
 ) -> list[dict[str, Any]]:
@@ -778,7 +823,7 @@ def search(
         return []
     # Verify Docker up front so a missing daemon fails before any API call.
     check_docker_available()
-    generated = generate_filter(prompt, model=model)
+    generated = generate_filter(prompt, model=model, on_retry=on_retry)
     runtime = RUNTIMES[generated.runtime]
     if on_generated is not None:
         on_generated(generated)

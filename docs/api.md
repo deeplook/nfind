@@ -38,6 +38,7 @@ def search(
     rebuild: bool = False,
     build_timeout: float = 120.0,
     on_generated: Callable[[GeneratedFilter], None] | None = None,
+    on_retry: Callable[[int, ValueError], None] | None = None,
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
 ) -> list[dict[str, Any]]:
@@ -71,6 +72,21 @@ records = search(".", "files with no extension", on_generated=review)
 
 This is the same hook the CLI uses to implement
 [`--show-code`, `--save`, and `--confirm`](cli.md#reviewing-the-generated-code).
+
+### Generation retries
+
+The model is asked for the filter in a **single** call. If its reply fails validation
+(malformed JSON, the wrong function shape, an invalid package name, an unknown
+runtime), pfind feeds the error back and retries — up to 3 attempts in total. The
+first attempt runs at temperature 0; retries nudge the temperature up so the model
+diverges from the reply that just failed. Only validation errors are retried; API,
+Docker, and dependency-approval failures are not. If every attempt fails, the last
+validation error is raised.
+
+`on_retry`, if given, is called with the 1-based retry number and the `ValueError`
+before each retry — handy for logging. The CLI uses it to print a notice under
+[`--verbose`](cli.md#options). `generate_filter` takes the same `on_retry`, plus an
+`attempts` argument (default 3) to tune or disable retries.
 
 ### Approving dependencies
 
@@ -133,7 +149,7 @@ records = backend.run_filter(generated.code, root, container_paths, image=image)
 | Function | Purpose |
 |---|---|
 | `enumerate_paths(root)` | Walk the tree; return container paths and a container→host map. |
-| `generate_filter(prompt, model=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape. |
+| `generate_filter(prompt, model=…, attempts=…, on_retry=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape; retries on invalid replies. |
 | `build_image(image=…, rebuild=…, build_timeout=…)` | Build the stdlib-only base worker image when absent or on request. |
 | `build_worker_image(image=…, dependencies=…, …)` | Ensure a runnable image (base, or a derived image with packages); return the tag to run. |
 | `run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. |
