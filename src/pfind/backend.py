@@ -242,6 +242,10 @@ Language.build_library(...) -- all removed. List BOTH "tree-sitter" and the
 "tree-sitter-<lang>" wheel in "dependencies". Do not use tree-sitter-language-pack
 (it downloads grammars at runtime, which the no-network sandbox forbids).
 
+Most wheels expose a single `language()`. The exception is tree_sitter_typescript:
+use `tree_sitter_typescript.language_typescript()` or `.language_tsx()` (it has no
+plain `language()`).
+
 For "node": write CommonJS that defines a function `filterPaths(paths)` and uses
 `require(...)` for any packages. "dependencies" lists npm package names, e.g.
 ["ts-morph"]; use [] when none are needed.
