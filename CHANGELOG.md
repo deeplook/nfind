@@ -12,7 +12,11 @@ All notable changes to this project are documented here. The format is based on
   and `tree-sitter-dart` to the Python default whitelist. Like the other grammar wheels,
   each bundles its compiled grammar, so a filter can parse these languages' structure
   offline in the sandbox (the same per-wheel approach — not `tree-sitter-language-pack`,
-  which fetches grammars from the network at runtime).
+  which fetches grammars from the network at runtime). Verified end-to-end in Docker:
+  Kotlin/Swift/Dart and TypeScript/TSX all parse cleanly inside the no-network sandbox.
+  The system prompt now documents `tree_sitter_typescript`'s two-grammar API
+  (`language_typescript()` / `language_tsx()`, not a plain `language()`), so generated
+  TS/TSX filters select the right grammar.
 - **Ruff cleanup of generated filters.** Generated Python filters are tidied with ruff
   before they are shown, saved, or run — unused imports removed, imports sorted, and the
   source reformatted at a pinned line length of 100. The transforms preserve behaviour
