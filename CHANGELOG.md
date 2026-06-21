@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Kotlin, Swift, and Dart parsing.** Added `tree-sitter-kotlin`, `tree-sitter-swift`,
+  and `tree-sitter-dart` to the Python default whitelist. Like the other grammar wheels,
+  each bundles its compiled grammar, so a filter can parse these languages' structure
+  offline in the sandbox (the same per-wheel approach — not `tree-sitter-language-pack`,
+  which fetches grammars from the network at runtime).
 - **Ruff cleanup of generated filters.** Generated Python filters are tidied with ruff
   before they are shown, saved, or run — unused imports removed, imports sorted, and the
   source reformatted at a pinned line length of 100. The transforms preserve behaviour

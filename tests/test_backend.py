@@ -737,6 +737,13 @@ def test_whitelist_round_trip(tmp_path, monkeypatch):
     assert "rarfile" in MODULE.load_whitelist()
 
 
+def test_kotlin_swift_dart_grammars_are_pre_approved():
+    # Standalone wheels that bundle their grammar offline, like the other languages.
+    assert {"tree-sitter-kotlin", "tree-sitter-swift", "tree-sitter-dart"} <= (
+        MODULE.DEFAULT_ALLOWED_PACKAGES
+    )
+
+
 def test_build_worker_image_returns_base_when_no_dependencies():
     with patch.object(MODULE, "build_image") as build:
         assert MODULE.build_worker_image("base:latest") == "base:latest"

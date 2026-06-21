@@ -9,7 +9,8 @@ them into a sandboxed image — but only after the package has been approved.
 
 The defaults include `tree-sitter` plus a set of per-language grammar wheels
 (`tree-sitter-python`, `-javascript`, `-typescript`, `-go`, `-rust`, `-java`, `-c`,
-`-bash`), so a Python filter can parse source *structure* — functions, imports,
+`-bash`, `-kotlin`, `-swift`, `-dart`), so a Python filter can parse source
+*structure* — functions, imports,
 classes — without a dedicated runtime. Each wheel bundles its compiled grammar, so it
 works in the no-network, read-only sandbox; the generated code uses the standard API,
 `Parser(Language(tree_sitter_python.language()))`. Reach for the
@@ -66,8 +67,9 @@ prompt.
 
 **Python (pip):** `chardet`, `mutagen`, `pdfminer-six`, `pillow`, `pillow-heif`,
 `pypdf`, `python-magic`, `pyyaml`, `tinytag`, `tomli`, `tree-sitter`,
-`tree-sitter-bash`, `tree-sitter-c`, `tree-sitter-go`, `tree-sitter-java`,
-`tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-rust`,
+`tree-sitter-bash`, `tree-sitter-c`, `tree-sitter-dart`, `tree-sitter-go`,
+`tree-sitter-java`, `tree-sitter-javascript`, `tree-sitter-kotlin`,
+`tree-sitter-python`, `tree-sitter-rust`, `tree-sitter-swift`,
 `tree-sitter-typescript`
 
 **Node.js (npm):** `@babel/parser`, `acorn`, `esprima`, `fast-xml-parser`, `ts-morph`,

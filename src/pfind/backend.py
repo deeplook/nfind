@@ -94,11 +94,14 @@ DEFAULT_ALLOWED_PACKAGES = frozenset(
         "tree-sitter",
         "tree-sitter-bash",
         "tree-sitter-c",
+        "tree-sitter-dart",
         "tree-sitter-go",
         "tree-sitter-java",
         "tree-sitter-javascript",
+        "tree-sitter-kotlin",
         "tree-sitter-python",
         "tree-sitter-rust",
+        "tree-sitter-swift",
         "tree-sitter-typescript",
     }
 )
