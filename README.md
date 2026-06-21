@@ -14,6 +14,35 @@ and process limits applied. The container can therefore inspect file contents an
 metadata to answer richer questions, but it cannot modify your files or reach the
 network.
 
+## Why pfind?
+
+pfind sits in a gap no other file-search tool fills. It combines three things at once:
+
+1. **Natural language** — you describe what you want, not a query grammar or a `find`
+   incantation.
+2. **A real generated program, not a one-liner** — the LLM writes an actual
+   Python/Node filter, so it can express structural, relational, and *computed*
+   questions (e.g. "directories that contain *only* audio files", "Python files and
+   their line counts") that a glob or a single `find` predicate can't.
+3. **Local, sandboxed execution that reads file contents** — the program runs over
+   your real tree in a read-only, no-network container, so it can open and inspect
+   files — yet your file list and contents never leave the machine (only your prompt
+   is sent to the model).
+
+Each neighbouring category has only part of this:
+
+| Tool category | Natural language | Reads contents / structure | Runs locally |
+| --- | :---: | :---: | :---: |
+| `find` / `fd` / `ripgrep`, Spotlight (`mdfind`) | ✗ | partial | ✓ |
+| `fselect` / osquery (SQL over files) | ✗ | ✓ | ✓ |
+| NL→command helpers (`sgpt`, `gh copilot`) | ✓ | ✗ (just a one-liner) | ✓ |
+| Send-the-file-list-to-an-LLM tools (e.g. lfind) | ✓ | ✗ (filenames only) | ✗ |
+| **pfind** | **✓** | **✓** | **✓** |
+
+In one line: pfind is like asking an analyst to write and run a one-off script against
+a folder — safely, and without your files leaving your machine. See
+[docs/comparison.md](docs/comparison.md) for the full breakdown.
+
 ## Requirements
 
 - Python 3.12+
