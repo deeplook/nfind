@@ -90,6 +90,7 @@ See [Installation](installation.md) for details.
 ## Documentation
 
 - [Installation](installation.md)
+- [Configuration](configuration.md)
 - [CLI reference](cli.md)
 - [Examples](examples.md)
 - [Output modes](output-modes.md)
