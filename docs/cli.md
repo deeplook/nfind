@@ -58,6 +58,7 @@ pfind "files larger than 1 MB, with their size" --verbose
 | `--json` | off | Output results as JSON (path plus any extra fields). |
 | `--yes`, `-y` | off | Approve any requested packages without prompting. |
 | `--no-deps` | off | Reject any third-party packages (standard library only). |
+| `--no-format` | off | Skip the ruff cleanup (remove unused imports, sort imports, format) applied to the generated filter. |
 | `--macos-meta` | off | macOS only: expose Finder tags and download metadata to the filter (see [macOS metadata](macos-metadata.md)). |
 | `-h`, `--help` | — | Show help and exit. |
 
@@ -80,6 +81,12 @@ pfind "files with no extension" -i        # or --confirm
 would write it** — the PEP 723 metadata, the prompt/provenance docstring, the
 `filter_paths` function, and the run harness — so the preview matches the saved
 artifact exactly. (On a `--run` replay the saved file is shown as-is.)
+
+Before it is shown, saved, or run, the generated Python filter is tidied with **ruff**:
+unused imports are removed, imports are sorted, and the source is reformatted. These
+transforms preserve behaviour, so what you review is exactly what runs. Pass
+[`--no-format`](#options) to see the model's raw output instead (useful when debugging a
+filter the model got wrong).
 
 The code is printed to **stderr**, so stdout stays a clean, pipeable list of paths
 even with `--show-code`. On a terminal the code is syntax-highlighted with Pygments;

@@ -154,6 +154,14 @@ def main(
         bool,
         typer.Option("--no-deps", help="Reject any third-party packages (standard library only)."),
     ] = False,
+    no_format: Annotated[
+        bool,
+        typer.Option(
+            "--no-format",
+            help="Skip the ruff cleanup (remove unused imports, sort imports, format) "
+            "applied to the generated filter.",
+        ),
+    ] = False,
     macos_meta: Annotated[
         bool,
         typer.Option(
@@ -266,6 +274,7 @@ def main(
                 on_retry=on_retry,
                 approve_dependencies=approve_dependencies,
                 macos_meta=macos_meta,
+                format_code=not no_format,
             )
     except (typer.Exit, typer.Abort):
         # Control-flow exceptions (e.g. a declined --confirm) subclass RuntimeError;

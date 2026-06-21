@@ -249,7 +249,7 @@ def test_search_invokes_on_generated_before_running(tmp_path):
         ),
         patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
     ):
-        MODULE.search(str(tmp_path), "files", on_generated=seen.append)
+        MODULE.search(str(tmp_path), "files", on_generated=seen.append, format_code=False)
 
     assert [g.code for g in seen] == ["def filter_paths(paths): return []"]
     run_filter.assert_called_once()
@@ -803,7 +803,7 @@ def test_cli_save_writes_generated_code(tmp_path):
 
     assert result.exit_code == 0
     written = out.read_text()
-    assert "def filter_paths(paths): return []" in written
+    assert "def filter_paths(paths):" in written  # ruff may reflow the body onto its own line
     compile(written, "saved.py", "exec")  # the saved script is valid Python
 
 
@@ -890,6 +890,64 @@ def test_run_filter_uses_security_and_resource_flags(tmp_path):
     ]
     assert "no-new-privileges" in command
     assert f"type=bind,src={tmp_path.resolve()},dst=/data,readonly" in command
+
+
+# --- ruff cleanup of generated code ---------------------------------------------
+
+
+def test_format_generated_code_removes_unused_imports_and_formats():
+    messy = (
+        "def filter_paths(paths):\n"
+        "    import os\n"
+        "    import sys\n"
+        "    return [p for p in paths if p.endswith('.epub')]\n"
+    )
+    cleaned = MODULE._format_generated_code(messy, "python")
+
+    assert "import os" not in cleaned
+    assert "import sys" not in cleaned
+    assert 'endswith(".epub")' in cleaned  # ruff format normalizes quotes
+    MODULE._validate_code_shape(cleaned)  # still a valid single-function filter
+
+
+def test_format_generated_code_leaves_node_unchanged():
+    code = "function filterPaths(paths){ return paths; }"
+    assert MODULE._format_generated_code(code, "node") == code
+
+
+def test_format_generated_code_falls_back_when_ruff_missing():
+    code = "def filter_paths(paths):\n    import os\n    return paths\n"
+    with patch.object(MODULE, "_ruff_path", return_value=None):
+        assert MODULE._format_generated_code(code, "python") == code
+
+
+def test_search_formats_generated_code_before_running(tmp_path):
+    (tmp_path / "file.txt").write_text("content")
+    messy = "def filter_paths(paths):\n    import os\n    return paths\n"
+    with (
+        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
+        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+    ):
+        MODULE.search(str(tmp_path), "files")
+
+    # The code handed to the sandbox is the cleaned version.
+    assert "import os" not in run_filter.call_args.args[0]
+
+
+def test_search_skips_formatting_when_disabled(tmp_path):
+    (tmp_path / "file.txt").write_text("content")
+    messy = "def filter_paths(paths):\n    import os\n    return paths\n"
+    with (
+        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
+        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+    ):
+        MODULE.search(str(tmp_path), "files", format_code=False)
+
+    assert "import os" in run_filter.call_args.args[0]
 
 
 # --- saved filters: render / parse / replay -------------------------------------
@@ -1050,7 +1108,7 @@ def test_cli_show_code_renders_full_saved_script(tmp_path):
     # --show-code previews the full script --save would write, not just the function.
     assert "# /// script" in result.output
     assert "Prompt:  epub files" in result.output
-    assert "def filter_paths(paths): return []" in result.output
+    assert "def filter_paths(paths):" in result.output
 
 
 def test_cli_run_uses_single_positional_as_path(tmp_path):

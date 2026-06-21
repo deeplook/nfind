@@ -20,6 +20,8 @@ pfind "Python files that import requests" ./src
    path list itself is *not* sent — only your description). The model also picks the
    [runtime](runtimes.md) — Python or Node.js — and declares any packages it needs.
    If the reply doesn't validate, pfind feeds the error back and retries a few times.
+   The generated Python filter is then tidied with ruff (unused imports removed, imports
+   sorted, reformatted) before it is shown, saved, or run.
 3. **Run safely** — the generated code executes in a throwaway Docker container with
    the search root bind-mounted **read-only**, networking disabled, all Linux
    capabilities dropped, and CPU/memory/process limits applied.

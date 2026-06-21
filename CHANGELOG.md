@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Ruff cleanup of generated filters.** Generated Python filters are tidied with ruff
+  before they are shown, saved, or run — unused imports removed, imports sorted, and the
+  source reformatted. The transforms preserve behaviour (and fall back to the original on
+  any failure), so the reviewed/saved/run code is identical. `--no-format` skips the pass;
+  ruff is now a runtime dependency.
 - **Saveable, replayable filters.** `--save PATH` now writes the generated filter as a
   self-describing [PEP 723](https://peps.python.org/pep-0723/) script (Python runtime):
   a `# /// script` block declaring its dependencies, a module docstring carrying the

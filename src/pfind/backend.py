@@ -22,6 +22,7 @@ import json
 import os
 import plistlib
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -393,6 +394,62 @@ def _imply_packages(runtime_name: str, dependencies: Sequence[str]) -> list[str]
     ):
         deps.add("tree-sitter")
     return sorted(deps)
+
+
+def _ruff_path() -> str | None:
+    """Locate the ruff executable, preferring the one in pfind's own environment."""
+    binary = "ruff.exe" if os.name == "nt" else "ruff"
+    local = Path(sys.executable).resolve().parent / binary
+    if local.exists():
+        return str(local)
+    return shutil.which("ruff")
+
+
+def _format_generated_code(code: str, runtime: str) -> str:
+    """Tidy LLM-generated code before it is shown, saved, or run.
+
+    Runs ruff over the source: a narrow fix pass (remove unused imports ``F401`` and
+    sort imports ``I``) followed by ``ruff format``. Both transforms preserve behaviour,
+    so the cleaned code is safe to run unchanged in the sandbox. Only the Python runtime
+    is handled (ruff is a Python tool); Node code is returned as-is. Any problem -- ruff
+    missing, a non-zero exit, or a result that no longer satisfies the filter contract --
+    falls back to the original code. ``--isolated`` keeps any ruff config in the user's
+    working directory from influencing the result.
+    """
+    if runtime != DEFAULT_RUNTIME:
+        return code
+    ruff = _ruff_path()
+    if ruff is None:
+        return code
+    tail = ["--isolated", "--stdin-filename", "filter_paths.py", "-"]
+    try:
+        fixed = subprocess.run(
+            [ruff, "check", "--quiet", "--fix-only", "--select", "F401,I", *tail],
+            input=code,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        staged = fixed.stdout if fixed.returncode == 0 and fixed.stdout else code
+        formatted = subprocess.run(
+            [ruff, "format", "--quiet", *tail],
+            input=staged,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        cleaned = formatted.stdout if formatted.returncode == 0 and formatted.stdout else staged
+    except (OSError, subprocess.SubprocessError):
+        return code
+    if cleaned == code:
+        return code
+    try:
+        _validate_code_shape(cleaned)
+    except ValueError:
+        return code
+    return cleaned
 
 
 def _validate_dependencies(
@@ -1050,6 +1107,7 @@ def search(
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
     macos_meta: bool = False,
+    format_code: bool = True,
 ) -> list[dict[str, Any]]:
     """Generate and execute a filter, returning host-path result records.
 
@@ -1058,6 +1116,11 @@ def search(
 
     The model chooses the runtime (Python or Node.js); the matching base image is
     used unless ``image`` overrides the base tag.
+
+    When ``format_code`` is true (the default), the generated Python filter is tidied
+    with ruff -- unused imports removed, imports sorted, and the source reformatted --
+    before it is shown, saved, or run. The transforms preserve behaviour and fall back
+    to the original code on any failure.
 
     ``on_generated``, if given, is called with the ``GeneratedFilter`` after it is
     produced but before it runs. It may inspect, save, or display the code; raising
@@ -1084,6 +1147,8 @@ def search(
     meta = collect_macos_metadata(host_by_container) if macos_meta else {}
     generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
     generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
+    if format_code:
+        generated.code = _format_generated_code(generated.code, generated.runtime)
     if on_generated is not None:
         on_generated(generated)
 

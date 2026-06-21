@@ -523,6 +523,7 @@ source = { editable = "." }
 dependencies = [
     { name = "openai" },
     { name = "pygments" },
+    { name = "ruff" },
     { name = "typer" },
 ]
 
@@ -539,6 +540,7 @@ dev = [
 requires-dist = [
     { name = "openai", specifier = ">=1" },
     { name = "pygments", specifier = ">=2" },
+    { name = "ruff", specifier = ">=0.4" },
     { name = "typer", specifier = ">=0.12" },
 ]
 
