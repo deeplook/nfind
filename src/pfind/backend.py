@@ -319,6 +319,149 @@ def _parse_generation(content: str) -> GeneratedFilter:
     return GeneratedFilter(code=code, dependencies=dependencies, runtime=runtime_name)
 
 
+def list_models(model: str = DEFAULT_MODEL) -> list[str]:
+    """Return the model ids the selected provider exposes via its ``/models`` endpoint.
+
+    The provider is taken from the ``provider/...`` prefix of ``model`` (the default
+    provider for a bare name), reusing the same client and credentials as generation.
+    Works for any provider implementing the OpenAI-compatible ``/models`` listing
+    (including local ``ollama``/``lmstudio``, which list what is installed). Raises
+    ``RuntimeError`` when the provider does not support listing or the request fails.
+    """
+    provider, _ = _split_model(model)
+    client = _make_client(provider)
+    try:
+        page = client.models.list()
+    except Exception as exc:  # noqa: BLE001 - SDK/provider error types vary
+        raise RuntimeError(
+            f"Could not list models for the {provider!r} provider: {exc}. The provider may "
+            "not support listing models; check its documentation for valid model names."
+        ) from exc
+    ids = [model_id for item in page.data if (model_id := getattr(item, "id", None))]
+    return sorted(ids)
+
+
+_GENERATION_MAX_TOKENS = 4096
+
+
+def _is_responses_only(exc: Exception) -> bool:
+    """True when the error says the model is served only on the Responses API.
+
+    OpenAI's reasoning/codex models (e.g. ``gpt-5.1-codex-mini``) reject
+    ``/chat/completions`` with a 404 whose message points to ``v1/responses``. This is
+    not a missing model -- it just needs the other endpoint -- so it is checked before
+    ``_is_model_not_found`` so the request can be retried via ``client.responses``.
+    """
+    return "v1/responses" in str(exc).lower()
+
+
+def _is_model_not_found(exc: Exception) -> bool:
+    """True when an SDK/provider error indicates the model id is unknown or inaccessible."""
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    message = str(exc).lower()
+    return status == 404 or "model_not_found" in message or "does not exist" in message
+
+
+def _adapt_request(exc: Exception, policy: dict[str, Any]) -> bool:
+    """Adjust ``policy`` to work around an unsupported request parameter; True if changed.
+
+    Newer (reasoning) models reject some chat-completion parameters. Rather than keep a
+    brittle per-model table, react to the provider's error and adapt: rename ``max_tokens``
+    to ``max_completion_tokens``, drop an unsupported ``temperature``, and -- as a last
+    resort, mirroring providers that lack JSON mode -- drop ``response_format``. Each fix
+    is applied at most once.
+    """
+    message = str(exc).lower()
+    if policy["max_tokens_key"] == "max_tokens" and "max_tokens" in message:
+        policy["max_tokens_key"] = "max_completion_tokens"
+        return True
+    if "temperature" not in policy["drop"] and "temperature" in message:
+        policy["drop"].add("temperature")
+        return True
+    if "response_format" not in policy["drop"]:
+        policy["drop"].add("response_format")
+        return True
+    return False
+
+
+def _create_response(
+    client: Any,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    policy: dict[str, Any],
+) -> str:
+    """Issue one request via chat-completions or the Responses API and return the text.
+
+    The endpoint and parameter shape are chosen from ``policy``: reasoning/codex models
+    that only accept ``/responses`` use ``client.responses.create`` (``input`` /
+    ``max_output_tokens`` / ``text`` JSON format) instead of ``client.chat.completions``.
+    """
+    if policy["use_responses"]:
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "input": messages,
+            "max_output_tokens": _GENERATION_MAX_TOKENS,
+        }
+        if "temperature" not in policy["drop"]:
+            kwargs["temperature"] = temperature
+        if "response_format" not in policy["drop"]:
+            kwargs["text"] = {"format": {"type": "json_object"}}
+        return client.responses.create(**kwargs).output_text or ""
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        policy["max_tokens_key"]: _GENERATION_MAX_TOKENS,
+    }
+    if "temperature" not in policy["drop"]:
+        kwargs["temperature"] = temperature
+    if "response_format" not in policy["drop"]:
+        kwargs["response_format"] = {"type": "json_object"}
+    return client.chat.completions.create(**kwargs).choices[0].message.content or ""
+
+
+def _request_completion(
+    client: Any,
+    *,
+    model: str,
+    provider: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    policy: dict[str, Any],
+) -> str:
+    """Generate one completion, adapting endpoint and parameters reactively on errors.
+
+    ``policy`` carries learned adaptations across calls (so a fix discovered on one attempt
+    is reused on the next): a switch to the Responses API, a renamed token limit, or a
+    dropped parameter. A model-not-found error is reported immediately with guidance; other
+    errors trigger one adaptation and a retry until none remain.
+    """
+    for _ in range(5):  # initial try + the API switch + one fix per adaptable parameter
+        try:
+            return _create_response(
+                client, model=model, messages=messages, temperature=temperature, policy=policy
+            )
+        except Exception as exc:  # noqa: BLE001 - SDK/provider error types vary
+            if not policy["use_responses"] and _is_responses_only(exc):
+                policy["use_responses"] = True
+                continue
+            if _is_model_not_found(exc):
+                hint = "pfind --list-models"
+                if provider != DEFAULT_PROVIDER:
+                    hint += f" --model {provider}/<name>"
+                raise RuntimeError(
+                    f"Model {model!r} was not found for the {provider!r} provider -- it may be "
+                    f"misspelled or not enabled for your API key. Run '{hint}' to see what's "
+                    "available."
+                ) from exc
+            if not _adapt_request(exc, policy):
+                raise RuntimeError(f"Model request to {provider!r} failed: {exc}") from exc
+    raise RuntimeError(f"Model request to {provider!r} failed after adapting parameters.")
+
+
 def generate_filter(
     prompt: str,
     model: str = DEFAULT_MODEL,
@@ -352,32 +495,20 @@ def generate_filter(
         {"role": "system", "content": system},
         {"role": "user", "content": _USER_TEMPLATE.format(prompt=prompt)},
     ]
-    # Not every OpenAI-compatible endpoint honours JSON mode; drop it on the first
-    # rejection and rely on _extract_json_object plus the retry loop instead.
-    use_json_mode = True
+    # Adapt the request reactively: not every model/provider honours JSON mode, max_tokens,
+    # or a custom temperature, and reasoning/codex models need the Responses API. The policy
+    # persists across attempts so a fix is learned once. See _request_completion.
+    policy: dict[str, Any] = {"drop": set(), "max_tokens_key": "max_tokens", "use_responses": False}
     last_error: ValueError | None = None
     for attempt in range(attempts):
-        kwargs: dict[str, Any] = {
-            "model": model_name,
-            "messages": messages,
-            "max_tokens": 4096,
-            "temperature": 0 if attempt == 0 else _RETRY_TEMPERATURE,
-        }
-        if use_json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
-        try:
-            response = client.chat.completions.create(**kwargs)
-        except Exception as exc:  # noqa: BLE001 - SDK/provider error types vary
-            if not use_json_mode:
-                raise RuntimeError(f"Model request to {provider!r} failed: {exc}") from exc
-            # The provider may reject response_format; drop it and try once more.
-            use_json_mode = False
-            kwargs.pop("response_format", None)
-            try:
-                response = client.chat.completions.create(**kwargs)
-            except Exception as exc2:  # noqa: BLE001 - SDK/provider error types vary
-                raise RuntimeError(f"Model request to {provider!r} failed: {exc2}") from exc2
-        content = response.choices[0].message.content or ""
+        content = _request_completion(
+            client,
+            model=model_name,
+            provider=provider,
+            messages=messages,
+            temperature=0 if attempt == 0 else _RETRY_TEMPERATURE,
+            policy=policy,
+        )
         try:
             return _parse_generation(content)
         except ValueError as exc:

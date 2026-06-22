@@ -5,6 +5,7 @@
 - [Docker daemon is unavailable](#docker-daemon-is-unavailable)
 - [Docker CLI was not found](#docker-cli-was-not-found)
 - [OpenAI authentication errors](#openai-authentication-errors)
+- [Model was not found](#model-was-not-found)
 - [No results when there should be some](#no-results-when-there-should-be-some)
 - [The filter timed out](#the-filter-timed-out)
 - [Results look wrong or inconsistent](#results-look-wrong-or-inconsistent)
@@ -42,6 +43,27 @@ export OPENAI_API_KEY=sk-...
 
 The host needs network access to reach the API. (The worker container does not — and
 shouldn't have network access; that's by design.)
+
+### Model was not found
+
+```
+error: Model 'gpt-5.0' was not found for the 'openai' provider -- it may be
+misspelled or not enabled for your API key. Run 'pfind --list-models' to see
+what's available.
+```
+
+The model id in `--model` is unknown to the provider or not enabled for your key. List
+the valid ids and copy one:
+
+```bash
+pfind --list-models                    # for the default (OpenAI) provider
+pfind --list-models --model groq/x     # for another provider
+```
+
+Note this is **not** the error for OpenAI reasoning/codex models that are served only on
+the `/responses` endpoint (e.g. `gpt-5.1-codex-mini`) — pfind detects those and switches
+endpoints automatically, so they work without any flag. See [endpoint
+selection](cli.md#endpoint-selection-chat-completions-vs-responses).
 
 ### No results when there should be some
 

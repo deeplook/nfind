@@ -48,6 +48,7 @@ pfind "files larger than 1 MB, with their size" --verbose
 | `--no-ignore` | off | Don't skip the default ignored directories (`.git`, `node_modules`, `__pycache__`, `.venv`, caches, …). |
 | `--max-depth N` | unlimited | Descend at most `N` directory levels below `PATH` (a direct child is `1`). |
 | `--model` | `gpt-4o-mini` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
+| `--list-models` | off | List the model ids available for the provider in `--model` and exit. Needs that provider's API key. See [Providers](#providers). |
 | `--image` | per-runtime | Override the base image tag for the chosen [runtime](runtimes.md). |
 | `--timeout` | `10.0` | Seconds the generated filter may run before it is killed. |
 | `--memory` | `256m` | Memory limit for the worker container. |
@@ -250,11 +251,43 @@ pfind "..." --model ollama/llama3.1                               # local Ollama
 | Ollama (local) | `ollama/` | *(none; needs a running server)* |
 | LM Studio (local) | `lmstudio/` | *(none; needs a running server)* |
 
-Only the selected provider's key is needed. Providers vary in whether they support
-strict JSON mode; pfind drops it automatically and recovers the JSON from the reply
-when a provider doesn't, so generation still works. Some non-OpenAI models follow the
-filter contract less reliably — if a model misbehaves, try a stronger one or route
-through `openrouter/`.
+Only the selected provider's key is needed.
+
+### Listing available models
+
+`--list-models` prints the model ids the selected provider exposes, one per line, then
+exits. The provider is taken from `--model`, so set it to target a non-default provider:
+
+```bash
+pfind --list-models                                    # OpenAI (default provider)
+pfind --list-models --model groq/x                     # Groq (model name is ignored here)
+pfind --list-models --model openai/x | grep codex      # filter the list
+```
+
+Use it to discover valid model names or to check what a local Ollama/LM Studio server
+has installed. A provider that doesn't support listing reports an error (exit code 1).
+
+### Endpoint selection (chat completions vs. responses)
+
+pfind speaks two OpenAI-compatible endpoints and picks one per model automatically — no
+flag to set:
+
+- **Chat Completions** (`/chat/completions`) is the default and is tried first, so every
+  provider above keeps working unchanged.
+- **Responses** (`/responses`) is used as an automatic fallback for OpenAI reasoning/codex
+  models that are served *only* there (e.g. `gpt-5.1-codex-mini`). When the first request
+  is rejected with the tell-tale "only supported in v1/responses" error, pfind switches
+  endpoints and retries; the switch is remembered for the rest of that run.
+
+This means a responses-only model costs one extra throwaway request the first time it's
+used in a process (the probe that triggers the switch); the decision isn't cached across
+separate `pfind` invocations, so each run re-probes.
+
+Providers also vary in whether they support strict JSON mode, a custom `temperature`, or
+`max_tokens` vs. `max_completion_tokens`; pfind adapts to each rejection automatically and
+recovers the JSON from the reply when needed, so generation still works. Some non-OpenAI
+models follow the filter contract less reliably — if a model misbehaves, try a stronger
+one or route through `openrouter/`.
 
 ## Exit codes
 

@@ -719,6 +719,135 @@ def test_generate_filter_drops_json_mode_when_provider_rejects_it():
     assert first.kwargs["model"] == "llama-3.3"  # provider prefix stripped
 
 
+def _good_response():
+    good = json.dumps({"code": "def filter_paths(paths): return paths"})
+    return Mock(choices=[Mock(message=Mock(content=good))])
+
+
+def test_generate_filter_renames_max_tokens_for_reasoning_models():
+    client = Mock()
+    client.chat.completions.create.side_effect = [
+        Exception(
+            "Unsupported parameter: 'max_tokens' is not supported. Use 'max_completion_tokens'."
+        ),
+        _good_response(),
+    ]
+    with patch.object(MODULE, "_make_client", return_value=client):
+        result = MODULE.generate_filter("anything", model="openai/o3")
+    assert result.code
+    last = client.chat.completions.create.call_args_list[-1].kwargs
+    assert "max_completion_tokens" in last and "max_tokens" not in last
+
+
+def test_generate_filter_drops_unsupported_temperature():
+    client = Mock()
+    client.chat.completions.create.side_effect = [
+        Exception("Unsupported value: 'temperature' does not support 0; only the default (1)."),
+        _good_response(),
+    ]
+    with patch.object(MODULE, "_make_client", return_value=client):
+        MODULE.generate_filter("anything", model="o3")
+    assert "temperature" not in client.chat.completions.create.call_args_list[-1].kwargs
+
+
+def test_generate_filter_learned_adaptation_persists_across_attempts():
+    # The max_tokens fix discovered on attempt 1 must be reused on the retry, not relearned.
+    client = Mock()
+    client.chat.completions.create.side_effect = [
+        Exception("'max_tokens' is not supported; use 'max_completion_tokens'."),
+        Mock(choices=[Mock(message=Mock(content="not json"))]),  # triggers a validation retry
+        _good_response(),
+    ]
+    with patch.object(MODULE, "_make_client", return_value=client):
+        MODULE.generate_filter("anything", model="o3", attempts=2)
+    assert client.chat.completions.create.call_count == 3
+    # Every successful (non-error) call used the renamed parameter.
+    for call in client.chat.completions.create.call_args_list[1:]:
+        assert "max_completion_tokens" in call.kwargs and "max_tokens" not in call.kwargs
+
+
+def test_generate_filter_reports_unknown_model():
+    class NotFound(Exception):
+        status_code = 404
+
+    client = Mock()
+    client.chat.completions.create.side_effect = NotFound(
+        "The model `gpt-5.0` does not exist or you do not have access to it."
+    )
+    with (
+        patch.object(MODULE, "_make_client", return_value=client),
+        pytest.raises(RuntimeError, match="not found.*--list-models"),
+    ):
+        MODULE.generate_filter("anything", model="openai/gpt-5.0")
+    # Reported immediately, without burning retries on a doomed id.
+    assert client.chat.completions.create.call_count == 1
+
+
+def _good_responses_result():
+    good = json.dumps({"code": "def filter_paths(paths): return paths"})
+    return Mock(output_text=good)
+
+
+def test_generate_filter_falls_back_to_responses_api():
+    # Codex/reasoning models reject chat-completions with a 404 pointing to v1/responses.
+    client = Mock()
+    client.chat.completions.create.side_effect = Exception(
+        "This model is only supported in v1/responses and not in v1/chat/completions."
+    )
+    client.responses.create.return_value = _good_responses_result()
+    with patch.object(MODULE, "_make_client", return_value=client):
+        result = MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
+    assert result.code
+    # Switched endpoints rather than reporting the model as missing.
+    assert client.responses.create.call_count == 1
+    sent = client.responses.create.call_args.kwargs
+    assert sent["model"] == "gpt-5.1-codex-mini"  # provider prefix stripped
+    assert sent["input"] and "max_output_tokens" in sent
+
+
+def test_generate_filter_responses_switch_persists_across_attempts():
+    # Once switched to the Responses API, the retry must not go back to chat-completions.
+    client = Mock()
+    client.chat.completions.create.side_effect = Exception(
+        "This model is only supported in v1/responses and not in v1/chat/completions."
+    )
+    client.responses.create.side_effect = [
+        Mock(output_text="not json"),  # triggers a validation retry
+        _good_responses_result(),
+    ]
+    with patch.object(MODULE, "_make_client", return_value=client):
+        MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini", attempts=2)
+    # Only the one probe that triggered the switch hit chat-completions.
+    assert client.chat.completions.create.call_count == 1
+    assert client.responses.create.call_count == 2
+
+
+def test_list_models_returns_sorted_ids():
+    client = Mock()
+    client.models.list.return_value = Mock(data=[Mock(id="gpt-4o-mini"), Mock(id="gpt-4o")])
+    with patch.object(MODULE, "_make_client", return_value=client) as make:
+        assert MODULE.list_models("openai/whatever") == ["gpt-4o", "gpt-4o-mini"]
+    assert make.call_args.args[0] == "openai"  # provider taken from the selector
+
+
+def test_list_models_uses_selected_provider():
+    client = Mock()
+    client.models.list.return_value = Mock(data=[])
+    with patch.object(MODULE, "_make_client", return_value=client) as make:
+        MODULE.list_models("groq/llama-3.3")
+    assert make.call_args.args[0] == "groq"
+
+
+def test_list_models_reports_unsupported_listing():
+    client = Mock()
+    client.models.list.side_effect = Exception("listing not available")
+    with (
+        patch.object(MODULE, "_make_client", return_value=client),
+        pytest.raises(RuntimeError, match="Could not list models"),
+    ):
+        MODULE.list_models("groq/x")
+
+
 def test_generate_filter_succeeds_on_first_attempt():
     good = json.dumps({"code": "def filter_paths(paths): return paths"})
     patcher, client = _fake_openai(good)
@@ -1008,6 +1137,40 @@ def test_cli_json_and_verbose_are_mutually_exclusive():
     result = runner.invoke(cli.app, ["prompt", "/tmp", "--json", "--verbose"])
     assert result.exit_code == 2
     assert "mutually exclusive" in result.output
+
+
+def test_cli_list_models_prints_ids():
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    with patch.object(cli.backend, "list_models", return_value=["gpt-4o", "gpt-4o-mini"]) as lm:
+        result = runner.invoke(cli.app, ["--list-models"])
+
+    assert result.exit_code == 0
+    assert result.output == "gpt-4o\ngpt-4o-mini\n"
+    assert lm.call_args.args[0] == cli.backend.DEFAULT_MODEL  # default provider/model
+
+
+def test_cli_list_models_uses_selected_model_provider():
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    with patch.object(cli.backend, "list_models", return_value=[]) as lm:
+        result = runner.invoke(cli.app, ["--list-models", "--model", "groq/llama-3.3"])
+
+    assert result.exit_code == 0
+    assert lm.call_args.args[0] == "groq/llama-3.3"
+
+
+def test_cli_list_models_reports_error():
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    with patch.object(cli.backend, "list_models", side_effect=RuntimeError("no listing here")):
+        result = runner.invoke(cli.app, ["--list-models"])
+
+    assert result.exit_code == 1
+    assert "no listing here" in result.output
 
 
 def test_cli_prints_clean_docker_error():

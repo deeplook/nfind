@@ -129,6 +129,14 @@ def main(
             "ollama/llama3.1, openrouter/<vendor>/<model>).",
         ),
     ] = DEFAULT_MODEL,
+    list_models: Annotated[
+        bool,
+        typer.Option(
+            "--list-models",
+            help="List the model ids available for the selected provider (from --model) "
+            "and exit. Needs that provider's API key set.",
+        ),
+    ] = False,
     image: Annotated[
         str | None,
         typer.Option(help="Override the base image tag for the chosen runtime."),
@@ -249,6 +257,14 @@ def main(
     ] = False,
 ) -> None:
     """Search PATH for files matching PROMPT and print one path per line."""
+    if list_models:
+        try:
+            for model_id in backend.list_models(model):
+                typer.echo(model_id)
+        except (RuntimeError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        raise typer.Exit(0)
     if as_json and verbose:
         typer.echo("error: --json and --verbose are mutually exclusive.", err=True)
         raise typer.Exit(2)

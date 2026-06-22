@@ -161,7 +161,18 @@ pfind "files modified this week" --model lmstudio/your-local-model
 export ANTHROPIC_API_KEY=sk-ant-...   # only the selected provider's key is needed
 ```
 
-See the full [provider table](cli.md#providers).
+Not sure what to put after the slash? List a provider's models with `--list-models`:
+
+```bash
+pfind --list-models                    # OpenAI (default provider)
+pfind --list-models --model groq/x     # another provider (the model name is ignored here)
+```
+
+OpenAI reasoning/codex models that are served only on the `/responses` endpoint (e.g.
+`gpt-5.1-codex-mini`) work too — pfind detects them and switches endpoints automatically.
+
+See the full [provider table](cli.md#providers) and [endpoint
+selection](cli.md#endpoint-selection-chat-completions-vs-responses).
 
 ---
 
@@ -392,6 +403,7 @@ from Python instead of the shell, see the [Python API](api.md).
 | `--no-ignore` | Don't skip the default ignored dirs (`.git`, `node_modules`, …). |
 | `--max-depth N` | Descend at most `N` levels below `PATH` (direct child = `1`). |
 | `--model NAME` | Model, bare or `provider/model` (default: `gpt-4o-mini`). |
+| `--list-models` | List the selected provider's model ids and exit. |
 | `--image TAG` | Override the base image for the chosen runtime. |
 | `--timeout SECS` | Max filter runtime before it's killed (default: `10`). |
 | `--memory SIZE` | Container memory limit (default: `256m`). |
