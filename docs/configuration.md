@@ -13,7 +13,7 @@ with the full detail.
 | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY` | API key for the matching `provider/model` selector. Only the selected provider's key is needed. See [Providers](cli.md#providers). |
 | `NFIND_CONFIG` | Path to the [config file](#config-file). Overrides the default location. |
 | `NFIND_WHITELIST` | Overrides the path of the approved-package [whitelist file](dependencies.md#the-whitelist-file). |
-| `XDG_CONFIG_HOME` | Base directory for the config (`$XDG_CONFIG_HOME/nfind/config.toml`) and whitelist (`…/nfind/whitelist.json`); defaults to `~/.config`. |
+| `XDG_CONFIG_HOME` | Base directory for the config (`$XDG_CONFIG_HOME/nfind/config.toml`) and whitelist (`…/nfind/whitelist.json`); defaults to `~/.config`. Unix only — on Windows, `%APPDATA%\nfind` is used instead. |
 | `NO_COLOR` | When set, disables colored output and syntax highlighting (the [`NO_COLOR`](https://no-color.org/) convention). Color is also disabled when stderr is not a TTY. |
 
 Local providers (`ollama/…`, `lmstudio/…`) need no API key.
@@ -25,7 +25,8 @@ run. nfind reads it from, in order:
 
 1. `--config PATH`,
 2. `$NFIND_CONFIG`,
-3. `$XDG_CONFIG_HOME/nfind/config.toml` (falling back to `~/.config/nfind/config.toml`).
+3. `$XDG_CONFIG_HOME/nfind/config.toml` (falling back to `~/.config/nfind/config.toml`;
+   on Windows, `%APPDATA%\nfind\config.toml`).
 
 An explicit `--config`/`NFIND_CONFIG` path must exist; the default location is used only
 when present, so no config file is required. **Command-line options always override the

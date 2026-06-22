@@ -6,8 +6,39 @@ on:
   pull_request:
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (with Python 3.12)
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests
+
+      - name: Check formatting (ruff)
+        run: uv run ruff format --check src tests
+
+      - name: Type-check (mypy)
+        run: uv run mypy src
+
+  test:
+    # Run the suite on Linux and Windows so the host-side code (path handling,
+    # subprocess/Docker invocation, config/cache locations) is verified on both.
+    # The Docker integration tests self-skip where no Linux Docker daemon is
+    # reachable (Windows runners), so they exercise the real container path on
+    # Linux and the host logic everywhere.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,15 +59,6 @@ jobs:
 
       - name: Install dependencies
         run: uv sync
-
-      - name: Lint (ruff)
-        run: uv run ruff check src tests
-
-      - name: Check formatting (ruff)
-        run: uv run ruff format --check src tests
-
-      - name: Type-check (mypy)
-        run: uv run mypy src
 
       - name: Test
         run: uv run pytest

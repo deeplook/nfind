@@ -118,7 +118,8 @@ def main(
             callback=_load_config_defaults,
             help="TOML config file supplying defaults for options (model, timeout, "
             "memory, cpus, pids-limit, build-timeout, image, json, verbose, no-format). "
-            "Defaults to $XDG_CONFIG_HOME/nfind/config.toml; command-line options win.",
+            "Defaults to config.toml in nfind's per-user config directory; "
+            "command-line options win.",
         ),
     ] = None,
     model: Annotated[
