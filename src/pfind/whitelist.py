@@ -1,8 +1,8 @@
 """Persistence of user-approved packages (the dependency whitelist).
 
 The effective allow-set for a runtime is its built-in defaults plus the packages the
-user has approved, stored as JSON at ``$XDG_CONFIG_HOME/pfind/whitelist.json`` (or
-``$PFIND_WHITELIST`` when set).
+user has approved, stored as JSON in pfind's config directory as ``whitelist.json``
+(or ``$PFIND_WHITELIST`` when set). See :mod:`pfind.paths` for the per-OS location.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .constants import DEFAULT_RUNTIME
+from .paths import user_dir
 from .runtimes import RUNTIMES
 
 
@@ -23,8 +24,7 @@ def _whitelist_path() -> Path:
     override = os.environ.get("PFIND_WHITELIST")
     if override:
         return Path(override)
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "pfind" / "whitelist.json"
+    return user_dir("config") / "whitelist.json"
 
 
 def _read_whitelist_file() -> dict[str, Any]:

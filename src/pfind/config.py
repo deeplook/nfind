@@ -6,18 +6,19 @@ subset of the command-line options, so the precedence is
     command-line option  >  --config / PFIND_CONFIG file  >  built-in default
 
 The file is looked up at ``--config``/``$PFIND_CONFIG`` if given, otherwise at
-``$XDG_CONFIG_HOME/pfind/config.toml`` (falling back to ``~/.config/pfind/config.toml``)
-and used only when it exists. Keys mirror the option flag names (``pids-limit``); the
-underscore spelling (``pids_limit``) is accepted too.
+``config.toml`` in pfind's config directory (see :mod:`pfind.paths` for the per-OS
+location) and used only when it exists. Keys mirror the option flag names
+(``pids-limit``); the underscore spelling (``pids_limit``) is accepted too.
 """
 
 from __future__ import annotations
 
-import os
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from .paths import user_dir
 
 
 class ConfigError(Exception):
@@ -78,8 +79,7 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
 
 def default_config_path() -> Path:
     """Location of the config file when neither --config nor PFIND_CONFIG is set."""
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "pfind" / "config.toml"
+    return user_dir("config") / "config.toml"
 
 
 def load_config(path: Path) -> dict[str, Any]:
