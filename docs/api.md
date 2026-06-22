@@ -198,7 +198,7 @@ records = backend.run_filter(generated.code, root, container_paths, image=image)
 | `generate_filter(prompt, model=…, attempts=…, on_retry=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape; retries on invalid replies. |
 | `build_image(image=…, rebuild=…, build_timeout=…)` | Build the stdlib-only base worker image when absent or on request. |
 | `build_worker_image(image=…, dependencies=…, …)` | Ensure a runnable image (base, or a derived image with packages); return the tag to run. |
-| `run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. |
+| `run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. Pass `limits=Limits(…)` to set the resource/output caps directly, or a `sandbox=` to override the backend. |
 | `load_whitelist()` / `approve_packages(pkgs)` | Read the approved-package set / persist new approvals. |
 | `check_docker_available()` | Raise `DockerUnavailableError` if Docker can't be reached. |
 

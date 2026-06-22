@@ -20,12 +20,14 @@ class FakeSandbox:
         returncode: int = 0,
         run_error: BaseException | None = None,
         derived: str = "fake-image:deps",
+        derive_error: BaseException | None = None,
     ) -> None:
         self._stdout = stdout
         self._stderr = stderr
         self._returncode = returncode
         self._run_error = run_error
         self._derived = derived
+        self._derive_error = derive_error
         self.ensure_calls: list[bool] = []
         self.derive_calls: list[str] = []
         self.runs: list[tuple[bytes, list[Mount], Limits]] = []
@@ -35,6 +37,8 @@ class FakeSandbox:
 
     def derive_image(self, dockerfile_text: str, *, rebuild: bool = False) -> str:
         self.derive_calls.append(dockerfile_text)
+        if self._derive_error is not None:
+            raise self._derive_error
         return self._derived
 
     def run(self, stdin: bytes, *, mounts: list[Mount], limits: Limits) -> CompletedRun:

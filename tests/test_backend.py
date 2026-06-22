@@ -301,6 +301,26 @@ def test_run_filter_rejects_disallowed_result_path(tmp_path):
         MODULE.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
 
 
+def test_run_filter_accepts_explicit_limits(tmp_path):
+    fake = FakeSandbox(stdout=b'{"ok":true,"results":[]}')
+    limits = MODULE.Limits(memory="64m", cpus=2.0, pids=8, timeout=3.0, max_output_bytes=512)
+    MODULE.run_filter("code", tmp_path, [], sandbox=fake, limits=limits)
+    # The supplied Limits is passed straight through to the sandbox.
+    assert fake.runs[0][2] is limits
+
+
+def test_run_filter_rejects_nonpositive_explicit_limits(tmp_path):
+    bad = MODULE.Limits(timeout=0)
+    with pytest.raises(ValueError):
+        MODULE.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), limits=bad)
+
+
+def test_build_worker_image_surfaces_package_names_on_build_failure():
+    fake = FakeSandbox(derive_error=MODULE.SandboxError("exit status 1"))
+    with pytest.raises(MODULE.DockerError, match=r"packages \(mutagen, rarfile\)"):
+        MODULE.build_worker_image("base:latest", ["rarfile", "mutagen"], sandbox=fake)
+
+
 def test_search_maps_host_paths_in_records(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (

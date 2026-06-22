@@ -50,6 +50,7 @@ from .sandbox import DockerSandbox as DockerSandbox
 from .sandbox import Limits as Limits
 from .sandbox import Mount as Mount
 from .sandbox import Sandbox as Sandbox
+from .sandbox import SandboxError as SandboxError
 from .sandbox import SandboxOutputTooLarge as SandboxOutputTooLarge
 from .sandbox import SandboxTimeout as SandboxTimeout
 from .sandbox import _derived_image_tag as _derived_image_tag
@@ -438,7 +439,13 @@ def build_worker_image(
 
     packages = sorted(set(dependencies))
     dockerfile_text = runtime.derived_dockerfile(image, packages)
-    return sandbox.derive_image(dockerfile_text, rebuild=rebuild)
+    try:
+        return sandbox.derive_image(dockerfile_text, rebuild=rebuild)
+    except SandboxError as exc:
+        # The sandbox is package-agnostic; restore the actionable list of packages.
+        raise DockerError(
+            f"Failed to build the worker image with packages ({', '.join(packages)}): {exc}"
+        ) from exc
 
 
 def _parse_worker_response(stdout: bytes) -> dict[str, Any]:
@@ -469,6 +476,7 @@ def run_filter(
     cpus: float = 1.0,
     pids_limit: int = 64,
     meta: dict[str, Any] | None = None,
+    limits: Limits | None = None,
 ) -> list[dict[str, Any]]:
     """Execute generated code in the sandbox and return container-path records.
 
@@ -476,26 +484,31 @@ def run_filter(
     :class:`~pfind.sandbox.DockerSandbox` for ``image`` by default), then validates the
     worker's ``{ok, results}`` reply against the supplied paths. The sandbox owns the
     hardened container and its limits; this adapter owns the worker protocol.
+
+    Pass a :class:`~pfind.sandbox.Limits` as ``limits`` to set the resource/output caps
+    directly; otherwise they are built from the ``timeout``/``memory``/``cpus``/
+    ``pids_limit`` arguments (with the host's :data:`MAX_RESULT_BYTES` output cap).
     """
-    if timeout <= 0 or cpus <= 0 or pids_limit <= 0:
-        raise ValueError("timeout, cpus, and pids_limit must be positive")
+    if limits is None:
+        limits = Limits(
+            memory=memory,
+            cpus=cpus,
+            pids=pids_limit,
+            timeout=timeout,
+            max_output_bytes=MAX_RESULT_BYTES,
+        )
+    if limits.timeout <= 0 or limits.cpus <= 0 or limits.pids <= 0:
+        raise ValueError("timeout, cpus, and pids must be positive")
 
     root = search_root.expanduser().resolve(strict=True)
     if sandbox is None:
         sandbox = DockerSandbox(image, dockerfile=_dockerfile_path())
     request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
-    limits = Limits(
-        memory=memory,
-        cpus=cpus,
-        pids=pids_limit,
-        timeout=timeout,
-        max_output_bytes=MAX_RESULT_BYTES,
-    )
 
     try:
         run = sandbox.run(request, mounts=[Mount(root, "/data", read_only=True)], limits=limits)
     except SandboxTimeout as exc:
-        raise TimeoutError(f"Generated filter exceeded the {timeout:g}s timeout.") from exc
+        raise TimeoutError(f"Generated filter exceeded the {limits.timeout:g}s timeout.") from exc
     except SandboxOutputTooLarge as exc:
         raise RuntimeError("Worker output exceeded the allowed size.") from exc
 

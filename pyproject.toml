@@ -73,6 +73,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: end-to-end tests that build and run a real Docker container (skipped when Docker is unavailable; deselect with -m 'not integration')",
+]
 
 [tool.coverage.run]
 source = ["src"]

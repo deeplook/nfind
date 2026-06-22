@@ -63,9 +63,12 @@ All notable changes to this project are documented here. The format is based on
   `build_image`, `check_docker_available`, image derive/cache) moved there too;
   `build_worker_image` and `run_filter` are now thin adapters over it. `search` and
   `run_saved` gained an optional `sandbox` parameter so callers (and the test suite) can
-  run the pfind logic without Docker or swap in an alternate backend later. The Docker
+  run the pfind logic without Docker or swap in an alternate backend later; `run_filter`
+  also accepts a `limits=Limits(…)` to set the resource/output caps directly. The Docker
   error hierarchy is now the `SandboxError` family; `DockerError`/`DockerUnavailableError`
   remain as aliases, so existing `except` call sites and the public API are unchanged.
+  A skip-guarded `integration` test suite exercises the real `docker build`/`docker run`
+  path (hardened flags, no network, worker protocol, timeout-kill) end to end.
 - Filter-generation requests tolerate providers without strict JSON mode: pfind drops
   `response_format` on rejection and recovers the JSON object from a fenced or chatty
   reply, then validates as usual.
