@@ -822,6 +822,31 @@ def test_generate_filter_responses_switch_persists_across_attempts():
     assert client.responses.create.call_count == 2
 
 
+def test_generate_filter_caches_responses_verdict():
+    # The probe that reveals a Responses-only model records the verdict for next time.
+    client = Mock()
+    client.chat.completions.create.side_effect = Exception(
+        "This model is only supported in v1/responses and not in v1/chat/completions."
+    )
+    client.responses.create.return_value = _good_responses_result()
+    with patch.object(MODULE, "_make_client", return_value=client):
+        MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
+    # Cached under the full selector, not the bare model name.
+    assert MODULE.get_endpoint("openai/gpt-5.1-codex-mini") == "responses"
+
+
+def test_generate_filter_uses_cached_responses_verdict():
+    # A cached verdict skips the throwaway chat-completions probe entirely.
+    MODULE.set_endpoint("openai/gpt-5.1-codex-mini", "responses")
+    client = Mock()
+    client.responses.create.return_value = _good_responses_result()
+    with patch.object(MODULE, "_make_client", return_value=client):
+        result = MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
+    assert result.code
+    client.chat.completions.create.assert_not_called()
+    assert client.responses.create.call_count == 1
+
+
 def test_list_models_returns_sorted_ids():
     client = Mock()
     client.models.list.return_value = Mock(data=[Mock(id="gpt-4o-mini"), Mock(id="gpt-4o")])

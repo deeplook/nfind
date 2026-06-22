@@ -279,9 +279,12 @@ flag to set:
   is rejected with the tell-tale "only supported in v1/responses" error, pfind switches
   endpoints and retries; the switch is remembered for the rest of that run.
 
-This means a responses-only model costs one extra throwaway request the first time it's
-used in a process (the probe that triggers the switch); the decision isn't cached across
-separate `pfind` invocations, so each run re-probes.
+A responses-only model costs one extra throwaway request the first time it's seen (the
+probe that triggers the switch). That verdict is then cached on disk — keyed by the full
+`provider/model` selector — in `model-endpoints.json` under pfind's cache directory (or
+`$PFIND_ENDPOINT_CACHE` when set), so later runs start on `/responses` and skip the probe.
+The cache is purely an optimisation: it only ever records the responses-only exceptions,
+and every read/write is best-effort, so a missing or stale entry just means one re-probe.
 
 Providers also vary in whether they support strict JSON mode, a custom `temperature`, or
 `max_tokens` vs. `max_completion_tokens`; pfind adapts to each rejection automatically and

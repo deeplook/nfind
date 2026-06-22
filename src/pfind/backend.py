@@ -36,6 +36,8 @@ from .constants import DEFAULT_RUNTIME as DEFAULT_RUNTIME
 from .constants import DOCKER_CHECK_TIMEOUT as DOCKER_CHECK_TIMEOUT
 from .constants import FILTER_LINE_LENGTH as FILTER_LINE_LENGTH
 from .constants import PROVIDERS as PROVIDERS
+from .endpoint_cache import get_endpoint as get_endpoint
+from .endpoint_cache import set_endpoint as set_endpoint
 from .errors import DependencyError as DependencyError
 from .errors import DockerError as DockerError
 from .errors import DockerUnavailableError as DockerUnavailableError
@@ -431,13 +433,16 @@ def _request_completion(
     messages: list[dict[str, str]],
     temperature: float,
     policy: dict[str, Any],
+    on_responses_switch: Callable[[], None] | None = None,
 ) -> str:
     """Generate one completion, adapting endpoint and parameters reactively on errors.
 
     ``policy`` carries learned adaptations across calls (so a fix discovered on one attempt
     is reused on the next): a switch to the Responses API, a renamed token limit, or a
-    dropped parameter. A model-not-found error is reported immediately with guidance; other
-    errors trigger one adaptation and a retry until none remain.
+    dropped parameter. ``on_responses_switch``, if given, is called the first time a probe
+    reveals the model is Responses-only (so the caller can cache that verdict). A
+    model-not-found error is reported immediately with guidance; other errors trigger one
+    adaptation and a retry until none remain.
     """
     for _ in range(5):  # initial try + the API switch + one fix per adaptable parameter
         try:
@@ -447,6 +452,8 @@ def _request_completion(
         except Exception as exc:  # noqa: BLE001 - SDK/provider error types vary
             if not policy["use_responses"] and _is_responses_only(exc):
                 policy["use_responses"] = True
+                if on_responses_switch is not None:
+                    on_responses_switch()
                 continue
             if _is_model_not_found(exc):
                 hint = "pfind --list-models"
@@ -497,8 +504,15 @@ def generate_filter(
     ]
     # Adapt the request reactively: not every model/provider honours JSON mode, max_tokens,
     # or a custom temperature, and reasoning/codex models need the Responses API. The policy
-    # persists across attempts so a fix is learned once. See _request_completion.
-    policy: dict[str, Any] = {"drop": set(), "max_tokens_key": "max_tokens", "use_responses": False}
+    # persists across attempts so a fix is learned once. See _request_completion. A cached
+    # "responses" verdict (keyed by the full selector) starts on that endpoint, skipping the
+    # throwaway chat-completions probe; on_responses_switch records a freshly discovered one.
+    use_responses = get_endpoint(model) == "responses"
+    policy: dict[str, Any] = {
+        "drop": set(),
+        "max_tokens_key": "max_tokens",
+        "use_responses": use_responses,
+    }
     last_error: ValueError | None = None
     for attempt in range(attempts):
         content = _request_completion(
@@ -508,6 +522,7 @@ def generate_filter(
             messages=messages,
             temperature=0 if attempt == 0 else _RETRY_TEMPERATURE,
             policy=policy,
+            on_responses_switch=lambda: set_endpoint(model, "responses"),
         )
         try:
             return _parse_generation(content)
