@@ -21,7 +21,7 @@ error: Docker daemon is unavailable: …
 ```
 
 Start Docker Desktop (macOS/Windows) or the Docker daemon (Linux) and retry. Verify
-with `docker info`. pfind checks Docker **before** generating any code, so this fails
+with `docker info`. nfind checks Docker **before** generating any code, so this fails
 fast and costs no API call.
 
 ### Docker CLI was not found
@@ -48,7 +48,7 @@ shouldn't have network access; that's by design.)
 
 ```
 error: Model 'gpt-5.0' was not found for the 'openai' provider -- it may be
-misspelled or not enabled for your API key. Run 'pfind --list-models' to see
+misspelled or not enabled for your API key. Run 'nfind --list-models' to see
 what's available.
 ```
 
@@ -56,24 +56,24 @@ The model id in `--model` is unknown to the provider or not enabled for your key
 the valid ids and copy one:
 
 ```bash
-pfind --list-models                    # for the default (OpenAI) provider
-pfind --list-models --model groq/x     # for another provider
+nfind --list-models                    # for the default (OpenAI) provider
+nfind --list-models --model groq/x     # for another provider
 ```
 
 Note this is **not** the error for OpenAI reasoning/codex models that are served only on
-the `/responses` endpoint (e.g. `gpt-5.1-codex-mini`) — pfind detects those and switches
+the `/responses` endpoint (e.g. `gpt-5.1-codex-mini`) — nfind detects those and switches
 endpoints automatically, so they work without any flag. See [endpoint
 selection](cli.md#endpoint-selection-chat-completions-vs-responses).
 
 ### No results when there should be some
 
-- **Wrong directory.** pfind searches the `PATH` argument, defaulting to the current
-  directory. Pass the directory explicitly: `pfind "…" ~/Music`.
+- **Wrong directory.** nfind searches the `PATH` argument, defaulting to the current
+  directory. Pass the directory explicitly: `nfind "…" ~/Music`.
 - **Empty output is valid.** Exit code `0` with no lines means the filter matched
   nothing. Inspect what it actually did with `--show-code`:
 
   ```bash
-  pfind "audio files" ~/Music --show-code
+  nfind "audio files" ~/Music --show-code
   ```
 
 - **Prompt too narrow or ambiguous.** Rephrase more explicitly, e.g. list the
@@ -88,7 +88,7 @@ error: Generated filter exceeded the 10s timeout.
 Content-heavy prompts over large trees can exceed the default limit. Raise it:
 
 ```bash
-pfind "text files containing a TODO comment" . --timeout 60
+nfind "text files containing a TODO comment" . --timeout 60
 ```
 
 If it still times out, narrow the search path or make the prompt more selective.
@@ -102,25 +102,25 @@ diagnose and stabilise:
 - Use [`--confirm`](cli.md#reviewing-the-generated-code) to approve the code first.
 - Be explicit in the prompt (extensions, thresholds, "directly inside" vs. "anywhere
   beneath"). See [Examples](examples.md) for well-formed prompts.
-- A stronger model can help: `pfind "…" --model gpt-4o`.
+- A stronger model can help: `nfind "…" --model gpt-4o`.
 
 ### Worker image build is slow or fails
 
-The first run builds `pfind-search-paths:latest` and must pull `python:3.12-slim`
+The first run builds `nfind-search-paths:latest` and must pull `python:3.12-slim`
 once, which needs network access. If a build hangs, raise `--build-timeout`, or
 rebuild explicitly:
 
 ```bash
-pfind "files with no extension" . --rebuild --build-timeout 300
+nfind "files with no extension" . --rebuild --build-timeout 300
 ```
 
 ### Searches are slow on large trees
 
-pfind enumerates every path under the search root before generating code, and the
+nfind enumerates every path under the search root before generating code, and the
 filter then runs over that whole list inside the container. For very large trees,
 search a more specific subdirectory, or raise `--memory` / `--cpus` if the worker is
 resource-bound:
 
 ```bash
-pfind "…" ./subdir --memory 512m --cpus 2
+nfind "…" ./subdir --memory 512m --cpus 2
 ```

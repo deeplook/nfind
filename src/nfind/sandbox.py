@@ -1,7 +1,7 @@
 """A small, domain-agnostic sandbox for running untrusted code in Docker.
 
 This module knows nothing about prompts, paths, filters, or the worker protocol; it
-owns only the *generic* half of pfind's execution: building/deriving a Docker image and
+owns only the *generic* half of nfind's execution: building/deriving a Docker image and
 running a single hardened, disposable container with stdin piped in and stdout/stderr
 captured. The security-relevant ``docker run`` flag set lives in exactly one place
 (:meth:`DockerSandbox._docker_run_command`) so it can be audited at a glance.
@@ -74,7 +74,7 @@ class SandboxOutputTooLarge(SandboxError):
 
 
 class Sandbox(Protocol):
-    """The capability pfind needs from an execution backend."""
+    """The capability nfind needs from an execution backend."""
 
     def ensure_image(self, *, rebuild: bool = False) -> None: ...
 
@@ -291,7 +291,7 @@ class DockerSandbox:
         *,
         dockerfile: str | Path = "Dockerfile.python",
         build_timeout: float = DEFAULT_BUILD_TIMEOUT,
-        name_prefix: str = "pfind-search-",
+        name_prefix: str = "nfind-search-",
     ) -> None:
         self.image = image
         self._dockerfile = Path(dockerfile)
@@ -316,7 +316,7 @@ class DockerSandbox:
         derived = _derived_image_tag(self.image, dockerfile_text)
         if not rebuild and _image_exists(derived):
             return derived
-        with tempfile.TemporaryDirectory(prefix="pfind-deps-") as context:
+        with tempfile.TemporaryDirectory(prefix="nfind-deps-") as context:
             (Path(context) / "Dockerfile").write_text(dockerfile_text)
             try:
                 completed = _run_docker(

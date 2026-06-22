@@ -1,9 +1,9 @@
-"""Configuration constants and defaults shared across pfind's modules."""
+"""Configuration constants and defaults shared across nfind's modules."""
 
 from __future__ import annotations
 
-DEFAULT_IMAGE = "pfind-search-paths:latest"
-DEFAULT_NODE_IMAGE = "pfind-search-node:latest"
+DEFAULT_IMAGE = "nfind-search-paths:latest"
+DEFAULT_NODE_IMAGE = "nfind-search-node:latest"
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_RUNTIME = "python"
 DEFAULT_PROVIDER = "openai"
@@ -53,7 +53,7 @@ DEFAULT_GENERATION_ATTEMPTS = 3
 _RETRY_TEMPERATURE = 0.3
 DOCKER_CHECK_TIMEOUT = 10.0
 DEFAULT_BUILD_TIMEOUT = 120.0
-# Line length ruff wraps generated filters to (matches pfind's own style; pinned so the
+# Line length ruff wraps generated filters to (matches nfind's own style; pinned so the
 # output is stable regardless of ruff's default).
 FILTER_LINE_LENGTH = 100
 

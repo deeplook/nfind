@@ -1,5 +1,5 @@
 'use strict';
-// Node.js worker for pfind. Reads a JSON request {code, paths} on stdin, defines
+// Node.js worker for nfind. Reads a JSON request {code, paths} on stdin, defines
 // the generated filterPaths(paths) function, runs it, and writes a JSON response
 // {ok, results|error} on stdout. The container provides the isolation; this worker
 // only enforces the stdin/stdout protocol.

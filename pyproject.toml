@@ -1,5 +1,5 @@
 [project]
-name = "pfind"
+name = "nfind"
 version = "0.1.0"
 description = "Find files by describing them in natural language, with the generated filter sandboxed in Docker."
 readme = "README.md"
@@ -12,22 +12,22 @@ dependencies = [
 ]
 
 [project.scripts]
-pfind = "pfind.cli:app"
+nfind = "nfind.cli:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pfind"]
+packages = ["src/nfind"]
 artifacts = [
-    "src/pfind/Dockerfile.python",
-    "src/pfind/Dockerfile.node",
-    "src/pfind/worker_node.cjs",
+    "src/nfind/Dockerfile.python",
+    "src/nfind/Dockerfile.node",
+    "src/nfind/worker_node.cjs",
 ]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/pfind", "README.md"]
+include = ["src/nfind", "README.md"]
 
 [dependency-groups]
 dev = [

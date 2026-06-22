@@ -1,8 +1,8 @@
 """Persistence of user-approved packages (the dependency whitelist).
 
 The effective allow-set for a runtime is its built-in defaults plus the packages the
-user has approved, stored as JSON in pfind's config directory as ``whitelist.json``
-(or ``$PFIND_WHITELIST`` when set). See :mod:`pfind.paths` for the per-OS location.
+user has approved, stored as JSON in nfind's config directory as ``whitelist.json``
+(or ``$NFIND_WHITELIST`` when set). See :mod:`nfind.paths` for the per-OS location.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from .runtimes import RUNTIMES
 
 def _whitelist_path() -> Path:
     """Location of the persisted package whitelist."""
-    override = os.environ.get("PFIND_WHITELIST")
+    override = os.environ.get("NFIND_WHITELIST")
     if override:
         return Path(override)
     return user_dir("config") / "whitelist.json"

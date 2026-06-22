@@ -1,7 +1,7 @@
 """Pure Docker-mechanics tests targeting the DockerSandbox layer.
 
 These exercise the hardened flag set, image build/derive, and the timeout/output-size
-mapping directly against :mod:`pfind.sandbox`, patching ``_run_docker`` so they need no
+mapping directly against :mod:`nfind.sandbox`, patching ``_run_docker`` so they need no
 running Docker daemon.
 """
 
@@ -10,14 +10,14 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from pfind import sandbox
-from pfind.sandbox import DockerSandbox, Limits, Mount
+from nfind import sandbox
+from nfind.sandbox import DockerSandbox, Limits, Mount
 
 
 def test_docker_error_aliases_map_to_sandbox_hierarchy():
     # Existing `except DockerUnavailableError` / `except DockerError` call sites must keep
     # catching what the sandbox raises, so the aliases are the same objects.
-    from pfind.errors import DockerError, DockerUnavailableError
+    from nfind.errors import DockerError, DockerUnavailableError
 
     assert DockerUnavailableError is sandbox.SandboxUnavailable
     assert DockerError is sandbox.SandboxError
@@ -93,12 +93,12 @@ def test_build_image_reports_timeout():
 
 def test_derived_image_tag_is_stable_and_content_addressed():
     text = "FROM base\nRUN pip install a b\n"
-    tag1 = sandbox._derived_image_tag("pfind-search-paths:latest", text)
-    tag2 = sandbox._derived_image_tag("pfind-search-paths:latest", text)
+    tag1 = sandbox._derived_image_tag("nfind-search-paths:latest", text)
+    tag2 = sandbox._derived_image_tag("nfind-search-paths:latest", text)
     assert tag1 == tag2
-    assert tag1.startswith("pfind-search-paths:deps-")
+    assert tag1.startswith("nfind-search-paths:deps-")
     # Different Dockerfile text yields a different tag.
-    assert tag1 != sandbox._derived_image_tag("pfind-search-paths:latest", text + "x")
+    assert tag1 != sandbox._derived_image_tag("nfind-search-paths:latest", text + "x")
 
 
 def test_derive_image_builds_and_returns_tag():

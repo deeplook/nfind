@@ -1,4 +1,4 @@
-"""Command-line interface for pfind."""
+"""Command-line interface for nfind."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def _load_config_defaults(ctx: typer.Context, value: Path | None) -> Path | None
 
     Runs as an eager-option callback so the file's values become the defaults for the
     remaining options, with command-line arguments still taking precedence. An explicit
-    ``--config``/``PFIND_CONFIG`` path must exist; the default location is used only when
+    ``--config``/``NFIND_CONFIG`` path must exist; the default location is used only when
     present.
     """
     if value is not None:
@@ -113,12 +113,12 @@ def main(
         Path | None,
         typer.Option(
             "--config",
-            envvar="PFIND_CONFIG",
+            envvar="NFIND_CONFIG",
             is_eager=True,
             callback=_load_config_defaults,
             help="TOML config file supplying defaults for options (model, timeout, "
             "memory, cpus, pids-limit, build-timeout, image, json, verbose, no-format). "
-            "Defaults to $XDG_CONFIG_HOME/pfind/config.toml; command-line options win.",
+            "Defaults to $XDG_CONFIG_HOME/nfind/config.toml; command-line options win.",
         ),
     ] = None,
     model: Annotated[

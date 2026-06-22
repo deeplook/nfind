@@ -5,7 +5,7 @@ The host enumerates the search tree and asks the model for code.  The generated
 code runs in a disposable container with the search root mounted at /data as
 read-only.  Only paths supplied by the host may be returned.
 
-The in-container worker that runs the generated code lives in :mod:`pfind.worker`,
+The in-container worker that runs the generated code lives in :mod:`nfind.worker`,
 a self-contained, standard-library-only module the Docker image ships and runs as
 ``python worker.py --worker``.
 """
@@ -176,7 +176,7 @@ def _strip_code_fence(code: str) -> str:
 
 
 def _ruff_path() -> str | None:
-    """Locate the ruff executable, preferring the one in pfind's own environment."""
+    """Locate the ruff executable, preferring the one in nfind's own environment."""
     binary = "ruff.exe" if os.name == "nt" else "ruff"
     local = Path(sys.executable).resolve().parent / binary
     if local.exists():
@@ -456,7 +456,7 @@ def _request_completion(
                     on_responses_switch()
                 continue
             if _is_model_not_found(exc):
-                hint = "pfind --list-models"
+                hint = "nfind --list-models"
                 if provider != DEFAULT_PROVIDER:
                     hint += f" --model {provider}/<name>"
                 raise RuntimeError(
@@ -619,8 +619,8 @@ def build_worker_image(
     dependencies it builds (once, then caches) a derived image that layers the
     runtime's package install (``pip``/``npm``) on top of the base, and returns
     that derived tag. The actual Docker work is delegated to ``sandbox`` (a
-    :class:`~pfind.sandbox.DockerSandbox` for the runtime by default); this function
-    keeps only the pfind-specific ``Runtime``/dependency logic.
+    :class:`~nfind.sandbox.DockerSandbox` for the runtime by default); this function
+    keeps only the nfind-specific ``Runtime``/dependency logic.
     """
     if sandbox is None:
         sandbox = DockerSandbox(
@@ -642,7 +642,7 @@ def build_worker_image(
 
 
 def _parse_worker_response(stdout: bytes) -> dict[str, Any]:
-    """Decode and validate the worker's JSON protocol reply (pfind-specific)."""
+    """Decode and validate the worker's JSON protocol reply (nfind-specific)."""
     try:
         response = json.loads(stdout)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -674,11 +674,11 @@ def run_filter(
     """Execute generated code in the sandbox and return container-path records.
 
     Builds the ``{code, paths, meta}`` request, hands it to ``sandbox.run`` (a
-    :class:`~pfind.sandbox.DockerSandbox` for ``image`` by default), then validates the
+    :class:`~nfind.sandbox.DockerSandbox` for ``image`` by default), then validates the
     worker's ``{ok, results}`` reply against the supplied paths. The sandbox owns the
     hardened container and its limits; this adapter owns the worker protocol.
 
-    Pass a :class:`~pfind.sandbox.Limits` as ``limits`` to set the resource/output caps
+    Pass a :class:`~nfind.sandbox.Limits` as ``limits`` to set the resource/output caps
     directly; otherwise they are built from the ``timeout``/``memory``/``cpus``/
     ``pids_limit`` arguments (with the host's :data:`MAX_RESULT_BYTES` output cap).
     """
@@ -769,7 +769,7 @@ def search(
     filter as a global ``META`` dict, enabling queries that combine macOS metadata with
     file contents. It is a no-op on other platforms.
 
-    ``sandbox`` overrides the execution backend (a :class:`~pfind.sandbox.DockerSandbox`
+    ``sandbox`` overrides the execution backend (a :class:`~nfind.sandbox.DockerSandbox`
     built from the chosen runtime by default); pass a fake to run without Docker.
 
     ``exclude`` (glob patterns), ``use_default_ignores`` (skip common VCS/dependency/cache

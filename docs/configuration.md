@@ -1,6 +1,6 @@
 # Configuration
 
-pfind is controlled through [command-line options](cli.md#options), a handful of
+nfind is controlled through [command-line options](cli.md#options), a handful of
 environment variables, and an optional [config file](#config-file) that supplies defaults
 for the options. This page is a single place to see all of them; each links to the doc
 with the full detail.
@@ -11,9 +11,9 @@ with the full detail.
 | --- | --- |
 | `OPENAI_API_KEY` | API key for the default OpenAI provider. Required unless you select another provider. |
 | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY` | API key for the matching `provider/model` selector. Only the selected provider's key is needed. See [Providers](cli.md#providers). |
-| `PFIND_CONFIG` | Path to the [config file](#config-file). Overrides the default location. |
-| `PFIND_WHITELIST` | Overrides the path of the approved-package [whitelist file](dependencies.md#the-whitelist-file). |
-| `XDG_CONFIG_HOME` | Base directory for the config (`$XDG_CONFIG_HOME/pfind/config.toml`) and whitelist (`…/pfind/whitelist.json`); defaults to `~/.config`. |
+| `NFIND_CONFIG` | Path to the [config file](#config-file). Overrides the default location. |
+| `NFIND_WHITELIST` | Overrides the path of the approved-package [whitelist file](dependencies.md#the-whitelist-file). |
+| `XDG_CONFIG_HOME` | Base directory for the config (`$XDG_CONFIG_HOME/nfind/config.toml`) and whitelist (`…/nfind/whitelist.json`); defaults to `~/.config`. |
 | `NO_COLOR` | When set, disables colored output and syntax highlighting (the [`NO_COLOR`](https://no-color.org/) convention). Color is also disabled when stderr is not a TTY. |
 
 Local providers (`ollama/…`, `lmstudio/…`) need no API key.
@@ -21,18 +21,18 @@ Local providers (`ollama/…`, `lmstudio/…`) need no API key.
 ## Config file
 
 A TOML file can set defaults for the most-used options so you don't repeat them on every
-run. pfind reads it from, in order:
+run. nfind reads it from, in order:
 
 1. `--config PATH`,
-2. `$PFIND_CONFIG`,
-3. `$XDG_CONFIG_HOME/pfind/config.toml` (falling back to `~/.config/pfind/config.toml`).
+2. `$NFIND_CONFIG`,
+3. `$XDG_CONFIG_HOME/nfind/config.toml` (falling back to `~/.config/nfind/config.toml`).
 
-An explicit `--config`/`PFIND_CONFIG` path must exist; the default location is used only
+An explicit `--config`/`NFIND_CONFIG` path must exist; the default location is used only
 when present, so no config file is required. **Command-line options always override the
 file**, which overrides the built-in defaults.
 
 ```toml
-# ~/.config/pfind/config.toml
+# ~/.config/nfind/config.toml
 model = "anthropic/claude-3-5-sonnet-latest"
 timeout = 30
 memory = "512m"
@@ -64,16 +64,16 @@ name uses OpenAI; a `provider/model` selector targets any OpenAI-compatible
 [provider](cli.md#providers), for example:
 
 ```bash
-pfind "large log files" --model anthropic/claude-3-5-sonnet-latest
-pfind "TypeScript files using ts-morph" --model ollama/llama3.1
+nfind "large log files" --model anthropic/claude-3-5-sonnet-latest
+nfind "TypeScript files using ts-morph" --model ollama/llama3.1
 ```
 
 ## Persistent state
 
-The only state pfind persists between runs is the dependency
+The only state nfind persists between runs is the dependency
 [whitelist](dependencies.md#the-whitelist-file) — the packages you've approved for
 filters to install. Edit or delete that file to manage what installs without a prompt;
-relocate it with `PFIND_WHITELIST`.
+relocate it with `NFIND_WHITELIST`.
 
 ## See also
 

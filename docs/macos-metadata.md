@@ -13,19 +13,19 @@ when you save a file from the web.
 `--macos-meta` makes a small, high-value slice of that metadata available to the filter.
 
 ```bash
-pfind "PDFs I downloaded from the web that mention 'invoice', using pypdf" ~/Downloads --macos-meta
-pfind "files tagged Red whose contents contain a TODO" ~/Projects --macos-meta
+nfind "PDFs I downloaded from the web that mention 'invoice', using pypdf" ~/Downloads --macos-meta
+nfind "files tagged Red whose contents contain a TODO" ~/Projects --macos-meta
 ```
 
 ## Why this needs special support
 
-pfind's filter runs inside a **Linux** container, against your files bind-mounted
+nfind's filter runs inside a **Linux** container, against your files bind-mounted
 read-only at `/data`. macOS metadata is *not* visible there: Spotlight's index lives
 only on the host, and extended attributes (tags, quarantine, where-from) do not
 reliably survive Docker's file-sharing layer into the container. So a filter simply
 *can't read* these attributes by itself.
 
-`--macos-meta` closes that gap **without weakening the sandbox**: pfind reads the
+`--macos-meta` closes that gap **without weakening the sandbox**: nfind reads the
 attributes on the host (a read-only operation, where the data actually lives) during
 the path walk, then passes them into the container alongside the paths. The untrusted
 generated code still runs sandboxed — no network, read-only mount, dropped
@@ -36,7 +36,7 @@ capabilities — and never calls back to the host.
 The unique benefit is queries that **combine** macOS metadata with file *contents* or
 computed *structure* — something neither tool below can do alone:
 
-| Query | Spotlight (`mdfind`) | pfind (no flag) | pfind `--macos-meta` |
+| Query | Spotlight (`mdfind`) | nfind (no flag) | nfind `--macos-meta` |
 |---|---|---|---|
 | "PDFs I downloaded from the web that mention 'invoice'" | sees the download flag, can't grep PDF text | reads PDF text, can't see quarantine | ✅ both |
 | "files tagged Red whose contents contain a TODO" | sees the tag, not the content condition | reads content, not the tag | ✅ both |
@@ -45,7 +45,7 @@ computed *structure* — something neither tool below can do alone:
 For **pure**-metadata queries ("everything tagged Red", "files downloaded yesterday"),
 prefer Spotlight (`mdfind`) — it answers those instantly from its index. `--macos-meta`
 earns its keep only when a content or structure condition is also present. See
-[How pfind compares](comparison.md).
+[How nfind compares](comparison.md).
 
 ## What's exposed
 

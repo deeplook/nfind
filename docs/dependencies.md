@@ -3,7 +3,7 @@
 ← [Home](index.md)
 
 Some questions can't be answered from names and raw bytes alone — reading MP3 tags,
-image dimensions, PDF text, or the structure of source code needs a library. pfind
+image dimensions, PDF text, or the structure of source code needs a library. nfind
 lets the generated filter **declare the third-party packages it needs**, then installs
 them into a sandboxed image — but only after the package has been approved.
 
@@ -21,14 +21,14 @@ that the compiler API provides.
 
 1. **Declare.** When generating the filter, the model also returns the PyPI packages
    the code imports (for example `mutagen` to read audio tags).
-2. **Check the whitelist.** pfind compares the requested packages against an approved
+2. **Check the whitelist.** nfind compares the requested packages against an approved
    set for that [runtime](runtimes.md): a small [built-in default list](#the-default-list)
    plus anything you've approved before (saved to disk). Python (pip) and Node.js
    (npm) packages are tracked separately.
-3. **Approve new packages.** If a package isn't already approved, pfind asks before
+3. **Approve new packages.** If a package isn't already approved, nfind asks before
    installing it. On approval it is **remembered** so you're not asked again.
 4. **Build a derived image.** Approved packages are installed into a derived worker
-   image (`pfind-search-paths:deps-<hash>`) layered on the base. The image is cached
+   image (`nfind-search-paths:deps-<hash>`) layered on the base. The image is cached
    and reused for the same set of packages. Prompts that need no packages keep using
    the stdlib-only base image.
 5. **Run.** The filter executes in the derived image — with the packages available,
@@ -47,17 +47,17 @@ that the compiler API provides.
 
 ```bash
 # Prompt before installing anything new (default)
-pfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music
+nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music
 
 # Trust this run — install whatever it asks for, and remember it
-pfind "images larger than 4000px on either side" ~/Photos --yes
+nfind "images larger than 4000px on either side" ~/Photos --yes
 
 # Force standard-library-only; reject any package request
-pfind "files containing the word TODO" . --no-deps
+nfind "files containing the word TODO" . --no-deps
 ```
 
 If a filter needs a package that isn't approved and you don't approve it (or you pass
-`--no-deps`), pfind aborts with a `DependencyError` before building or running
+`--no-deps`), nfind aborts with a `DependencyError` before building or running
 anything.
 
 ## The default list
@@ -80,10 +80,10 @@ prompt.
 Approvals are stored as JSON at:
 
 ```
-$XDG_CONFIG_HOME/pfind/whitelist.json     # or ~/.config/pfind/whitelist.json
+$XDG_CONFIG_HOME/nfind/whitelist.json     # or ~/.config/nfind/whitelist.json
 ```
 
-Override the location with the `PFIND_WHITELIST` environment variable. The file lists
+Override the location with the `NFIND_WHITELIST` environment variable. The file lists
 the packages you've approved, per runtime; edit or delete it to manage what installs
 without a prompt:
 

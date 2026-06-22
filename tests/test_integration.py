@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from pfind import backend, sandbox
+from nfind import backend, sandbox
 
 pytestmark = pytest.mark.integration
 

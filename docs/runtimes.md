@@ -4,18 +4,18 @@
 
 Most filters are best written in Python, but some questions are far easier in the
 JavaScript/TypeScript ecosystem — parsing TypeScript with `ts-morph`, walking a JS
-AST with `acorn`, and so on. pfind supports both: the model **chooses the runtime**
-for each prompt, and pfind runs the filter in the matching sandbox image.
+AST with `acorn`, and so on. nfind supports both: the model **chooses the runtime**
+for each prompt, and nfind runs the filter in the matching sandbox image.
 
 ## How the runtime is chosen
 
 The model returns a `runtime` alongside the code and dependencies:
 
 - **`python`** (the default) — a `filter_paths(paths)` function; dependencies are pip
-  packages; runs in the Python base image (`pfind-search-paths:latest`).
+  packages; runs in the Python base image (`nfind-search-paths:latest`).
 - **`node`** — a CommonJS `filterPaths(paths)` function using `require(...)`;
   dependencies are npm packages; runs in the Node.js base image
-  (`pfind-search-node:latest`, based on `node:22-slim`).
+  (`nfind-search-node:latest`, based on `node:22-slim`).
 
 It picks `node` only when the JS/TS ecosystem is clearly the better tool; otherwise it
 stays with Python. You can nudge it in the prompt ("…using ts-morph", "use the node
@@ -39,20 +39,20 @@ Pre-approved Node packages (install without a prompt):
 `yaml`
 
 npm packages are installed into a derived Node image
-(`pfind-search-node:deps-<hash>`) with `npm install`, exactly like pip packages are
+(`nfind-search-node:deps-<hash>`) with `npm install`, exactly like pip packages are
 layered onto the Python base. See [Dependencies & the whitelist](dependencies.md).
 
 ## Examples
 
 ```bash
 # Likely Python (default)
-pfind "files with no extension"
+nfind "files with no extension"
 
 # Nudge Node + a pre-approved package
-pfind "TypeScript files that export a default, using ts-morph" ./src
+nfind "TypeScript files that export a default, using ts-morph" ./src
 
 # Node, standard library only
-pfind "TypeScript files that declare an interface, using the node runtime, no packages" ./src
+nfind "TypeScript files that declare an interface, using the node runtime, no packages" ./src
 ```
 
 Use [`--show-code`](cli.md#reviewing-the-generated-code) to see which runtime was
@@ -89,7 +89,7 @@ prefer Python otherwise.
 
 ### Languages that don't clear the bar
 
-- **Compiled languages (Rust, Java, C)** fight pfind's model: it *generates code and
+- **Compiled languages (Rust, Java, C)** fight nfind's model: it *generates code and
   runs it immediately* in a disposable container. A per-filter compile step is slow
   and needs a heavy toolchain image. `syn` is excellent for Rust ASTs, but a
   `cargo build` per query is the wrong shape.

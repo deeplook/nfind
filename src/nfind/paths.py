@@ -1,6 +1,6 @@
-"""Cross-platform locations for pfind's per-user config and cache directories.
+"""Cross-platform locations for nfind's per-user config and cache directories.
 
-pfind is a CLI for developers, so on Linux and macOS it follows the Unix/XDG
+nfind is a CLI for developers, so on Linux and macOS it follows the Unix/XDG
 convention (``$XDG_CONFIG_HOME``/``$XDG_CACHE_HOME``, falling back to the ``~/.config``
 and ``~/.cache`` dotfolders that CLI tools use on macOS rather than ``~/Library``). On
 Windows, where there is no dotfile convention, it uses the native app-data roots:
@@ -17,7 +17,7 @@ _WINDOWS_BASES = {"config": ("APPDATA", "Roaming"), "cache": ("LOCALAPPDATA", "L
 
 
 def user_dir(kind: str) -> Path:
-    """Return pfind's per-user directory for ``kind`` (``"config"`` or ``"cache"``).
+    """Return nfind's per-user directory for ``kind`` (``"config"`` or ``"cache"``).
 
     The directory is not created; callers create it when they write.
     """
@@ -28,4 +28,4 @@ def user_dir(kind: str) -> Path:
         base = os.environ.get(env_var) or str(Path.home() / "AppData" / subdir)
     else:
         base = os.environ.get(f"XDG_{kind.upper()}_HOME") or str(Path.home() / f".{kind}")
-    return Path(base) / "pfind"
+    return Path(base) / "nfind"

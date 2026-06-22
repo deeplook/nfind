@@ -42,9 +42,9 @@ def _header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
     """Provenance + safety lines for a saved filter, each prefixed with ``comment``."""
     warning = (
         "WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the "
-        "pfind Docker sandbox -- no read-only mount, no network block, full user "
+        "nfind Docker sandbox -- no read-only mount, no network block, full user "
         "privileges. Only run filters you have reviewed and trust. To replay it "
-        "sandboxed instead, use `pfind --run`."
+        "sandboxed instead, use `nfind --run`."
     )
     # ruff formats code but not prose, so wrap the warning paragraph ourselves to the
     # same width (accounting for the comment prefix). The aligned key/value lines are
@@ -52,7 +52,7 @@ def _header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
     prefix_len = len(comment) + 1 if comment else 0
     warning_lines = textwrap.wrap(warning, width=FILTER_LINE_LENGTH - prefix_len)
     lines = [
-        "pfind filter",
+        "nfind filter",
         "",
         f"Prompt:  {prompt}",
         f"Model:   {model}",
@@ -80,7 +80,7 @@ def serialize_filter(generated: GeneratedFilter, prompt: str, model: str) -> str
         header = "\n".join(_header(prompt, model, generated.runtime, "//"))
         note = (
             "// Note: standalone `uv run` is python-only; replay this file sandboxed "
-            "with `pfind --run`."
+            "with `nfind --run`."
         )
         return f"{header}\n{note}\n\n{generated.code.rstrip()}\n"
 

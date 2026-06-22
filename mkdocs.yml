@@ -1,8 +1,8 @@
-site_name: pfind
+site_name: nfind
 site_description: Find files by describing them in natural language, with the generated filter sandboxed in Docker
-site_url: https://deeplook.github.io/pfind
-repo_url: https://github.com/deeplook/pfind
-repo_name: deeplook/pfind
+site_url: https://deeplook.github.io/nfind
+repo_url: https://github.com/deeplook/nfind
+repo_name: deeplook/nfind
 
 theme:
   name: material
@@ -39,7 +39,7 @@ nav:
   - Dependencies: dependencies.md
   - Runtimes: runtimes.md
   - macOS Metadata: macos-metadata.md
-  - How pfind Compares: comparison.md
+  - How nfind Compares: comparison.md
   - Safety Model: safety.md
   - Python API: api.md
   - Troubleshooting: troubleshooting.md

@@ -1,12 +1,12 @@
 """Optional TOML config file supplying defaults for CLI options.
 
-pfind needs no config file to run; when one is present it only provides *defaults* for a
+nfind needs no config file to run; when one is present it only provides *defaults* for a
 subset of the command-line options, so the precedence is
 
-    command-line option  >  --config / PFIND_CONFIG file  >  built-in default
+    command-line option  >  --config / NFIND_CONFIG file  >  built-in default
 
-The file is looked up at ``--config``/``$PFIND_CONFIG`` if given, otherwise at
-``config.toml`` in pfind's config directory (see :mod:`pfind.paths` for the per-OS
+The file is looked up at ``--config``/``$NFIND_CONFIG`` if given, otherwise at
+``config.toml`` in nfind's config directory (see :mod:`nfind.paths` for the per-OS
 location) and used only when it exists. Keys mirror the option flag names
 (``pids-limit``); the underscore spelling (``pids_limit``) is accepted too.
 """
@@ -78,7 +78,7 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
 
 
 def default_config_path() -> Path:
-    """Location of the config file when neither --config nor PFIND_CONFIG is set."""
+    """Location of the config file when neither --config nor NFIND_CONFIG is set."""
     return user_dir("config") / "config.toml"
 
 

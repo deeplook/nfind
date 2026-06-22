@@ -6,29 +6,29 @@ Install via `uv`, `pipx`, or `pip` — `uv tool install` is the recommended meth
 
 ```bash
 # Try without installing (always fetches the latest release)
-uvx pfind@latest --help
+uvx nfind@latest --help
 
 # Recommended: isolated tool install via uv (fastest)
-uv tool install pfind
+uv tool install nfind
 
 # Alternative: pipx (install pipx first if needed: brew install pipx on macOS)
-pipx install pfind
+pipx install nfind
 
 # Into the current environment
-pip install pfind
+pip install nfind
 ```
 
-## How to run pfind
+## How to run nfind
 
 | Method / Install | Command | Best for |
 |---|---|---|
-| `uv tool install pfind` | `pfind "…"` | Day-to-day use — isolated install, fast startup |
-| `uvx pfind` (no install) | `uvx pfind "…"` | Trying it out or one-off use; always runs the latest release |
-| `pip install pfind` | `from pfind import search` | Scripting, automation, notebooks — see [Python API](api.md) |
+| `uv tool install nfind` | `nfind "…"` | Day-to-day use — isolated install, fast startup |
+| `uvx nfind` (no install) | `uvx nfind "…"` | Trying it out or one-off use; always runs the latest release |
+| `pip install nfind` | `from nfind import search` | Scripting, automation, notebooks — see [Python API](api.md) |
 
 ## Prerequisites
 
-pfind needs two things at runtime in addition to Python:
+nfind needs two things at runtime in addition to Python:
 
 | Requirement | Used for | macOS | Debian/Ubuntu | Check |
 |---|---|---|---|---|
@@ -48,17 +48,17 @@ sandbox that runs the generated code has networking disabled. See the
 
 ## The worker image
 
-On first use, pfind builds a small base worker image for the chosen
+On first use, nfind builds a small base worker image for the chosen
 [runtime](runtimes.md) and reuses it on later runs:
 
-- **Python** — `pfind-search-paths:latest` (based on `python:3.12-slim`)
-- **Node.js** — `pfind-search-node:latest` (based on `node:22-slim`)
+- **Python** — `nfind-search-paths:latest` (based on `python:3.12-slim`)
+- **Node.js** — `nfind-search-node:latest` (based on `node:22-slim`)
 
 Each base needs only its standard runtime. Force a rebuild with
 [`--rebuild`](cli.md#options), or override the base tag with
 [`--image`](cli.md#options).
 
-When a prompt needs a third-party library, pfind builds a **derived** image
+When a prompt needs a third-party library, nfind builds a **derived** image
 (`…:deps-<hash>`) that layers the approved packages (pip or npm) on top of the base,
 and caches it for reuse. See [Dependencies & the whitelist](dependencies.md).
 

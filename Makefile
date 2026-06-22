@@ -25,7 +25,7 @@ coverage:  ## Run tests with HTML + terminal coverage report
 check-all: install format lint test clean  ## Run format, lint, test, and clean
 	@echo "All checks passed!"
 
-install-tool:  ## Install pfind as a uv tool (reinstall)
+install-tool:  ## Install nfind as a uv tool (reinstall)
 	uv tool install --reinstall .
 
 serve-docs:  ## Serve the MkDocs documentation locally (http://localhost:8000)

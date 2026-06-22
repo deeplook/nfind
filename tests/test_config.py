@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from pfind import cli, config
+from nfind import cli, config
 
 # --- config.load_config ---------------------------------------------------------
 
@@ -82,13 +82,13 @@ def test_load_config_rejects_invalid_toml(tmp_path):
 
 def test_default_config_path_uses_xdg(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    assert config.default_config_path() == tmp_path / "xdg" / "pfind" / "config.toml"
+    assert config.default_config_path() == tmp_path / "xdg" / "nfind" / "config.toml"
 
 
 def test_default_config_path_falls_back_to_home(tmp_path, monkeypatch):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setattr(config.Path, "home", classmethod(lambda cls: tmp_path))
-    assert config.default_config_path() == tmp_path / ".config" / "pfind" / "config.toml"
+    assert config.default_config_path() == tmp_path / ".config" / "nfind" / "config.toml"
 
 
 # --- CLI integration: precedence and errors -------------------------------------
@@ -123,7 +123,7 @@ def test_cli_flag_overrides_config(tmp_path):
 def test_cli_reads_config_from_env_var(tmp_path, monkeypatch):
     cfg = tmp_path / "config.toml"
     cfg.write_text('memory = "2g"\n')
-    monkeypatch.setenv("PFIND_CONFIG", str(cfg))
+    monkeypatch.setenv("NFIND_CONFIG", str(cfg))
     runner = CliRunner()
     with patch.object(cli.backend, "search", return_value=[]) as search:
         result = runner.invoke(cli.app, ["files", str(tmp_path)])
@@ -133,8 +133,8 @@ def test_cli_reads_config_from_env_var(tmp_path, monkeypatch):
 
 
 def test_cli_reads_default_config_path(tmp_path, monkeypatch):
-    # With neither --config nor PFIND_CONFIG, the XDG default location is used if present.
-    cfg_dir = tmp_path / "xdg" / "pfind"
+    # With neither --config nor NFIND_CONFIG, the XDG default location is used if present.
+    cfg_dir = tmp_path / "xdg" / "nfind"
     cfg_dir.mkdir(parents=True)
     (cfg_dir / "config.toml").write_text("verbose = true\n")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))

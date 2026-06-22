@@ -1,4 +1,4 @@
-"""Tests for the Node.js worker, ``src/pfind/worker_node.cjs``.
+"""Tests for the Node.js worker, ``src/nfind/worker_node.cjs``.
 
 These run the worker through a real ``node`` process -- the JavaScript counterpart to
 the in-process Python-worker tests in ``test_backend.py`` -- and assert its stdin/stdout
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-import pfind.backend as backend
+import nfind.backend as backend
 
 WORKER = Path(backend.__file__).parent / "worker_node.cjs"
 

@@ -2,18 +2,18 @@
 
 ← [Home](index.md)
 
-By default `pfind` prints one path per line, like `find`. When your prompt asks for
+By default `nfind` prints one path per line, like `find`. When your prompt asks for
 extra per-file information, the generated filter attaches it to each result and you
 choose how to surface it.
 
-Internally pfind always works with structured **records** — each result is an object
+Internally nfind always works with structured **records** — each result is an object
 with at least a `path` key, plus any extra fields the prompt produced. The output
 *mode* is just how those records are formatted for display.
 
 ## Default — paths only
 
 ```bash
-pfind "Python files that import os"
+nfind "Python files that import os"
 ```
 
 ```
@@ -26,7 +26,7 @@ Clean and pipeable. Any extra fields the filter produced are ignored in this mod
 ## `--verbose` / `-v` — path plus fields
 
 ```bash
-pfind "Python files, and for each the number of lines" --verbose
+nfind "Python files, and for each the number of lines" --verbose
 ```
 
 ```
@@ -41,7 +41,7 @@ gracefully to the default for prompts that don't ask for data.
 ## `--json` — machine-readable records
 
 ```bash
-pfind "Python files, and for each the number of lines" --json
+nfind "Python files, and for each the number of lines" --json
 ```
 
 ```json
@@ -58,7 +58,7 @@ pfind "Python files, and for each the number of lines" --json
 number. Pipe it into `jq` for further processing:
 
 ```bash
-pfind "Python files, and for each the number of lines" --json \
+nfind "Python files, and for each the number of lines" --json \
   | jq '.results | sort_by(.lines) | reverse | .[0]'
 ```
 

@@ -9,7 +9,7 @@
 The public entry point is `search`, re-exported from the top-level package:
 
 ```python
-from pfind import search
+from nfind import search
 
 # Returns a list of records, each a dict with at least a "path" key (a host path).
 # When the prompt asks for extra per-file values, they appear as additional keys.
@@ -54,7 +54,7 @@ image is used unless `image` overrides it. The keyword arguments mirror the
 
 `model` accepts a bare name (OpenAI) or a `provider/model` selector for any
 OpenAI-compatible provider in `backend.PROVIDERS` (`anthropic/…`, `gemini/…`,
-`groq/…`, `ollama/…`, `openrouter/<vendor>/<model>`, …). pfind reuses the OpenAI SDK
+`groq/…`, `ollama/…`, `openrouter/<vendor>/<model>`, …). nfind reuses the OpenAI SDK
 against the provider's base URL and reads its `*_API_KEY`; see
 [Providers](cli.md#providers).
 
@@ -66,8 +66,8 @@ produced but **before** it runs. It exposes `.code`, `.runtime` (`"python"` or
 abort before execution:
 
 ```python
-from pfind import search
-from pfind.backend import GeneratedFilter
+from nfind import search
+from nfind.backend import GeneratedFilter
 
 def review(generated: GeneratedFilter) -> None:
     print(f"[{generated.runtime}] {generated.dependencies}")
@@ -93,8 +93,8 @@ sandbox without an LLM call, gating any declared packages through
 ```python
 from pathlib import Path
 
-from pfind import serialize_filter, run_saved, search
-from pfind.backend import GeneratedFilter
+from nfind import serialize_filter, run_saved, search
+from nfind.backend import GeneratedFilter
 
 # Capture and persist a filter while searching:
 saved: list[GeneratedFilter] = []
@@ -114,7 +114,7 @@ and the `uv run` trusted fast path.
 
 The model is asked for the filter in a **single** call. If its reply fails validation
 (malformed JSON, the wrong function shape, an invalid package name, an unknown
-runtime), pfind feeds the error back and retries — up to 3 attempts in total. The
+runtime), nfind feeds the error back and retries — up to 3 attempts in total. The
 first attempt runs at temperature 0; retries nudge the temperature up so the model
 diverges from the reply that just failed. Only validation errors are retried; API,
 Docker, and dependency-approval failures are not. If every attempt fails, the last
@@ -136,7 +136,7 @@ built-in list plus saved approvals). `load_whitelist` and `approve_packages` tak
 `runtime` argument (`"python"` or `"node"`, default `"python"`).
 
 ```python
-from pfind import search, load_whitelist
+from nfind import search, load_whitelist
 
 records = search(
     "~/Music",
@@ -150,7 +150,7 @@ See [Dependencies & the whitelist](dependencies.md) for the full model.
 
 ### macOS metadata
 
-With `macos_meta=True` on a macOS host, pfind reads selected per-path attributes
+With `macos_meta=True` on a macOS host, nfind reads selected per-path attributes
 (Finder tags, quarantine/where-from) during enumeration and exposes them to a Python
 filter as a global `META` dict, so filters can combine macOS metadata with file
 contents. It is a no-op on other platforms. See
@@ -159,7 +159,7 @@ contents. It is a no-op on other platforms. See
 ## Errors
 
 ```python
-from pfind import DependencyError, DockerError, DockerUnavailableError
+from nfind import DependencyError, DockerError, DockerUnavailableError
 
 try:
     records = search(".", "files with no extension")
@@ -177,12 +177,12 @@ results) surface as `TimeoutError` and `RuntimeError`.
 
 ## Lower-level building blocks
 
-For finer control, `pfind.backend` exposes the individual steps that `search`
+For finer control, `nfind.backend` exposes the individual steps that `search`
 orchestrates:
 
 ```python
 from pathlib import Path
-from pfind import backend
+from nfind import backend
 
 root = Path(".").resolve()
 container_paths, host_by_container = backend.enumerate_paths(root)
@@ -207,19 +207,19 @@ These return container paths (`/data/...`); `search` maps them back to host path
 ## The sandbox component
 
 The hardened Docker execution lives behind a small, domain-agnostic `Sandbox` protocol
-in `pfind.sandbox`. The default backend, `DockerSandbox`, owns the security-relevant
+in `nfind.sandbox`. The default backend, `DockerSandbox`, owns the security-relevant
 `docker run` flag set (no network, read-only root, dropped capabilities,
 `no-new-privileges`, and process/memory/CPU/file-descriptor/tmpfs limits) in one
 auditable place, plus the image build/derive mechanics. `build_worker_image`,
 `run_filter`, `build_image`, and `check_docker_available` are thin adapters over it.
 
 `search` and `run_saved` accept an optional `sandbox` to override the backend — pass a
-fake implementing the protocol to drive the pfind logic without Docker, or an alternate
+fake implementing the protocol to drive the nfind logic without Docker, or an alternate
 backend later:
 
 ```python
-from pfind import search
-from pfind.sandbox import CompletedRun, Limits, Mount
+from nfind import search
+from nfind.sandbox import CompletedRun, Limits, Mount
 
 class DryRunSandbox:                 # structural match for the Sandbox protocol
     def ensure_image(self, *, rebuild: bool = False) -> None: ...

@@ -1,12 +1,12 @@
 # Plan: extract a reusable `Sandbox` component
 
-Status: **implemented** (Phase A). See `src/pfind/sandbox.py`, the `backend.py` adapters,
+Status: **implemented** (Phase A). See `src/nfind/sandbox.py`, the `backend.py` adapters,
 and `tests/test_sandbox.py` / `tests/fakes.py`.
 
-Goal: isolate pfind's hardened-Docker execution into a small, domain-agnostic
+Goal: isolate nfind's hardened-Docker execution into a small, domain-agnostic
 `Sandbox` component, behind an interface, so that (a) the security-relevant flag set
 lives in one auditable place, (b) tests can run without Docker via a fake, and (c) an
-alternate backend (Podman, gVisor, rootless) could slot in later without touching pfind
+alternate backend (Podman, gVisor, rootless) could slot in later without touching nfind
 domain logic.
 
 This is **Phase A** of the altitude options discussed (in-repo module behind a
@@ -30,7 +30,7 @@ package) is explicitly deferred until a second consumer exists.
 - "Layer a Dockerfile on top of a base image and return a content-hashed tag" — the
   generic half of `build_worker_image`.
 
-**Stays in pfind (domain contract with *its* worker — must NOT leak into the component):**
+**Stays in nfind (domain contract with *its* worker — must NOT leak into the component):**
 
 - The `/data` mount convention and the `paths`/`meta` request payload shape.
 - The JSON protocol `{code, paths, meta}` → `{ok, results|error}` (`worker.py`).
@@ -40,7 +40,7 @@ package) is explicitly deferred until a second consumer exists.
 
 ---
 
-## 2. Target API (`src/pfind/sandbox.py`)
+## 2. Target API (`src/nfind/sandbox.py`)
 
 ```python
 from __future__ import annotations
@@ -87,7 +87,7 @@ class Sandbox(Protocol):
 class DockerSandbox:
     """Concrete Sandbox backed by the `docker` CLI. Owns the hardened flag set."""
     def __init__(self, image: str, *, dockerfile: Path, build_timeout: float = 120.0,
-                 name_prefix: str = "pfind-search-") -> None: ...
+                 name_prefix: str = "nfind-search-") -> None: ...
     # implements ensure_image / derive_image / run
 ```
 
@@ -100,7 +100,7 @@ Notes:
 
 ---
 
-## 3. pfind becomes a thin adapter
+## 3. nfind becomes a thin adapter
 
 `backend.run_filter` collapses to: build request → `sandbox.run(...)` → validate.
 
@@ -111,7 +111,7 @@ def run_filter(code, search_root, container_paths, *, sandbox, meta=None, limits
     run = sandbox.run(request, mounts=[Mount(root, "/data", read_only=True)], limits=limits)
     if run.returncode != 0:
         raise RuntimeError(f"Docker worker failed: {run.stderr.decode(errors='replace').strip() or run.returncode}")
-    response = _parse_worker_response(run.stdout)        # JSON + ok/error checks (pfind-specific)
+    response = _parse_worker_response(run.stdout)        # JSON + ok/error checks (nfind-specific)
     return _normalize_results(response.get("results"), set(container_paths))
 ```
 
@@ -165,7 +165,7 @@ focused assertions in `test_sandbox.py` (assert the exact `docker run` argv).
 
 ## 6. Step-by-step (suggested order, each step green)
 
-1. Add `src/pfind/sandbox.py` with the dataclasses, `Sandbox` Protocol, error types, and
+1. Add `src/nfind/sandbox.py` with the dataclasses, `Sandbox` Protocol, error types, and
    `DockerSandbox` — moving `_run_docker`, `check_docker_available`, `build_image`,
    `_image_exists`, `_derived_image_tag`, `_dockerfile_path`, `_docker_error_detail`,
    `_remove_container`, and the hardened `docker run` assembly into it.
@@ -187,7 +187,7 @@ focused assertions in `test_sandbox.py` (assert the exact `docker run` argv).
 - **Alternate backends** (Podman/gVisor/Firecracker/rootless) — the Protocol makes these
   possible; implement on demand.
 - **Abstracting the JSON stdin/stdout protocol or the worker-supervisor pattern** —
-  intentionally left as a pfind concern (thinner, domain-shaped seam; risk of leaking
+  intentionally left as a nfind concern (thinner, domain-shaped seam; risk of leaking
   domain into the generic component).
 
 ---

@@ -2,7 +2,7 @@
 """In-container worker: execute an LLM-generated filter and return matching paths.
 
 This module is intentionally self-contained -- it imports only the standard library
-and is *not* part of the ``pfind`` package's import graph -- because the Docker image
+and is *not* part of the ``nfind`` package's import graph -- because the Docker image
 copies this single file in and runs it standalone: ``python worker.py --worker`` reads
 a JSON request on stdin and writes a JSON response on stdout, re-invoking itself with
 ``--execute-worker`` so generated-code output never pollutes the protocol stream.
@@ -139,7 +139,7 @@ def execute_worker_main(response_path: str) -> int:
 def _module_main() -> int:
     """In-container entry point: handle only the worker dispatch modes.
 
-    The host-facing command line lives in ``pfind.cli``. Inside the Docker image
+    The host-facing command line lives in ``nfind.cli``. Inside the Docker image
     this file is invoked as ``python worker.py --worker`` (which in turn re-invokes
     itself with ``--execute-worker``).
     """
@@ -148,7 +148,7 @@ def _module_main() -> int:
     if len(sys.argv) == 3 and sys.argv[1] == "--execute-worker":
         return execute_worker_main(sys.argv[2])
     print(
-        "worker.py is the in-container worker; use the 'pfind' command on the host.",
+        "worker.py is the in-container worker; use the 'nfind' command on the host.",
         file=sys.stderr,
     )
     return 2

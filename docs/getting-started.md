@@ -2,7 +2,7 @@
 
 ← [Home](index.md)
 
-A hands-on tour of pfind, from your first search to its most advanced features. Each
+A hands-on tour of nfind, from your first search to its most advanced features. Each
 section builds on the last; by the end you'll have touched every command-line option.
 
 - [Prerequisites](#prerequisites)
@@ -28,11 +28,11 @@ section builds on the last; by the end you'll have touched every command-line op
 ## Prerequisites
 
 - **Python 3.12+** and **[Docker](https://docs.docker.com/get-docker/)** installed and
-  running (pfind runs every generated filter inside a throwaway container).
+  running (nfind runs every generated filter inside a throwaway container).
 - An API key for your model provider. The default is OpenAI:
 
 ```bash
-uv tool install pfind          # or: pipx install pfind
+uv tool install nfind          # or: pipx install nfind
 export OPENAI_API_KEY=sk-...
 docker info                    # sanity-check the daemon is up
 ```
@@ -44,14 +44,14 @@ it. See [Installation](installation.md) if anything above is missing.
 
 ## 1. Your first search
 
-The simplest invocation is just a prompt. With no path, pfind searches the current
+The simplest invocation is just a prompt. With no path, nfind searches the current
 directory and prints one matching path per line — exactly like `find`:
 
 ```bash
-pfind "files with no extension"
+nfind "files with no extension"
 ```
 
-Behind the scenes pfind walks the tree, asks the model for a small Python filter that
+Behind the scenes nfind walks the tree, asks the model for a small Python filter that
 matches your description, runs it in the sandbox, and prints the results. The file list
 itself never leaves your machine — only your prompt is sent to the model.
 
@@ -62,9 +62,9 @@ itself never leaves your machine — only your prompt is sent to the model.
 The second positional argument is the directory to search:
 
 ```bash
-pfind "directories that contain only audio files" ~/Music
-pfind "empty directories (nothing beneath them)" ~/Downloads
-pfind "files nested more than four levels deep" ./project
+nfind "directories that contain only audio files" ~/Music
+nfind "empty directories (nothing beneath them)" ~/Downloads
+nfind "files nested more than four levels deep" ./project
 ```
 
 Prompts are free-form — describe structure, naming, size, age, or anything the model can
@@ -78,10 +78,10 @@ Because the filter runs *inside* the sandbox with your directory mounted **read-
 it can open and inspect files — something `find` alone can't do:
 
 ```bash
-pfind "Python files that import requests" ./src
-pfind "shell scripts that run 'rm -rf'" ~/bin
-pfind "JSON files that are not valid JSON"
-pfind "Markdown files that contain a TODO but no closing checkbox"
+nfind "Python files that import requests" ./src
+nfind "shell scripts that run 'rm -rf'" ~/bin
+nfind "JSON files that are not valid JSON"
+nfind "Markdown files that contain a TODO but no closing checkbox"
 ```
 
 The generated code can read bytes, parse structure, and compute — but it cannot write to
@@ -97,13 +97,13 @@ for machine-readable records:
 
 ```bash
 # Default: paths only
-pfind "Python files and, for each, its line count"
+nfind "Python files and, for each, its line count"
 
 # --verbose / -v: append the extra fields after a tab
-pfind "Python files and, for each, its line count" --verbose
+nfind "Python files and, for each, its line count" --verbose
 
 # --json: a {count, results} object, each result a dict with at least "path"
-pfind "the 10 largest log files and their sizes in bytes" --json
+nfind "the 10 largest log files and their sizes in bytes" --json
 ```
 
 `--json` and `--verbose` are mutually exclusive. More detail in
@@ -113,30 +113,30 @@ pfind "the 10 largest log files and their sizes in bytes" --json
 
 ## 5. See the code before it runs
 
-pfind generates code, so you may want to inspect or approve it. Three options, from
+nfind generates code, so you may want to inspect or approve it. Three options, from
 lightest to strictest:
 
 ```bash
 # Print the generated filter (syntax-highlighted) before running it
-pfind "files that look like secrets or credentials" --show-code
+nfind "files that look like secrets or credentials" --show-code
 
 # Pause and ask for confirmation before running (alias: -i)
-pfind "files that look like secrets or credentials" --confirm
-pfind "files that look like secrets or credentials" -i
+nfind "files that look like secrets or credentials" --confirm
+nfind "files that look like secrets or credentials" -i
 
-# Save the exact filter pfind would run, then decide later (see §10)
-pfind "files that look like secrets or credentials" --save scan.py
+# Save the exact filter nfind would run, then decide later (see §10)
+nfind "files that look like secrets or credentials" --save scan.py
 ```
 
 `--confirm` shows the full filter and waits for a yes/no; declining aborts before
 anything runs. See [Reviewing the generated code](cli.md#reviewing-the-generated-code).
 
-pfind also tidies generated Python with ruff (removing unused imports, sorting them, and
+nfind also tidies generated Python with ruff (removing unused imports, sorting them, and
 reformatting) before showing/saving/running it. To skip that pass and see the model's
 output verbatim:
 
 ```bash
-pfind "Python files with unused imports" --show-code --no-format
+nfind "Python files with unused imports" --show-code --no-format
 ```
 
 ---
@@ -147,14 +147,14 @@ pfind "Python files with unused imports" --show-code --no-format
 any OpenAI-compatible provider. Each provider reads its own `*_API_KEY`:
 
 ```bash
-pfind "TypeScript files using generics" --model gpt-4o            # OpenAI (default provider)
-pfind "large CSV files" --model anthropic/claude-3-5-sonnet-latest
-pfind "duplicate images" --model groq/llama-3.3-70b-versatile
-pfind "Go files with TODOs" --model openrouter/google/gemini-2.0-flash-001
+nfind "TypeScript files using generics" --model gpt-4o            # OpenAI (default provider)
+nfind "large CSV files" --model anthropic/claude-3-5-sonnet-latest
+nfind "duplicate images" --model groq/llama-3.3-70b-versatile
+nfind "Go files with TODOs" --model openrouter/google/gemini-2.0-flash-001
 
 # Local servers need no key:
-pfind "files modified this week" --model ollama/llama3.1
-pfind "files modified this week" --model lmstudio/your-local-model
+nfind "files modified this week" --model ollama/llama3.1
+nfind "files modified this week" --model lmstudio/your-local-model
 ```
 
 ```bash
@@ -164,12 +164,12 @@ export ANTHROPIC_API_KEY=sk-ant-...   # only the selected provider's key is need
 Not sure what to put after the slash? List a provider's models with `--list-models`:
 
 ```bash
-pfind --list-models                    # OpenAI (default provider)
-pfind --list-models --model groq/x     # another provider (the model name is ignored here)
+nfind --list-models                    # OpenAI (default provider)
+nfind --list-models --model groq/x     # another provider (the model name is ignored here)
 ```
 
 OpenAI reasoning/codex models that are served only on the `/responses` endpoint (e.g.
-`gpt-5.1-codex-mini`) work too — pfind detects them and switches endpoints automatically.
+`gpt-5.1-codex-mini`) work too — nfind detects them and switches endpoints automatically.
 
 See the full [provider table](cli.md#providers) and [endpoint
 selection](cli.md#endpoint-selection-chat-completions-vs-responses).
@@ -179,11 +179,11 @@ selection](cli.md#endpoint-selection-chat-completions-vs-responses).
 ## 7. Filters that need libraries
 
 Some questions need a third-party package — reading MP3 tags, image dimensions, PDF text.
-The model declares what it needs, and pfind asks before installing anything into a derived
+The model declares what it needs, and nfind asks before installing anything into a derived
 sandbox image:
 
 ```bash
-pfind "MP3 files whose title tag contains 'live'" ~/Music
+nfind "MP3 files whose title tag contains 'live'" ~/Music
 #  → The generated filter needs these packages installed in the sandbox: mutagen
 #    Install and remember them? [y/N]
 ```
@@ -192,17 +192,17 @@ Approved packages are remembered in a per-runtime **whitelist**, so you're not a
 again. Control the flow with:
 
 ```bash
-pfind "portrait photos (taller than wide)" ~/Pictures --yes      # approve without prompting (-y)
-pfind "PDFs longer than 20 pages" ~/Docs --no-deps               # refuse all third-party packages
+nfind "portrait photos (taller than wide)" ~/Pictures --yes      # approve without prompting (-y)
+nfind "PDFs longer than 20 pages" ~/Docs --no-deps               # refuse all third-party packages
 ```
 
 Common analysis libraries (`mutagen`, `pillow`, `pypdf`, `tree-sitter-*`, …) are
 pre-approved out of the box. The whitelist lives at
-`$XDG_CONFIG_HOME/pfind/whitelist.json`; relocate it with `PFIND_WHITELIST`. Full model:
+`$XDG_CONFIG_HOME/nfind/whitelist.json`; relocate it with `NFIND_WHITELIST`. Full model:
 [Dependencies & the whitelist](dependencies.md).
 
 ```bash
-PFIND_WHITELIST=./project-whitelist.json pfind "EXIF GPS-tagged photos" ~/Pictures --yes
+NFIND_WHITELIST=./project-whitelist.json nfind "EXIF GPS-tagged photos" ~/Pictures --yes
 ```
 
 ---
@@ -210,12 +210,12 @@ PFIND_WHITELIST=./project-whitelist.json pfind "EXIF GPS-tagged photos" ~/Pictur
 ## 8. Another ecosystem: Node.js / TypeScript
 
 The model picks the runtime per prompt. When a task suits the JavaScript/TypeScript
-ecosystem (e.g. parsing with `ts-morph`), pfind builds and runs the Node.js sandbox image
+ecosystem (e.g. parsing with `ts-morph`), nfind builds and runs the Node.js sandbox image
 automatically — no flag needed:
 
 ```bash
-pfind "TypeScript files that export a React component" ./src
-pfind "JS files that define an async function with no await" ./web
+nfind "TypeScript files that export a React component" ./src
+nfind "JS files that define an async function with no await" ./web
 ```
 
 Use `--show-code` to confirm which runtime was chosen (the header names it). See
@@ -230,9 +230,9 @@ and where-from URLs) on the host and exposes them to a Python filter, so you can
 metadata with file contents:
 
 ```bash
-pfind "files tagged Red in Finder" ~/Documents --macos-meta
-pfind "files downloaded from the internet that are shell scripts" ~/Downloads --macos-meta
-pfind "PDFs downloaded from arxiv.org" ~/Papers --macos-meta
+nfind "files tagged Red in Finder" ~/Documents --macos-meta
+nfind "files downloaded from the internet that are shell scripts" ~/Downloads --macos-meta
+nfind "PDFs downloaded from arxiv.org" ~/Papers --macos-meta
 ```
 
 It's a no-op on other platforms. Field schema and examples:
@@ -247,14 +247,14 @@ It's a no-op on other platforms. Field schema and examples:
 version, and re-run:
 
 ```bash
-pfind "audio files with no album-art embedded" ~/Music --save no-art.py
+nfind "audio files with no album-art embedded" ~/Music --save no-art.py
 ```
 
 Replay it later through the same hardened sandbox with **no LLM call** (declared packages
 are still gated by the whitelist):
 
 ```bash
-pfind --run no-art.py ~/Music          # with --run, the lone positional is the PATH
+nfind --run no-art.py ~/Music          # with --run, the lone positional is the PATH
 ```
 
 Because the saved file is a standalone PEP 723 script, you can also run it directly with
@@ -276,11 +276,11 @@ want a tighter leash:
 
 ```bash
 # Give a heavy parse more time, memory, and CPU
-pfind "source files with cyclomatic complexity over 20" ./src \
+nfind "source files with cyclomatic complexity over 20" ./src \
   --timeout 60 --memory 1g --cpus 2
 
 # Clamp a filter that might spawn helpers
-pfind "directories that look like git repos" ~/code --pids-limit 32
+nfind "directories that look like git repos" ~/code --pids-limit 32
 ```
 
 - `--timeout` — seconds the filter may run before it's killed (default `10`).
@@ -299,9 +299,9 @@ The base (and derived) images are cached. Force a fresh build, allow longer for 
 build, or point at your own pre-built image:
 
 ```bash
-pfind "files with no extension" --rebuild                 # rebuild the worker image first
-pfind "files with no extension" --build-timeout 300       # allow 5 min for the build
-pfind "files with no extension" --image my-registry/pfind-python:latest
+nfind "files with no extension" --rebuild                 # rebuild the worker image first
+nfind "files with no extension" --build-timeout 300       # allow 5 min for the build
+nfind "files with no extension" --image my-registry/nfind-python:latest
 ```
 
 `--image` overrides the base tag for the chosen runtime — handy for air-gapped or
@@ -311,12 +311,12 @@ custom-hardened images.
 
 ## 13. Set defaults with a config file
 
-Tired of repeating `--model` and `--memory`? Put defaults in a TOML config file. pfind
-reads `--config PATH`, then `$PFIND_CONFIG`, then
-`$XDG_CONFIG_HOME/pfind/config.toml` (used only if it exists):
+Tired of repeating `--model` and `--memory`? Put defaults in a TOML config file. nfind
+reads `--config PATH`, then `$NFIND_CONFIG`, then
+`$XDG_CONFIG_HOME/nfind/config.toml` (used only if it exists):
 
 ```toml
-# ~/.config/pfind/config.toml
+# ~/.config/nfind/config.toml
 model = "anthropic/claude-3-5-sonnet-latest"
 timeout = 30
 memory = "512m"
@@ -325,10 +325,10 @@ verbose = true
 ```
 
 ```bash
-pfind "Rust files that use unsafe"                  # picks up the config defaults
-pfind "Rust files that use unsafe" --timeout 5      # CLI always wins over the file
-pfind "Rust files that use unsafe" --config ./ci.toml
-PFIND_CONFIG=./ci.toml pfind "Rust files that use unsafe"
+nfind "Rust files that use unsafe"                  # picks up the config defaults
+nfind "Rust files that use unsafe" --timeout 5      # CLI always wins over the file
+nfind "Rust files that use unsafe" --config ./ci.toml
+NFIND_CONFIG=./ci.toml nfind "Rust files that use unsafe"
 ```
 
 Precedence is **command-line > config file > built-in default**. Settable keys mirror the
@@ -347,14 +347,14 @@ path list means less work in the sandbox):
 
 ```bash
 # Skip your own glob patterns (repeatable); matching directories are pruned wholesale
-pfind "stale build outputs" ./project --exclude '*.min.js' --exclude dist
+nfind "stale build outputs" ./project --exclude '*.min.js' --exclude dist
 
 # Only look a couple of levels down
-pfind "top-level packages" ./src --max-depth 2
+nfind "top-level packages" ./src --max-depth 2
 
 # By default .git, node_modules, __pycache__, .venv, and tool caches are skipped;
 # --no-ignore searches them too
-pfind "anything referencing the old API" . --no-ignore
+nfind "anything referencing the old API" . --no-ignore
 ```
 
 - `--exclude GLOB` matches each entry's name *and* its path relative to `PATH`, so
@@ -370,20 +370,20 @@ All three also apply to `--run` replays and can be [set in the config file](#13-
 
 ## 15. Compose with other tools
 
-Because the default output is a clean path list, pfind drops straight into Unix pipelines:
+Because the default output is a clean path list, nfind drops straight into Unix pipelines:
 
 ```bash
 # Count matches
-pfind "files larger than 100 MB" ~ | wc -l
+nfind "files larger than 100 MB" ~ | wc -l
 
 # Act on the results safely — --print0 + xargs -0 survives spaces and newlines in names
-pfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir
+nfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir
 
 # Feed extra fields to jq
-pfind "the 20 largest files and their sizes" --json | jq '.results[] | .path'
+nfind "the 20 largest files and their sizes" --json | jq '.results[] | .path'
 
-# Disable color when capturing logs (or when piping; pfind auto-detects non-TTYs)
-NO_COLOR=1 pfind "TODO comments in Python files" --show-code 2> generated.py
+# Disable color when capturing logs (or when piping; nfind auto-detects non-TTYs)
+NO_COLOR=1 nfind "TODO comments in Python files" --show-code 2> generated.py
 ```
 
 `--print0` is the right choice whenever the results feed a destructive command: a path
@@ -398,7 +398,7 @@ from Python instead of the shell, see the [Python API](api.md).
 | --- | --- |
 | `PROMPT` | Natural-language description of the paths to find. |
 | `PATH` | Directory to search (default: current directory). |
-| `--config PATH` | TOML file of option defaults (env: `PFIND_CONFIG`). |
+| `--config PATH` | TOML file of option defaults (env: `NFIND_CONFIG`). |
 | `--exclude GLOB` | Skip names/paths during enumeration (repeatable; prunes dirs). |
 | `--no-ignore` | Don't skip the default ignored dirs (`.git`, `node_modules`, …). |
 | `--max-depth N` | Descend at most `N` levels below `PATH` (direct child = `1`). |
@@ -423,7 +423,7 @@ from Python instead of the shell, see the [Python API](api.md).
 | `--no-format` | Skip the ruff cleanup of the generated filter. |
 | `--macos-meta` | Expose Finder tags / download provenance (macOS only). |
 
-Run `pfind -h` for the authoritative list, or see the full [CLI reference](cli.md).
+Run `nfind -h` for the authoritative list, or see the full [CLI reference](cli.md).
 
 ## Where to next
 
@@ -431,4 +431,4 @@ Run `pfind -h` for the authoritative list, or see the full [CLI reference](cli.m
 - [CLI reference](cli.md) — every option in detail.
 - [Configuration](configuration.md) — env vars and the config file.
 - [Safety model](safety.md) — exactly what the sandbox does and doesn't allow.
-- [Python API](api.md) — drive pfind from your own code.
+- [Python API](api.md) — drive nfind from your own code.

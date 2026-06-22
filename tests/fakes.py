@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from pfind.sandbox import CompletedRun, Limits, Mount
+from nfind.sandbox import CompletedRun, Limits, Mount
 
 
 class FakeSandbox:
-    """In-memory :class:`~pfind.sandbox.Sandbox` for tests.
+    """In-memory :class:`~nfind.sandbox.Sandbox` for tests.
 
     ``run`` returns a canned :class:`CompletedRun` (or raises a configured error);
     ``ensure_image`` / ``derive_image`` record their calls and no-op.

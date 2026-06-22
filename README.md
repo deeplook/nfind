@@ -1,9 +1,9 @@
-# pfind
+# nfind
 
 **Find files by describing them in natural language.**
 
 The name is short for **p**rompt(ed)-**find** — `find`, but driven by a prompt instead
-of a filter expression. `pfind` takes a plain-English description, asks an LLM to write
+of a filter expression. `nfind` takes a plain-English description, asks an LLM to write
 a small filter function for it — in Python (`filter_paths`) or Node.js (`filterPaths`) —
 and runs that function against your file tree to print the matching paths — a
 natural-language cousin of `find`.
@@ -15,9 +15,9 @@ and process limits applied. The container can therefore inspect file contents an
 metadata to answer richer questions, but it cannot modify your files or reach the
 network.
 
-## Why pfind?
+## Why nfind?
 
-pfind sits in a gap no other file-search tool fills. It combines three things at once:
+nfind sits in a gap no other file-search tool fills. It combines three things at once:
 
 1. **Natural language** — you describe what you want, not a query grammar or a `find`
    incantation.
@@ -38,9 +38,9 @@ Each neighbouring category has only part of this:
 | `fselect` / osquery (SQL over files) | ✗ | ✓ | ✓ |
 | NL→command helpers (`sgpt`, `gh copilot`) | ✓ | ✗ (just a one-liner) | ✓ |
 | Send-the-file-list-to-an-LLM tools (e.g. lfind) | ✓ | ✗ (filenames only) | ✗ |
-| **pfind** | **✓** | **✓** | **✓** |
+| **nfind** | **✓** | **✓** | **✓** |
 
-In one line: pfind is like asking an analyst to write and run a one-off script against
+In one line: nfind is like asking an analyst to write and run a one-off script against
 a folder — safely, and without your files leaving your machine. See
 [docs/comparison.md](docs/comparison.md) for the full breakdown.
 
@@ -65,32 +65,32 @@ pip install .
 export OPENAI_API_KEY=sk-...
 
 # Search the current directory
-pfind "directories that contain only audio files"
+nfind "directories that contain only audio files"
 
 # Search a specific directory
-pfind "Python files that import requests" ./src
+nfind "Python files that import requests" ./src
 
 # Help (both forms work)
-pfind -h
-pfind --help
+nfind -h
+nfind --help
 ```
 
 ### Output modes
 
-By default `pfind` prints one path per line, like `find`. When your prompt asks
+By default `nfind` prints one path per line, like `find`. When your prompt asks
 for extra per-file information, the generated filter attaches it to each result and
 you can surface it:
 
 ```bash
 # Default: clean, pipeable list of paths
-pfind "Python files that import os"
+nfind "Python files that import os"
 
 # Verbose: path plus any extra fields the prompt produced
-pfind "Python files, and for each the number of lines" --verbose
+nfind "Python files, and for each the number of lines" --verbose
 # /path/to/a.py	lines=42
 
 # JSON: machine-readable records (path plus extra fields) with a count
-pfind "Python files, and for each the number of lines" --json
+nfind "Python files, and for each the number of lines" --json
 # { "count": 2, "results": [ { "path": "...", "lines": 42 }, ... ] }
 ```
 
@@ -100,26 +100,26 @@ when the prompt asks for it; otherwise every mode just lists paths.
 ### Runtimes
 
 The model picks the runtime per prompt — **Python** (default) or **Node.js**, when the
-JS/TS ecosystem fits better (e.g. parsing TypeScript with `ts-morph`). pfind runs the
+JS/TS ecosystem fits better (e.g. parsing TypeScript with `ts-morph`). nfind runs the
 filter in the matching sandbox image; both run under the same isolation. See
 [docs/runtimes.md](docs/runtimes.md).
 
 ```bash
-pfind "TypeScript files that export a default, using ts-morph" ./src
+nfind "TypeScript files that export a default, using ts-morph" ./src
 ```
 
 ### Dependencies
 
 Some prompts need a library (reading MP3 tags, image sizes, PDF text). The generated
-filter declares the packages it imports — pip for Python, npm for Node — and pfind
+filter declares the packages it imports — pip for Python, npm for Node — and nfind
 installs them into a derived sandbox image, but only approved packages. A built-in
 default list (per runtime) installs without asking; new packages are confirmed and
 then remembered.
 
 ```bash
-pfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music   # prompts if new
-pfind "images larger than 4000px on a side" ~/Photos --yes                 # approve without asking
-pfind "files containing TODO" . --no-deps                                  # standard library only
+nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music   # prompts if new
+nfind "images larger than 4000px on a side" ~/Photos --yes                 # approve without asking
+nfind "files containing TODO" . --no-deps                                  # standard library only
 ```
 
 The Python defaults include `tree-sitter` and per-language grammar wheels
@@ -133,14 +133,14 @@ reserved for type-aware TS/JS analysis). Packages are installed at image-build t
 
 On macOS, `--macos-meta` exposes a small slice of macOS-specific metadata — **Finder
 tags** and **download provenance** (the quarantine flag and "where from" URLs) — to the
-filter. These live on the host and aren't visible inside the Linux sandbox, so pfind
+filter. These live on the host and aren't visible inside the Linux sandbox, so nfind
 reads them host-side (read-only) and passes them in. This unlocks queries that
 *combine* macOS metadata with file contents — something neither Spotlight nor a
 container-only filter can do alone:
 
 ```bash
-pfind "PDFs I downloaded from the web that mention 'invoice', using pypdf" ~/Downloads --macos-meta
-pfind "files tagged Red whose contents contain a TODO" ~/Projects --macos-meta
+nfind "PDFs I downloaded from the web that mention 'invoice', using pypdf" ~/Downloads --macos-meta
+nfind "files tagged Red whose contents contain a TODO" ~/Projects --macos-meta
 ```
 
 For pure-metadata lookups ("everything tagged Red"), Spotlight (`mdfind`) is faster.
@@ -152,13 +152,13 @@ The filter is generated by an LLM, so you may want to see it before it runs:
 
 ```bash
 # Print the generated filter (to stderr) before running it
-pfind "files with no extension" --show-code
+nfind "files with no extension" --show-code
 
 # Save the generated filter to a file
-pfind "files with no extension" --save filter.py
+nfind "files with no extension" --save filter.py
 
 # Show the code and ask for confirmation before running (aborts on "no")
-pfind "files with no extension" -i        # or --confirm
+nfind "files with no extension" -i        # or --confirm
 ```
 
 The code is printed to **stderr**, so stdout stays a clean, pipeable list of paths
@@ -166,11 +166,11 @@ even with `--show-code`. On a terminal it is syntax-highlighted with Pygments; t
 highlighting is disabled when `NO_COLOR` is set or when stderr is redirected.
 
 If the model's reply doesn't validate (malformed JSON, wrong function shape, an invalid
-package name), pfind feeds the error back and retries a few times before giving up;
+package name), nfind feeds the error back and retries a few times before giving up;
 `--verbose` reports when a retry happens.
 
 The first run builds the worker image for the chosen runtime
-(`pfind-search-paths:latest` for Python, `pfind-search-node:latest` for Node.js);
+(`nfind-search-paths:latest` for Python, `nfind-search-node:latest` for Node.js);
 later runs reuse it. Pass `--rebuild` to force a fresh build.
 
 ### Useful options
@@ -194,22 +194,22 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 
 ### Providers
 
-By default pfind uses OpenAI. To use another provider, pass `--model provider/model`;
-pfind reuses the OpenAI SDK against that provider's OpenAI-compatible endpoint, so there
+By default nfind uses OpenAI. To use another provider, pass `--model provider/model`;
+nfind reuses the OpenAI SDK against that provider's OpenAI-compatible endpoint, so there
 is no extra dependency to install — just set the provider's API key.
 
 ```bash
-pfind "files with no extension"                          # OpenAI (OPENAI_API_KEY)
-pfind "..." --model anthropic/claude-sonnet-4-6          # ANTHROPIC_API_KEY
-pfind "..." --model gemini/gemini-2.5-flash              # GEMINI_API_KEY
-pfind "..." --model groq/llama-3.3-70b-versatile         # GROQ_API_KEY
-pfind "..." --model openrouter/<vendor>/<model>          # OPENROUTER_API_KEY (near-universal)
-pfind "..." --model ollama/llama3.1                      # local, no key
+nfind "files with no extension"                          # OpenAI (OPENAI_API_KEY)
+nfind "..." --model anthropic/claude-sonnet-4-6          # ANTHROPIC_API_KEY
+nfind "..." --model gemini/gemini-2.5-flash              # GEMINI_API_KEY
+nfind "..." --model groq/llama-3.3-70b-versatile         # GROQ_API_KEY
+nfind "..." --model openrouter/<vendor>/<model>          # OPENROUTER_API_KEY (near-universal)
+nfind "..." --model ollama/llama3.1                      # local, no key
 ```
 
 Supported prefixes: `openai`, `anthropic`, `gemini`, `groq`, `mistral`, `deepseek`,
 `xai`, `openrouter`, `ollama`, `lmstudio`. Each reads its own `*_API_KEY` (local
-servers need none). pfind handles providers without strict JSON mode automatically.
+servers need none). nfind handles providers without strict JSON mode automatically.
 Capable models follow the filter contract best; weaker ones may need a retry or a
 stronger model.
 
@@ -224,7 +224,7 @@ stronger model.
 ## Library use
 
 ```python
-from pfind import search
+from nfind import search
 
 # Returns a list of records, each a dict with at least a "path" key (a host path).
 # When the prompt asks for extra per-file values, they appear as additional keys.

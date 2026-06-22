@@ -1,4 +1,4 @@
-# Worker image for pfind: runs an LLM-generated filter against a read-only
+# Worker image for nfind: runs an LLM-generated filter against a read-only
 # /data mount. The worker uses only the Python standard library, so no pip
 # installs are needed. Build context is the package directory, which contains
 # worker.py alongside this Dockerfile.

@@ -24,8 +24,8 @@ All notable changes to this project are documented here. The format is based on
 - **Config file (`--config`).** An optional TOML file can supply defaults for the
   most-used options (`model`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`,
   `build-timeout`, `json`, `verbose`, `no-format`), so you don't repeat them on every
-  run. pfind reads `--config PATH`, then `$PFIND_CONFIG`, then
-  `$XDG_CONFIG_HOME/pfind/config.toml` (used only if present); command-line options
+  run. nfind reads `--config PATH`, then `$NFIND_CONFIG`, then
+  `$XDG_CONFIG_HOME/nfind/config.toml` (used only if present); command-line options
   always win over the file, which wins over the built-in defaults. Per-invocation actions
   (`--save`/`--run`) and package-approval shortcuts (`--yes`/`--no-deps`) are
   intentionally not configurable. Unknown keys and wrong value types are reported with
@@ -58,7 +58,7 @@ All notable changes to this project are documented here. The format is based on
 - **Multi-provider model selection.** `--model` now accepts a `provider/model` selector
   to use any OpenAI-compatible provider — `openai` (default, bare names), `anthropic`,
   `gemini`, `groq`, `mistral`, `deepseek`, `xai`, `openrouter`, and local `ollama` /
-  `lmstudio`. pfind reuses the OpenAI SDK against each provider's base URL, so no extra
+  `lmstudio`. nfind reuses the OpenAI SDK against each provider's base URL, so no extra
   dependency is needed; each provider reads its own `*_API_KEY`. See
   [Providers](docs/cli.md#providers).
 - **macOS metadata (`--macos-meta`).** On macOS, exposes Finder tags and download
@@ -73,26 +73,26 @@ All notable changes to this project are documented here. The format is based on
   runtime. The grammars are bundled in their wheels, so parsing works in the
   no-network, read-only sandbox.
 - **Automatic generation retries.** When the model's reply fails validation (malformed
-  JSON, wrong function shape, an invalid package name), pfind feeds the error back and
+  JSON, wrong function shape, an invalid package name), nfind feeds the error back and
   retries (up to 3 attempts total); `--verbose` reports when a retry happens.
 
 ### Changed
 
 - **Internal: extracted a reusable `Sandbox` component.** The hardened Docker execution
-  now lives behind a small, domain-agnostic `Sandbox` protocol in `pfind.sandbox`, with
+  now lives behind a small, domain-agnostic `Sandbox` protocol in `nfind.sandbox`, with
   `DockerSandbox` as the default backend. The security-relevant `docker run` flag set
   (no network, read-only root, dropped capabilities, `no-new-privileges`, resource
   limits) is assembled in one auditable place, and the Docker mechanics (`_run_docker`,
   `build_image`, `check_docker_available`, image derive/cache) moved there too;
   `build_worker_image` and `run_filter` are now thin adapters over it. `search` and
   `run_saved` gained an optional `sandbox` parameter so callers (and the test suite) can
-  run the pfind logic without Docker or swap in an alternate backend later; `run_filter`
+  run the nfind logic without Docker or swap in an alternate backend later; `run_filter`
   also accepts a `limits=Limits(…)` to set the resource/output caps directly. The Docker
   error hierarchy is now the `SandboxError` family; `DockerError`/`DockerUnavailableError`
   remain as aliases, so existing `except` call sites and the public API are unchanged.
   A skip-guarded `integration` test suite exercises the real `docker build`/`docker run`
   path (hardened flags, no network, worker protocol, timeout-kill) end to end.
-- Filter-generation requests tolerate providers without strict JSON mode: pfind drops
+- Filter-generation requests tolerate providers without strict JSON mode: nfind drops
   `response_format` on rejection and recovers the JSON object from a fenced or chatty
   reply, then validates as usual.
 - The system prompt guides tree-sitter usage toward the modern API and the
@@ -101,7 +101,7 @@ All notable changes to this project are documented here. The format is based on
 - **Internal: `backend.py` split into focused modules.** The monolithic backend was
   broken into `errors`, `_constants`, `runtimes`, `metadata`, `whitelist`, and `saved`
   modules; `backend` keeps generation, Docker, and orchestration and re-exports the
-  moved names, so the public Python API (`pfind.search`, `run_saved`, etc.) is
+  moved names, so the public Python API (`nfind.search`, `run_saved`, etc.) is
   unchanged. The in-container worker now lives in a standalone, standard-library-only
   `worker.py` that the Docker image ships and runs (`python worker.py --worker`),
   mirroring the existing `worker_node.cjs` design; `Dockerfile.python` copies `worker.py`

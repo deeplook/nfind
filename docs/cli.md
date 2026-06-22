@@ -17,8 +17,8 @@
 ## Synopsis
 
 ```bash
-pfind PROMPT [PATH] [OPTIONS]
-pfind --run FILTER [PATH] [OPTIONS]   # replay a saved filter, no PROMPT
+nfind PROMPT [PATH] [OPTIONS]
+nfind --run FILTER [PATH] [OPTIONS]   # replay a saved filter, no PROMPT
 ```
 
 Search `PATH` for files and directories matching the natural-language `PROMPT` and
@@ -27,9 +27,9 @@ saved filter is replayed instead and `PROMPT` is omitted (see
 [Saving & replaying filters](#saving--replaying-filters)).
 
 ```bash
-pfind "directories that contain only audio files"
-pfind "Python files that import requests" ./src
-pfind "files larger than 1 MB, with their size" --verbose
+nfind "directories that contain only audio files"
+nfind "Python files that import requests" ./src
+nfind "files larger than 1 MB, with their size" --verbose
 ```
 
 ## Arguments
@@ -43,7 +43,7 @@ pfind "files larger than 1 MB, with their size" --verbose
 
 | Option | Default | Description |
 |---|---|---|
-| `--config PATH` | XDG default | TOML file of option defaults (env: `PFIND_CONFIG`); command-line options override it. See [Config file](configuration.md#config-file). |
+| `--config PATH` | XDG default | TOML file of option defaults (env: `NFIND_CONFIG`); command-line options override it. See [Config file](configuration.md#config-file). |
 | `--exclude GLOB` | — | Glob of names/paths to skip during enumeration; matching directories are pruned. Repeatable. See [Filtering what's searched](#filtering-whats-searched). |
 | `--no-ignore` | off | Don't skip the default ignored directories (`.git`, `node_modules`, `__pycache__`, `.venv`, caches, …). |
 | `--max-depth N` | unlimited | Descend at most `N` directory levels below `PATH` (a direct child is `1`). |
@@ -75,13 +75,13 @@ The filter is written by an LLM, so you may want to see it before it runs:
 
 ```bash
 # Print the generated filter (to stderr) before running it
-pfind "files with no extension" --show-code
+nfind "files with no extension" --show-code
 
 # Save the generated filter to a file
-pfind "files with no extension" --save filter.py
+nfind "files with no extension" --save filter.py
 
 # Show the code and ask for confirmation before running (aborts on "no")
-pfind "files with no extension" -i        # or --confirm
+nfind "files with no extension" -i        # or --confirm
 ```
 
 `--show-code` and `--confirm` print the **full script as [`--save`](#saving--replaying-filters)
@@ -110,7 +110,7 @@ rather than a bare function. For the Python runtime that's a
 [PEP 723](https://peps.python.org/pep-0723/) script:
 
 ```bash
-pfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save mp3-live.py
+nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save mp3-live.py
 ```
 
 ```python
@@ -119,14 +119,14 @@ pfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save 
 # dependencies = ["mutagen"]
 # ///
 """
-pfind filter
+nfind filter
 
 Prompt:  MP3 files whose title tag contains 'live', using mutagen
 Model:   gpt-4o-mini
 Runtime: python
 Saved:   2026-06-21
 
-WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the pfind
+WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the nfind
 Docker sandbox -- no read-only mount, no network block, full user privileges...
 """
 
@@ -141,8 +141,8 @@ The module docstring carries the original prompt and provenance; the `# /// scri
 block declares the filter's dependencies. You can then run it **two ways**:
 
 ```bash
-# Sandboxed replay through pfind — no LLM call, runs in the same hardened container
-pfind --run mp3-live.py ~/Music
+# Sandboxed replay through nfind — no LLM call, runs in the same hardened container
+nfind --run mp3-live.py ~/Music
 
 # Trusted fast path — runs directly via uv, OUTSIDE the sandbox (see warning below)
 uv run mp3-live.py ~/Music
@@ -153,8 +153,8 @@ declares a not-yet-approved package still prompts (or is rejected with `--no-dep
 so a replayed filter can't silently pull new packages.
 
 > **Safety:** `uv run` executes the filter with your full user privileges, network
-> access, and write access — none of pfind's [sandbox](safety.md) protections apply.
-> Only run files you have reviewed and trust. When in doubt, replay with `pfind --run`,
+> access, and write access — none of nfind's [sandbox](safety.md) protections apply.
+> Only run files you have reviewed and trust. When in doubt, replay with `nfind --run`,
 > which keeps the read-only mount, network block, and resource limits.
 
 Notes and limits:
@@ -165,7 +165,7 @@ Notes and limits:
   host during generation and isn't reconstructed for saved filters.
 - **Node.js** filters are saved with a `//` provenance/safety comment header plus the
   raw `filterPaths` code. There's no PEP 723 equivalent for Node, so the standalone
-  `uv run` path is Python-only; Node filters still replay with `pfind --run`.
+  `uv run` path is Python-only; Node filters still replay with `nfind --run`.
 
 ## Filtering what's searched
 
@@ -174,9 +174,9 @@ on the host during enumeration, so they're deterministic and also make searches 
 by shrinking what the sandbox has to consider.
 
 ```bash
-pfind "stale config files" ~/project --exclude '*.min.js' --exclude dist
-pfind "large modules" ./src --max-depth 2          # only two levels below ./src
-pfind "anything referencing the old API" . --no-ignore   # include .git, node_modules, …
+nfind "stale config files" ~/project --exclude '*.min.js' --exclude dist
+nfind "large modules" ./src --max-depth 2          # only two levels below ./src
+nfind "anything referencing the old API" . --no-ignore   # include .git, node_modules, …
 ```
 
 - **`--exclude GLOB`** — repeatable. Each glob is matched against every entry's name
@@ -195,10 +195,10 @@ All three apply to `--run` replays as well, and can be set as
 ## Output modes
 
 ```bash
-pfind "Python files that import os"                          # default: paths only
-pfind "Python files, and for each the number of lines" -v   # path + extra fields
-pfind "Python files, and for each the number of lines" --json
-pfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir   # NUL-separated
+nfind "Python files that import os"                          # default: paths only
+nfind "Python files, and for each the number of lines" -v   # path + extra fields
+nfind "Python files, and for each the number of lines" --json
+nfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir   # NUL-separated
 ```
 
 `--json` and `--verbose` are mutually exclusive, and `--print0` cannot be combined with
@@ -213,9 +213,9 @@ the PyPI packages it imports. Packages on the approved list install without a pr
 new ones are confirmed and then remembered:
 
 ```bash
-pfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music   # prompts if new
-pfind "images larger than 4000px on a side" ~/Photos --yes                 # approve without asking
-pfind "files containing TODO" . --no-deps                                  # stdlib only
+nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music   # prompts if new
+nfind "images larger than 4000px on a side" ~/Photos --yes                 # approve without asking
+nfind "files containing TODO" . --no-deps                                  # stdlib only
 ```
 
 `--yes` and `--no-deps` are mutually exclusive. See
@@ -226,16 +226,16 @@ package list, and the whitelist file.
 
 `--model` selects the model that writes the filter. A bare name uses OpenAI (so
 existing usage is unchanged); a `provider/model` selector targets any
-OpenAI-compatible provider — pfind reuses the OpenAI SDK against the provider's
+OpenAI-compatible provider — nfind reuses the OpenAI SDK against the provider's
 base URL, so no extra dependency is needed.
 
 ```bash
-pfind "files with no extension"                                   # OpenAI (default)
-pfind "..." --model anthropic/claude-sonnet-4-6                   # Anthropic
-pfind "..." --model gemini/gemini-2.5-flash                       # Google Gemini
-pfind "..." --model groq/llama-3.3-70b-versatile                  # Groq
-pfind "..." --model openrouter/<vendor>/<model>                   # OpenRouter (near-universal)
-pfind "..." --model ollama/llama3.1                               # local Ollama
+nfind "files with no extension"                                   # OpenAI (default)
+nfind "..." --model anthropic/claude-sonnet-4-6                   # Anthropic
+nfind "..." --model gemini/gemini-2.5-flash                       # Google Gemini
+nfind "..." --model groq/llama-3.3-70b-versatile                  # Groq
+nfind "..." --model openrouter/<vendor>/<model>                   # OpenRouter (near-universal)
+nfind "..." --model ollama/llama3.1                               # local Ollama
 ```
 
 | Provider | Selector prefix | API key env var |
@@ -259,9 +259,9 @@ Only the selected provider's key is needed.
 exits. The provider is taken from `--model`, so set it to target a non-default provider:
 
 ```bash
-pfind --list-models                                    # OpenAI (default provider)
-pfind --list-models --model groq/x                     # Groq (model name is ignored here)
-pfind --list-models --model openai/x | grep codex      # filter the list
+nfind --list-models                                    # OpenAI (default provider)
+nfind --list-models --model groq/x                     # Groq (model name is ignored here)
+nfind --list-models --model openai/x | grep codex      # filter the list
 ```
 
 Use it to discover valid model names or to check what a local Ollama/LM Studio server
@@ -269,25 +269,25 @@ has installed. A provider that doesn't support listing reports an error (exit co
 
 ### Endpoint selection (chat completions vs. responses)
 
-pfind speaks two OpenAI-compatible endpoints and picks one per model automatically — no
+nfind speaks two OpenAI-compatible endpoints and picks one per model automatically — no
 flag to set:
 
 - **Chat Completions** (`/chat/completions`) is the default and is tried first, so every
   provider above keeps working unchanged.
 - **Responses** (`/responses`) is used as an automatic fallback for OpenAI reasoning/codex
   models that are served *only* there (e.g. `gpt-5.1-codex-mini`). When the first request
-  is rejected with the tell-tale "only supported in v1/responses" error, pfind switches
+  is rejected with the tell-tale "only supported in v1/responses" error, nfind switches
   endpoints and retries; the switch is remembered for the rest of that run.
 
 A responses-only model costs one extra throwaway request the first time it's seen (the
 probe that triggers the switch). That verdict is then cached on disk — keyed by the full
-`provider/model` selector — in `model-endpoints.json` under pfind's cache directory (or
-`$PFIND_ENDPOINT_CACHE` when set), so later runs start on `/responses` and skip the probe.
+`provider/model` selector — in `model-endpoints.json` under nfind's cache directory (or
+`$NFIND_ENDPOINT_CACHE` when set), so later runs start on `/responses` and skip the probe.
 The cache is purely an optimisation: it only ever records the responses-only exceptions,
 and every read/write is best-effort, so a missing or stale entry just means one re-probe.
 
 Providers also vary in whether they support strict JSON mode, a custom `temperature`, or
-`max_tokens` vs. `max_completion_tokens`; pfind adapts to each rejection automatically and
+`max_tokens` vs. `max_completion_tokens`; nfind adapts to each rejection automatically and
 recovers the JSON from the reply when needed, so generation still works. Some non-OpenAI
 models follow the filter contract less reliably — if a model misbehaves, try a stronger
 one or route through `openrouter/`.

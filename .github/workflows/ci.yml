@@ -17,9 +17,9 @@ jobs:
           python-version: "3.12"
 
       # Required by tests/test_worker_node.py: those tests run the Node.js worker
-      # (src/pfind/worker_node.cjs) through a real `node` process and skip when node
+      # (src/nfind/worker_node.cjs) through a real `node` process and skip when node
       # is absent, so without this step they would be silently skipped rather than run.
-      # (pfind's own node *runtime* runs inside Docker, so end users don't need node
+      # (nfind's own node *runtime* runs inside Docker, so end users don't need node
       # locally -- this is a dev/CI requirement only.)
       - name: Set up Node.js
         uses: actions/setup-node@v4

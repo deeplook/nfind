@@ -1,4 +1,4 @@
-"""pfind -- natural-language file search backed by a sandboxed LLM filter."""
+"""nfind -- natural-language file search backed by a sandboxed LLM filter."""
 
 from __future__ import annotations
 

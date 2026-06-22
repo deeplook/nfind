@@ -5,8 +5,8 @@ only on ``/responses`` and reject the former with a 404 (see ``backend._is_respo
 Discovering that costs one throwaway request per process. Caching the ``"responses"``
 verdict -- keyed by the full ``provider/model`` selector -- lets later runs skip the probe.
 
-The cache lives as JSON in pfind's cache directory as ``model-endpoints.json`` (or
-``$PFIND_ENDPOINT_CACHE`` when set; see :mod:`pfind.paths`). It is purely an optimisation:
+The cache lives as JSON in nfind's cache directory as ``model-endpoints.json`` (or
+``$NFIND_ENDPOINT_CACHE`` when set; see :mod:`nfind.paths`). It is purely an optimisation:
 every read and write is best-effort and swallows I/O errors, since the verdict can always
 be re-derived by probing.
 """
@@ -22,7 +22,7 @@ from .paths import user_dir
 
 def _cache_path() -> Path:
     """Location of the endpoint cache file."""
-    override = os.environ.get("PFIND_ENDPOINT_CACHE")
+    override = os.environ.get("NFIND_ENDPOINT_CACHE")
     if override:
         return Path(override)
     return user_dir("cache") / "model-endpoints.json"

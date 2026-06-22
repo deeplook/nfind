@@ -10,8 +10,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 from fakes import FakeSandbox
-from pfind import backend as MODULE
-from pfind import cli, metadata, worker
+from nfind import backend as MODULE
+from nfind import cli, metadata, worker
 
 
 def _gen(code, dependencies=()):
@@ -507,7 +507,7 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
     def fake_build(image, dependencies, *, runtime, rebuild, build_timeout, sandbox=None):
         captured["image"] = image
         captured["runtime"] = runtime.name
-        return "pfind-search-node:deps-x"
+        return "nfind-search-node:deps-x"
 
     with (
         patch.object(MODULE, "check_docker_available"),
@@ -522,7 +522,7 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
         MODULE.search(str(tmp_path), "typescript files")
 
     assert captured == {"image": MODULE.DEFAULT_NODE_IMAGE, "runtime": "node"}
-    assert run_filter.call_args.kwargs["image"] == "pfind-search-node:deps-x"
+    assert run_filter.call_args.kwargs["image"] == "nfind-search-node:deps-x"
 
 
 def test_derived_dockerfile_uses_pip_or_npm():
@@ -533,7 +533,7 @@ def test_derived_dockerfile_uses_pip_or_npm():
 
 
 def test_whitelist_is_per_runtime(tmp_path, monkeypatch):
-    monkeypatch.setenv("PFIND_WHITELIST", str(tmp_path / "wl.json"))
+    monkeypatch.setenv("NFIND_WHITELIST", str(tmp_path / "wl.json"))
     MODULE.approve_packages(["rarfile"], "python")
     MODULE.approve_packages(["left-pad"], "node")
     assert "rarfile" in MODULE.load_whitelist("python")
@@ -542,24 +542,24 @@ def test_whitelist_is_per_runtime(tmp_path, monkeypatch):
     assert "ts-morph" in MODULE.load_whitelist("node")  # node default
 
 
-def test_whitelist_path_prefers_pfind_whitelist_override(tmp_path, monkeypatch):
+def test_whitelist_path_prefers_nfind_whitelist_override(tmp_path, monkeypatch):
     override = tmp_path / "custom" / "wl.json"
-    monkeypatch.setenv("PFIND_WHITELIST", str(override))
+    monkeypatch.setenv("NFIND_WHITELIST", str(override))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     assert MODULE._whitelist_path() == override
 
 
 def test_whitelist_path_uses_xdg_config_home(tmp_path, monkeypatch):
-    monkeypatch.delenv("PFIND_WHITELIST", raising=False)
+    monkeypatch.delenv("NFIND_WHITELIST", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    assert MODULE._whitelist_path() == tmp_path / "xdg" / "pfind" / "whitelist.json"
+    assert MODULE._whitelist_path() == tmp_path / "xdg" / "nfind" / "whitelist.json"
 
 
 def test_whitelist_path_falls_back_to_home_config(tmp_path, monkeypatch):
-    monkeypatch.delenv("PFIND_WHITELIST", raising=False)
+    monkeypatch.delenv("NFIND_WHITELIST", raising=False)
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setattr(MODULE.Path, "home", classmethod(lambda cls: tmp_path))
-    assert MODULE._whitelist_path() == tmp_path / ".config" / "pfind" / "whitelist.json"
+    assert MODULE._whitelist_path() == tmp_path / ".config" / "nfind" / "whitelist.json"
 
 
 def test_pip_dependencies_are_pep503_normalized():
@@ -579,7 +579,7 @@ def test_npm_dependencies_lowercase_but_keep_separators():
 
 def test_load_whitelist_self_heals_non_normalized_names(tmp_path, monkeypatch):
     path = tmp_path / "wl.json"
-    monkeypatch.setenv("PFIND_WHITELIST", str(path))
+    monkeypatch.setenv("NFIND_WHITELIST", str(path))
     # A legacy file with an underscore variant of a dash package.
     path.write_text(json.dumps({"python": ["tree_sitter_language_pack", "Mutagen"]}))
 
@@ -592,7 +592,7 @@ def test_load_whitelist_self_heals_non_normalized_names(tmp_path, monkeypatch):
 
 def test_approve_packages_writes_canonical_names(tmp_path, monkeypatch):
     path = tmp_path / "wl.json"
-    monkeypatch.setenv("PFIND_WHITELIST", str(path))
+    monkeypatch.setenv("NFIND_WHITELIST", str(path))
     MODULE.approve_packages(["Tree_Sitter_Go"], "python")
 
     saved = json.loads(path.read_text())
@@ -1008,7 +1008,7 @@ def test_build_worker_image_derived_dockerfile_is_order_independent():
 
 
 def test_whitelist_round_trip(tmp_path, monkeypatch):
-    monkeypatch.setenv("PFIND_WHITELIST", str(tmp_path / "whitelist.json"))
+    monkeypatch.setenv("NFIND_WHITELIST", str(tmp_path / "whitelist.json"))
     assert "rarfile" not in MODULE.load_whitelist()
     assert "mutagen" in MODULE.load_whitelist()  # built-in default
     assert "tree-sitter-python" in MODULE.load_whitelist()  # multi-language parsing
@@ -1290,7 +1290,7 @@ def test_serialize_filter_python_is_valid_pep723_script():
     assert '"mutagen"' in match.group("body")
     # Docstring carries the prompt and the safety warning; code is included verbatim.
     assert "Prompt:  MP3 files" in src
-    assert "OUTSIDE the pfind Docker sandbox" in src
+    assert "OUTSIDE the nfind Docker sandbox" in src
     assert "def filter_paths(paths):" in src
     assert 'if __name__ == "__main__":' in src
 
@@ -1317,7 +1317,7 @@ def test_serialize_filter_node_has_comment_header_and_raw_code():
     code = "function filterPaths(paths){ return paths; }"
     src = MODULE.serialize_filter(_gen_node(code, ["ts-morph"]), "TS files", "gpt-4o-mini")
 
-    assert src.startswith("// pfind filter")
+    assert src.startswith("// nfind filter")
     assert "// Prompt:  TS files" in src
     assert "python-only" in src
     assert code in src
