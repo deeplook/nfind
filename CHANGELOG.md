@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Config file (`--config`).** An optional TOML file can supply defaults for the
+  most-used options (`model`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`,
+  `build-timeout`, `json`, `verbose`, `no-format`), so you don't repeat them on every
+  run. pfind reads `--config PATH`, then `$PFIND_CONFIG`, then
+  `$XDG_CONFIG_HOME/pfind/config.toml` (used only if present); command-line options
+  always win over the file, which wins over the built-in defaults. Per-invocation actions
+  (`--save`/`--run`) and package-approval shortcuts (`--yes`/`--no-deps`) are
+  intentionally not configurable. Unknown keys and wrong value types are reported with
+  the offending key. See [Configuration](docs/configuration.md#config-file).
+
 - **Kotlin, Swift, and Dart parsing.** Added `tree-sitter-kotlin`, `tree-sitter-swift`,
   and `tree-sitter-dart` to the Python default whitelist. Like the other grammar wheels,
   each bundles its compiled grammar, so a filter can parse these languages' structure

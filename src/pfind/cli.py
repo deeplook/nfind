@@ -17,6 +17,7 @@ from .backend import (
     DockerError,
     GeneratedFilter,
 )
+from .config import ConfigError, default_config_path, load_config
 
 app = typer.Typer(
     add_completion=False,
@@ -43,6 +44,30 @@ def _highlight(code: str, runtime: str = "python") -> str:
     lexer = JavascriptLexer() if runtime == "node" else PythonLexer()
     highlighted: str = highlight(code, lexer, TerminalFormatter())
     return highlighted.rstrip("\n")
+
+
+def _load_config_defaults(ctx: typer.Context, value: Path | None) -> Path | None:
+    """Populate Click's ``default_map`` from a TOML config file before other options parse.
+
+    Runs as an eager-option callback so the file's values become the defaults for the
+    remaining options, with command-line arguments still taking precedence. An explicit
+    ``--config``/``PFIND_CONFIG`` path must exist; the default location is used only when
+    present.
+    """
+    if value is not None:
+        path = value.expanduser()
+        if not path.is_file():
+            raise typer.BadParameter(f"config file not found: {path}")
+    else:
+        path = default_config_path()
+        if not path.is_file():
+            return value
+    try:
+        defaults = load_config(path)
+    except ConfigError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    ctx.default_map = {**(ctx.default_map or {}), **defaults}
+    return value
 
 
 def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool) -> None:
@@ -78,6 +103,18 @@ def main(
         str,
         typer.Argument(help="Directory to search."),
     ] = ".",
+    config_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            envvar="PFIND_CONFIG",
+            is_eager=True,
+            callback=_load_config_defaults,
+            help="TOML config file supplying defaults for options (model, timeout, "
+            "memory, cpus, pids-limit, build-timeout, image, json, verbose, no-format). "
+            "Defaults to $XDG_CONFIG_HOME/pfind/config.toml; command-line options win.",
+        ),
+    ] = None,
     model: Annotated[
         str,
         typer.Option(
