@@ -12,6 +12,7 @@ a self-contained, standard-library-only module the Docker image ships and runs a
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import re
@@ -26,6 +27,7 @@ from ._constants import _RETRY_TEMPERATURE as _RETRY_TEMPERATURE
 from ._constants import DEFAULT_ALLOWED_PACKAGES as DEFAULT_ALLOWED_PACKAGES
 from ._constants import DEFAULT_BUILD_TIMEOUT as DEFAULT_BUILD_TIMEOUT
 from ._constants import DEFAULT_GENERATION_ATTEMPTS as DEFAULT_GENERATION_ATTEMPTS
+from ._constants import DEFAULT_IGNORES as DEFAULT_IGNORES
 from ._constants import DEFAULT_IMAGE as DEFAULT_IMAGE
 from ._constants import DEFAULT_MODEL as DEFAULT_MODEL
 from ._constants import DEFAULT_NODE_IMAGE as DEFAULT_NODE_IMAGE
@@ -392,22 +394,67 @@ def generate_filter(
     ) from last_error
 
 
-def enumerate_paths(search_root: Path) -> tuple[list[str], dict[str, str]]:
-    """Return container paths and a container-to-host result mapping."""
+def _matches_any(name: str, relative_posix: str, patterns: Sequence[str]) -> bool:
+    """True when ``name`` or its root-relative POSIX path matches any glob in ``patterns``."""
+    return any(
+        fnmatch.fnmatch(name, pattern) or fnmatch.fnmatch(relative_posix, pattern)
+        for pattern in patterns
+    )
+
+
+def enumerate_paths(
+    search_root: Path,
+    *,
+    exclude: Sequence[str] = (),
+    max_depth: int | None = None,
+    use_default_ignores: bool = True,
+) -> tuple[list[str], dict[str, str]]:
+    """Return container paths and a container-to-host result mapping.
+
+    ``exclude`` is a list of glob patterns matched against each entry's name *and* its
+    path relative to the search root (POSIX form); a matching directory is pruned --
+    skipped from the results and not descended into. When ``use_default_ignores`` is true
+    (the default), the common VCS/dependency/cache names in :data:`DEFAULT_IGNORES` are
+    excluded too. ``max_depth`` bounds how deep below the root to descend -- a direct child
+    is depth 1 -- and ``None`` (the default) means unlimited.
+    """
     root = search_root.expanduser().resolve(strict=True)
     if not root.is_dir():
         raise ValueError(f"Search root is not a directory: {root}")
+    if max_depth is not None and max_depth < 1:
+        raise ValueError("max_depth must be at least 1")
+
+    patterns = [*exclude]
+    if use_default_ignores:
+        patterns += sorted(DEFAULT_IGNORES)
 
     container_paths: list[str] = []
     host_by_container: dict[str, str] = {}
     for current, directories, files in os.walk(root, followlinks=False):
         current_path = Path(current)
+        depth = len(current_path.relative_to(root).parts)
+
+        # Prune excluded directories in place so os.walk neither lists nor descends them.
+        kept: list[str] = []
+        for name in directories:
+            relative_posix = (current_path / name).relative_to(root).as_posix()
+            if not _matches_any(name, relative_posix, patterns):
+                kept.append(name)
+        directories[:] = kept
+
         for name in [*directories, *files]:
             host_path = current_path / name
             relative = host_path.relative_to(root)
+            if name in files and _matches_any(name, relative.as_posix(), patterns):
+                continue
             container_path = str(PurePosixPath("/data", *relative.parts))
             container_paths.append(container_path)
             host_by_container[container_path] = str(host_path)
+
+        # Stop descending once the next level would exceed max_depth; entries at the
+        # current level (including directories) have already been recorded above.
+        if max_depth is not None and depth + 1 >= max_depth:
+            directories[:] = []
     return container_paths, host_by_container
 
 
@@ -543,6 +590,9 @@ def search(
     macos_meta: bool = False,
     format_code: bool = True,
     sandbox: Sandbox | None = None,
+    exclude: Sequence[str] = (),
+    max_depth: int | None = None,
+    use_default_ignores: bool = True,
 ) -> list[dict[str, Any]]:
     """Generate and execute a filter, returning host-path result records.
 
@@ -575,9 +625,15 @@ def search(
 
     ``sandbox`` overrides the execution backend (a :class:`~pfind.sandbox.DockerSandbox`
     built from the chosen runtime by default); pass a fake to run without Docker.
+
+    ``exclude`` (glob patterns), ``use_default_ignores`` (skip common VCS/dependency/cache
+    directories), and ``max_depth`` (limit traversal depth) shape which paths are
+    enumerated and handed to the filter; see :func:`enumerate_paths`.
     """
     root = Path(path).expanduser().resolve(strict=True)
-    container_paths, host_by_container = enumerate_paths(root)
+    container_paths, host_by_container = enumerate_paths(
+        root, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
+    )
     if not container_paths:
         return []
     # Verify Docker up front so a missing daemon fails before any API call.
@@ -686,6 +742,9 @@ def run_saved(
     whitelist: set[str] | None = None,
     on_generated: Callable[[GeneratedFilter], None] | None = None,
     sandbox: Sandbox | None = None,
+    exclude: Sequence[str] = (),
+    max_depth: int | None = None,
+    use_default_ignores: bool = True,
 ) -> list[dict[str, Any]]:
     """Replay a previously saved filter through the sandbox, skipping the LLM.
 
@@ -693,7 +752,8 @@ def run_saved(
     filter and run in the same hardened container as :func:`search`. Any third-party
     packages it declares are still gated through ``approve_dependencies``/the whitelist,
     so a saved filter cannot silently pull new packages. macOS metadata is not exposed
-    on the replay path.
+    on the replay path. ``exclude``/``use_default_ignores``/``max_depth`` shape
+    enumeration exactly as for :func:`search`.
     """
     saved = Path(filter_path).expanduser()
     generated = parse_saved_filter(saved.read_text(), filename=saved.name)
@@ -701,7 +761,9 @@ def run_saved(
         on_generated(generated)
 
     root = Path(path).expanduser().resolve(strict=True)
-    container_paths, host_by_container = enumerate_paths(root)
+    container_paths, host_by_container = enumerate_paths(
+        root, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
+    )
     if not container_paths:
         return []
     check_docker_available()

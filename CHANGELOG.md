@@ -8,6 +8,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **find-style enumeration filters.** New options narrow what's searched *before* the
+  path list reaches the generated filter (host-side, deterministic, and faster on large
+  trees): `--exclude GLOB` (repeatable; matches an entry's name and its root-relative
+  path, pruning matching directories), `--max-depth N` (limit traversal depth; a direct
+  child is depth 1), and a default ignore set (`.git`, `node_modules`, `__pycache__`,
+  `.venv`, common caches, …) that `--no-ignore` disables. All apply to `--run` replays
+  and are settable in the [config file](docs/configuration.md#config-file). The
+  underlying `enumerate_paths`, `search`, and `run_saved` gained matching keyword
+  arguments.
+- **`--print0` / `-0`.** Separate results with NUL bytes instead of newlines (the
+  `find -print0` / `xargs -0` convention) so paths containing spaces or newlines survive
+  shell pipelines. Mutually exclusive with `--json`/`--verbose`.
+
 - **Config file (`--config`).** An optional TOML file can supply defaults for the
   most-used options (`model`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`,
   `build-timeout`, `json`, `verbose`, `no-format`), so you don't repeat them on every

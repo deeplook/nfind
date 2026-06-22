@@ -19,7 +19,8 @@ section builds on the last; by the end you'll have touched every command-line op
 - [11. Tune the sandbox](#11-tune-the-sandbox)
 - [12. Rebuild and pin images](#12-rebuild-and-pin-images)
 - [13. Set defaults with a config file](#13-set-defaults-with-a-config-file)
-- [14. Compose with other tools](#14-compose-with-other-tools)
+- [14. Narrow and speed up big searches](#14-narrow-and-speed-up-big-searches)
+- [15. Compose with other tools](#15-compose-with-other-tools)
 - [Option cheat sheet](#option-cheat-sheet)
 
 ---
@@ -327,7 +328,36 @@ flag names (`model`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`, `build-
 
 ---
 
-## 14. Compose with other tools
+## 14. Narrow and speed up big searches
+
+On large or noisy trees, narrow what's enumerated *before* it reaches the filter. These
+options run on the host, so they're deterministic and make the search faster (a smaller
+path list means less work in the sandbox):
+
+```bash
+# Skip your own glob patterns (repeatable); matching directories are pruned wholesale
+pfind "stale build outputs" ./project --exclude '*.min.js' --exclude dist
+
+# Only look a couple of levels down
+pfind "top-level packages" ./src --max-depth 2
+
+# By default .git, node_modules, __pycache__, .venv, and tool caches are skipped;
+# --no-ignore searches them too
+pfind "anything referencing the old API" . --no-ignore
+```
+
+- `--exclude GLOB` matches each entry's name *and* its path relative to `PATH`, so
+  `--exclude build` prunes every `build/` dir while `--exclude 'src/generated/*'` targets
+  one spot.
+- `--max-depth N` counts levels below `PATH` (a direct child is `1`).
+- The default ignore set is `.git`, `.hg`, `.svn`, `node_modules`, `.venv`, `venv`,
+  `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.tox`, `.DS_Store`.
+
+All three also apply to `--run` replays and can be [set in the config file](#13-set-defaults-with-a-config-file).
+
+---
+
+## 15. Compose with other tools
 
 Because the default output is a clean path list, pfind drops straight into Unix pipelines:
 
@@ -335,8 +365,8 @@ Because the default output is a clean path list, pfind drops straight into Unix 
 # Count matches
 pfind "files larger than 100 MB" ~ | wc -l
 
-# Act on the results (paths can contain spaces — prefer -0 where possible)
-pfind "empty directories" ~/Downloads | xargs -d '\n' rmdir
+# Act on the results safely — --print0 + xargs -0 survives spaces and newlines in names
+pfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir
 
 # Feed extra fields to jq
 pfind "the 20 largest files and their sizes" --json | jq '.results[] | .path'
@@ -345,7 +375,9 @@ pfind "the 20 largest files and their sizes" --json | jq '.results[] | .path'
 NO_COLOR=1 pfind "TODO comments in Python files" --show-code 2> generated.py
 ```
 
-For scripting from Python instead of the shell, see the [Python API](api.md).
+`--print0` is the right choice whenever the results feed a destructive command: a path
+with a space or newline would otherwise split into the wrong arguments. For scripting
+from Python instead of the shell, see the [Python API](api.md).
 
 ---
 
@@ -356,6 +388,9 @@ For scripting from Python instead of the shell, see the [Python API](api.md).
 | `PROMPT` | Natural-language description of the paths to find. |
 | `PATH` | Directory to search (default: current directory). |
 | `--config PATH` | TOML file of option defaults (env: `PFIND_CONFIG`). |
+| `--exclude GLOB` | Skip names/paths during enumeration (repeatable; prunes dirs). |
+| `--no-ignore` | Don't skip the default ignored dirs (`.git`, `node_modules`, …). |
+| `--max-depth N` | Descend at most `N` levels below `PATH` (direct child = `1`). |
 | `--model NAME` | Model, bare or `provider/model` (default: `gpt-4o-mini`). |
 | `--image TAG` | Override the base image for the chosen runtime. |
 | `--timeout SECS` | Max filter runtime before it's killed (default: `10`). |
@@ -369,6 +404,7 @@ For scripting from Python instead of the shell, see the [Python API](api.md).
 | `--run PATH` | Replay a saved filter (no LLM call); lone positional is the PATH. |
 | `--confirm`, `-i` | Show the code and ask before running. |
 | `--json` | Output a `{count, results}` JSON object. |
+| `--print0`, `-0` | Separate results with NUL bytes (for `xargs -0`). |
 | `--verbose`, `-v` | Show extra per-path fields. |
 | `--yes`, `-y` | Approve requested packages without prompting. |
 | `--no-deps` | Reject all third-party packages (standard library only). |

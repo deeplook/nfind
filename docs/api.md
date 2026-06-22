@@ -193,7 +193,7 @@ records = backend.run_filter(generated.code, root, container_paths, image=image)
 
 | Function | Purpose |
 |---|---|
-| `enumerate_paths(root)` | Walk the tree; return container paths and a container→host map. |
+| `enumerate_paths(root, exclude=…, max_depth=…, use_default_ignores=…)` | Walk the tree; return container paths and a container→host map. `exclude` prunes matching globs, `max_depth` bounds depth, and default VCS/dependency/cache dirs are skipped unless disabled. |
 | `collect_macos_metadata(host_by_container)` | macOS: read tags/quarantine/where-from per path; `{}` off macOS. |
 | `generate_filter(prompt, model=…, attempts=…, on_retry=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape; retries on invalid replies. |
 | `build_image(image=…, rebuild=…, build_timeout=…)` | Build the stdlib-only base worker image when absent or on request. |

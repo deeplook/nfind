@@ -49,6 +49,12 @@ def _as_float(value: Any) -> float:
     return float(value)
 
 
+def _as_str_list(value: Any) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ConfigError("expected a list of strings")
+    return value
+
+
 # Config key (option flag name) -> (CLI/click parameter name, coercion). Only options that
 # represent reusable defaults and are valid in both search and --run modes are included;
 # per-invocation actions (--save/--run) and approval shortcuts (--yes/--no-deps) are not.
@@ -63,6 +69,10 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "json": ("as_json", _as_bool),
     "verbose": ("verbose", _as_bool),
     "no-format": ("no_format", _as_bool),
+    "exclude": ("exclude", _as_str_list),
+    "no-ignore": ("no_ignore", _as_bool),
+    "max-depth": ("max_depth", _as_int),
+    "print0": ("print0", _as_bool),
 }
 
 

@@ -32,6 +32,26 @@ def test_load_config_accepts_underscore_key_spelling(tmp_path):
     assert config.load_config(path) == {"pids_limit": 64, "build_timeout": 90.0}
 
 
+def test_load_config_reads_enumeration_keys(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        'exclude = ["*.log", "build"]\nmax-depth = 3\nno-ignore = true\nprint0 = true\n'
+    )
+    assert config.load_config(path) == {
+        "exclude": ["*.log", "build"],
+        "max_depth": 3,
+        "no_ignore": True,
+        "print0": True,
+    }
+
+
+def test_load_config_rejects_non_list_exclude(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('exclude = "*.log"\n')
+    with pytest.raises(config.ConfigError, match="expected a list of strings"):
+        config.load_config(path)
+
+
 def test_load_config_rejects_unknown_key(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('modle = "x"\n')

@@ -26,6 +26,26 @@ PROVIDERS: dict[str, tuple[str | None, str | None]] = {
     "lmstudio": ("http://localhost:1234/v1", None),
 }
 
+# Directory/file names skipped during enumeration unless --no-ignore is given. These are
+# VCS metadata, dependency trees, and tool caches that are almost never search targets and
+# would otherwise bloat the path list the filter receives (and slow the search).
+DEFAULT_IGNORES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".DS_Store",
+    }
+)
+
 # How many times to ask the model in total when its reply fails validation. The
 # first attempt runs at temperature 0; retries feed the error back and nudge the
 # temperature up so the model diverges from the response that just failed.

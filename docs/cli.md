@@ -5,6 +5,7 @@
 - [Synopsis](#synopsis)
 - [Arguments](#arguments)
 - [Options](#options)
+- [Filtering what's searched](#filtering-whats-searched)
 - [Reviewing the generated code](#reviewing-the-generated-code)
 - [Saving & replaying filters](#saving--replaying-filters)
 - [Output modes](#output-modes)
@@ -42,6 +43,10 @@ pfind "files larger than 1 MB, with their size" --verbose
 
 | Option | Default | Description |
 |---|---|---|
+| `--config PATH` | XDG default | TOML file of option defaults (env: `PFIND_CONFIG`); command-line options override it. See [Config file](configuration.md#config-file). |
+| `--exclude GLOB` | — | Glob of names/paths to skip during enumeration; matching directories are pruned. Repeatable. See [Filtering what's searched](#filtering-whats-searched). |
+| `--no-ignore` | off | Don't skip the default ignored directories (`.git`, `node_modules`, `__pycache__`, `.venv`, caches, …). |
+| `--max-depth N` | unlimited | Descend at most `N` directory levels below `PATH` (a direct child is `1`). |
 | `--model` | `gpt-4o-mini` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
 | `--image` | per-runtime | Override the base image tag for the chosen [runtime](runtimes.md). |
 | `--timeout` | `10.0` | Seconds the generated filter may run before it is killed. |
@@ -56,6 +61,7 @@ pfind "files larger than 1 MB, with their size" --verbose
 | `--confirm`, `-i` | off | Show the generated code and ask for confirmation before running it. |
 | `--verbose`, `-v` | off | Show extra per-path fields alongside each path. |
 | `--json` | off | Output results as JSON (path plus any extra fields). |
+| `--print0`, `-0` | off | Separate results with NUL bytes instead of newlines (for `xargs -0`). |
 | `--yes`, `-y` | off | Approve any requested packages without prompting. |
 | `--no-deps` | off | Reject any third-party packages (standard library only). |
 | `--no-format` | off | Skip the ruff cleanup (remove unused imports, sort imports, format) applied to the generated filter. |
@@ -160,15 +166,43 @@ Notes and limits:
   raw `filterPaths` code. There's no PEP 723 equivalent for Node, so the standalone
   `uv run` path is Python-only; Node filters still replay with `pfind --run`.
 
+## Filtering what's searched
+
+These options shape the path list **before** it reaches the model's filter — they run
+on the host during enumeration, so they're deterministic and also make searches faster
+by shrinking what the sandbox has to consider.
+
+```bash
+pfind "stale config files" ~/project --exclude '*.min.js' --exclude dist
+pfind "large modules" ./src --max-depth 2          # only two levels below ./src
+pfind "anything referencing the old API" . --no-ignore   # include .git, node_modules, …
+```
+
+- **`--exclude GLOB`** — repeatable. Each glob is matched against every entry's name
+  *and* its path relative to `PATH` (POSIX form), so `--exclude build` prunes any
+  directory named `build`, while `--exclude 'src/generated/*'` targets one location. A
+  matching directory is pruned entirely (its subtree is never enumerated).
+- **Default ignores** — `.git`, `.hg`, `.svn`, `node_modules`, `.venv`, `venv`,
+  `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.tox`, and `.DS_Store`
+  are skipped automatically. Pass **`--no-ignore`** to search them too.
+- **`--max-depth N`** — descend at most `N` levels below `PATH`; a direct child is depth
+  `1`. `N` must be ≥ 1.
+
+All three apply to `--run` replays as well, and can be set as
+[config-file defaults](configuration.md#config-file).
+
 ## Output modes
 
 ```bash
 pfind "Python files that import os"                          # default: paths only
 pfind "Python files, and for each the number of lines" -v   # path + extra fields
 pfind "Python files, and for each the number of lines" --json
+pfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir   # NUL-separated
 ```
 
-`--json` and `--verbose` are mutually exclusive. See [Output modes](output-modes.md)
+`--json` and `--verbose` are mutually exclusive, and `--print0` cannot be combined with
+either. `--print0` NUL-terminates each path (the `find -print0` / `xargs -0` convention)
+so paths with spaces or newlines survive a pipeline. See [Output modes](output-modes.md)
 for details and example output.
 
 ## Dependencies

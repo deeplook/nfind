@@ -70,15 +70,21 @@ def _load_config_defaults(ctx: typer.Context, value: Path | None) -> Path | None
     return value
 
 
-def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool) -> None:
+def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool, print0: bool) -> None:
     """Render result records in the requested output mode.
 
-    Default: one path per line. ``--json``: a JSON object with count and the full
-    records (path plus any extra fields). ``--verbose``: each path followed by its
-    extra fields, when the filter produced any.
+    Default: one path per line. ``--print0``: paths separated by NUL bytes (for
+    ``xargs -0``). ``--json``: a JSON object with count and the full records (path plus
+    any extra fields). ``--verbose``: each path followed by its extra fields, when the
+    filter produced any.
     """
     if as_json:
         typer.echo(json.dumps({"count": len(records), "results": records}, indent=2))
+        return
+    if print0:
+        # NUL-terminate each path (the find -print0 / xargs -0 convention) so paths
+        # containing spaces or newlines survive the pipeline intact.
+        sys.stdout.write("".join(f"{record['path']}\0" for record in records))
         return
     for record in records:
         path = record["path"]
@@ -207,10 +213,50 @@ def main(
             "metadata to the filter.",
         ),
     ] = False,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude",
+            metavar="GLOB",
+            help="Glob of names/paths to skip during enumeration (matching directories "
+            "are pruned). Repeatable, e.g. --exclude '*.min.js' --exclude build.",
+        ),
+    ] = None,
+    no_ignore: Annotated[
+        bool,
+        typer.Option(
+            "--no-ignore",
+            help="Don't skip the default ignored directories (.git, node_modules, "
+            "__pycache__, .venv, caches, …).",
+        ),
+    ] = False,
+    max_depth: Annotated[
+        int | None,
+        typer.Option(
+            "--max-depth",
+            metavar="N",
+            help="Descend at most N directory levels below PATH (a direct child is 1).",
+        ),
+    ] = None,
+    print0: Annotated[
+        bool,
+        typer.Option(
+            "--print0",
+            "-0",
+            help="Separate results with NUL bytes instead of newlines (for 'xargs -0'); "
+            "safe for paths containing spaces or newlines.",
+        ),
+    ] = False,
 ) -> None:
     """Search PATH for files matching PROMPT and print one path per line."""
     if as_json and verbose:
         typer.echo("error: --json and --verbose are mutually exclusive.", err=True)
+        raise typer.Exit(2)
+    if print0 and (as_json or verbose):
+        typer.echo("error: --print0 cannot be combined with --json or --verbose.", err=True)
+        raise typer.Exit(2)
+    if max_depth is not None and max_depth < 1:
+        typer.echo("error: --max-depth must be at least 1.", err=True)
         raise typer.Exit(2)
     if yes and no_deps:
         typer.echo("error: --yes and --no-deps are mutually exclusive.", err=True)
@@ -278,6 +324,8 @@ def main(
             typer.echo(f"generation attempt failed, retrying (retry {retry}): {error}", err=True)
 
     hook = on_generated if (show_code or save is not None or confirm) else None
+    exclude_globs = tuple(exclude or ())
+    use_default_ignores = not no_ignore
 
     try:
         if run is not None:
@@ -293,6 +341,9 @@ def main(
                 build_timeout=build_timeout,
                 approve_dependencies=approve_dependencies,
                 on_generated=hook,
+                exclude=exclude_globs,
+                max_depth=max_depth,
+                use_default_ignores=use_default_ignores,
             )
         else:
             assert prompt is not None  # guaranteed by the validation above
@@ -312,6 +363,9 @@ def main(
                 approve_dependencies=approve_dependencies,
                 macos_meta=macos_meta,
                 format_code=not no_format,
+                exclude=exclude_globs,
+                max_depth=max_depth,
+                use_default_ignores=use_default_ignores,
             )
     except (typer.Exit, typer.Abort):
         # Control-flow exceptions (e.g. a declined --confirm) subclass RuntimeError;
@@ -321,7 +375,7 @@ def main(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    _emit(results, as_json=as_json, verbose=verbose)
+    _emit(results, as_json=as_json, verbose=verbose, print0=print0)
 
 
 if __name__ == "__main__":
