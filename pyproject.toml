@@ -87,3 +87,5 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
 ]
+# Protocol method bodies are pure stubs (`...`) and are never executed.
+exclude_also = ["^\\s*\\.\\.\\.$"]

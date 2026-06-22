@@ -114,6 +114,15 @@ def test_derive_image_builds_and_returns_tag():
     assert run.call_args.args[0][0:2] == ["docker", "build"]
 
 
+def test_ensure_image_delegates_to_build_image():
+    box = DockerSandbox("img:latest", dockerfile="Dockerfile.python", build_timeout=42)
+    with patch.object(sandbox, "build_image") as build:
+        box.ensure_image(rebuild=True)
+    build.assert_called_once_with(
+        "img:latest", rebuild=True, build_timeout=42, dockerfile="Dockerfile.python"
+    )
+
+
 def test_derive_image_reuses_existing_image():
     box = DockerSandbox("base:latest", dockerfile="Dockerfile.python")
     with (
@@ -193,3 +202,133 @@ def test_run_docker_timeout_kills_plugin_process_group():
         sandbox._run_docker(["docker", "info"], timeout=1, capture_output=True)
 
     killpg.assert_called_once_with(123, sandbox.signal.SIGKILL)
+
+
+# --- _run_docker: capture-output plumbing ---------------------------------------
+
+
+def _cp(returncode: int = 0, stdout="", stderr=""):
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def test_run_docker_rejects_stdout_with_capture_output():
+    with pytest.raises(ValueError, match="cannot be used with capture_output"):
+        sandbox._run_docker(
+            ["docker", "ps"], timeout=1, capture_output=True, stdout=subprocess.DEVNULL
+        )
+
+
+def test_run_docker_reads_captured_output_as_text():
+    process = Mock(returncode=0)
+    process.communicate.return_value = (None, None)
+    with patch.object(sandbox.subprocess, "Popen", return_value=process):
+        result = sandbox._run_docker(["docker", "ps"], timeout=1, capture_output=True, text=True)
+    # The (mocked) container writes nothing, so the captured temp files decode to "".
+    assert result.returncode == 0
+    assert result.stdout == "" and result.stderr == ""
+
+
+def test_run_docker_timeout_on_non_posix_reads_captured_text():
+    process = Mock(pid=1, returncode=None)
+    process.communicate.side_effect = subprocess.TimeoutExpired(["docker", "ps"], 1)
+    process.poll.return_value = None  # still alive after the grace wait -> hard kill
+    with (
+        patch.object(sandbox.subprocess, "Popen", return_value=process),
+        patch.object(sandbox.os, "name", "nt"),
+        pytest.raises(subprocess.TimeoutExpired),
+    ):
+        sandbox._run_docker(["docker", "ps"], timeout=1, capture_output=True, text=True)
+    assert process.kill.call_count >= 1
+
+
+# --- check_docker_available / build_image: remaining branches -------------------
+
+
+def test_docker_check_reports_daemon_timeout():
+    with (
+        patch.object(sandbox, "_run_docker", side_effect=subprocess.TimeoutExpired("docker", 10)),
+        pytest.raises(sandbox.SandboxUnavailable, match="did not respond"),
+    ):
+        sandbox.check_docker_available()
+
+
+def test_build_image_rejects_nonpositive_timeout():
+    with pytest.raises(ValueError, match="build_timeout must be positive"):
+        sandbox.build_image("img", build_timeout=0)
+
+
+def test_build_image_skips_build_when_image_present():
+    with patch.object(sandbox, "_run_docker", side_effect=[_cp(0), _cp(0)]) as run:
+        sandbox.build_image("img")
+    # docker ps (availability) + docker image inspect (found) -> no build.
+    assert run.call_count == 2
+
+
+def test_build_image_reports_inspect_timeout():
+    with (
+        patch.object(
+            sandbox, "_run_docker", side_effect=[_cp(0), subprocess.TimeoutExpired("docker", 5)]
+        ),
+        pytest.raises(sandbox.SandboxUnavailable, match="inspecting"),
+    ):
+        sandbox.build_image("img")
+
+
+def test_build_image_reports_build_failure():
+    with (
+        patch.object(sandbox, "_run_docker", side_effect=[_cp(0), _cp(1), _cp(1)]),
+        pytest.raises(sandbox.SandboxError, match="build failed with exit status 1"),
+    ):
+        sandbox.build_image("img")
+
+
+# --- _image_exists / _remove_container / derive_image ---------------------------
+
+
+def test_image_exists_true_when_inspect_succeeds():
+    with patch.object(sandbox, "_run_docker", return_value=_cp(0)):
+        assert sandbox._image_exists("img") is True
+
+
+def test_image_exists_false_when_inspect_fails():
+    with patch.object(sandbox, "_run_docker", return_value=_cp(1)):
+        assert sandbox._image_exists("img") is False
+
+
+def test_image_exists_reports_timeout():
+    with (
+        patch.object(sandbox, "_run_docker", side_effect=subprocess.TimeoutExpired("docker", 10)),
+        pytest.raises(sandbox.SandboxUnavailable, match="inspecting"),
+    ):
+        sandbox._image_exists("img")
+
+
+def test_remove_container_invokes_docker_rm():
+    with patch.object(sandbox, "_run_docker") as run:
+        sandbox._remove_container("c1")
+    assert run.call_args.args[0] == ["docker", "rm", "--force", "c1"]
+
+
+def test_remove_container_suppresses_errors():
+    with patch.object(sandbox, "_run_docker", side_effect=FileNotFoundError):
+        sandbox._remove_container("c1")  # must not raise
+
+
+def test_derive_image_reports_build_failure():
+    box = DockerSandbox("base:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(sandbox, "_image_exists", return_value=False),
+        patch.object(sandbox, "_run_docker", return_value=_cp(1)),
+        pytest.raises(sandbox.SandboxError, match="Failed to build the derived"),
+    ):
+        box.derive_image("FROM base:latest\n")
+
+
+def test_derive_image_reports_build_timeout():
+    box = DockerSandbox("base:latest", dockerfile="Dockerfile.python", build_timeout=5)
+    with (
+        patch.object(sandbox, "_image_exists", return_value=False),
+        patch.object(sandbox, "_run_docker", side_effect=subprocess.TimeoutExpired("docker", 5)),
+        pytest.raises(sandbox.SandboxError, match="exceeded the 5s timeout"),
+    ):
+        box.derive_image("FROM base:latest\n")
