@@ -91,6 +91,7 @@ See [Installation](installation.md) for details.
 ## Documentation
 
 - [Installation](installation.md)
+- [Getting started](getting-started.md)
 - [Configuration](configuration.md)
 - [CLI reference](cli.md)
 - [Examples](examples.md)
