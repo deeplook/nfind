@@ -1260,7 +1260,7 @@ def test_render_saved_filter_python_is_valid_pep723_script():
 
     # Valid Python and a parseable PEP 723 block declaring the dependency.
     compile(src, "saved.py", "exec")
-    match = MODULE._PEP723_RE.search(src)
+    match = MODULE._SCRIPT_METADATA_RE.search(src)
     assert match is not None
     assert '"mutagen"' in match.group("body")
     # Docstring carries the prompt and the safety warning; code is included verbatim.

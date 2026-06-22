@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from ._constants import DEFAULT_RUNTIME
+from .constants import DEFAULT_RUNTIME
 from .runtimes import RUNTIMES
 
 

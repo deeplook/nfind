@@ -12,7 +12,7 @@ import re
 import textwrap
 from datetime import date
 
-from ._constants import FILTER_LINE_LENGTH
+from .constants import FILTER_LINE_LENGTH
 from .runtimes import GeneratedFilter
 
 _PYTHON_HARNESS = """\
@@ -31,11 +31,11 @@ if __name__ == "__main__":
 """
 
 # PEP 723 inline script-metadata block: `uv run` reads dependencies from here.
-_PEP723_RE = re.compile(
+_SCRIPT_METADATA_RE = re.compile(
     r"^# /// script\s*$\n(?P<body>(?:^#(?: .*)?$\n)*)^# ///\s*$",
     re.MULTILINE,
 )
-_PEP723_DEP_RE = re.compile(r'"(?P<name>[^"]+)"')
+_SCRIPT_DEP_RE = re.compile(r'"(?P<name>[^"]+)"')
 
 
 def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
@@ -111,18 +111,18 @@ def parse_saved_filter(source: str, *, filename: str = "") -> GeneratedFilter:
     never runs the standalone ``__main__`` harness.
     """
     is_node = filename.endswith((".cjs", ".js")) or (
-        not _PEP723_RE.search(source) and "filterPaths" in source
+        not _SCRIPT_METADATA_RE.search(source) and "filterPaths" in source
     )
     if is_node:
         return GeneratedFilter(code=source, dependencies=[], runtime="node")
 
     dependencies: list[str] = []
-    match = _PEP723_RE.search(source)
+    match = _SCRIPT_METADATA_RE.search(source)
     if match:
         for line in match.group("body").splitlines():
             stripped = line.lstrip("#").strip()
             if stripped.startswith("dependencies"):
                 _, _, rest = stripped.partition("=")
-                dependencies = _PEP723_DEP_RE.findall(rest)
+                dependencies = _SCRIPT_DEP_RE.findall(rest)
                 break
     return GeneratedFilter(code=source, dependencies=dependencies, runtime="python")

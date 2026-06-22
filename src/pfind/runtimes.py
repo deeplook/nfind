@@ -13,7 +13,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ._constants import (
+from .constants import (
     DEFAULT_ALLOWED_PACKAGES,
     DEFAULT_IMAGE,
     DEFAULT_NODE_IMAGE,
