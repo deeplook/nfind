@@ -1,14 +1,18 @@
-"""Exception types shared across pfind's host-side modules."""
+"""Exception types shared across pfind's host-side modules.
+
+The Docker lifecycle errors are the generic :class:`~pfind.sandbox.SandboxError`
+hierarchy, re-exported here under their historical ``Docker*`` names so existing
+``except DockerUnavailableError`` call sites (and the public API) keep working while the
+sandbox component owns the canonical definitions.
+"""
 
 from __future__ import annotations
 
+from .sandbox import SandboxError, SandboxUnavailable
 
-class DockerError(RuntimeError):
-    """Base class for actionable Docker lifecycle failures."""
-
-
-class DockerUnavailableError(DockerError):
-    """Raised when the Docker CLI or daemon cannot be reached."""
+# Backwards-compatible aliases: the canonical types live in pfind.sandbox.
+DockerError = SandboxError
+DockerUnavailableError = SandboxUnavailable
 
 
 class DependencyError(RuntimeError):

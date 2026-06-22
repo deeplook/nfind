@@ -12,17 +12,12 @@ a self-contained, standard-library-only module the Docker image ships and runs a
 
 from __future__ import annotations
 
-import contextlib
-import hashlib
 import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
-import tempfile
-import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -51,6 +46,19 @@ from .runtimes import Runtime as Runtime
 from .runtimes import _imply_packages as _imply_packages
 from .runtimes import _validate_code_shape as _validate_code_shape
 from .runtimes import _validate_dependencies as _validate_dependencies
+from .sandbox import DockerSandbox as DockerSandbox
+from .sandbox import Limits as Limits
+from .sandbox import Mount as Mount
+from .sandbox import Sandbox as Sandbox
+from .sandbox import SandboxOutputTooLarge as SandboxOutputTooLarge
+from .sandbox import SandboxTimeout as SandboxTimeout
+from .sandbox import _derived_image_tag as _derived_image_tag
+from .sandbox import _dockerfile_path as _dockerfile_path
+from .sandbox import _image_exists as _image_exists
+from .sandbox import _remove_container as _remove_container
+from .sandbox import _run_docker as _run_docker
+from .sandbox import build_image as build_image
+from .sandbox import check_docker_available as check_docker_available
 from .saved import _PEP723_RE as _PEP723_RE
 from .saved import parse_saved_filter as parse_saved_filter
 from .saved import render_saved_filter as render_saved_filter
@@ -402,190 +410,6 @@ def enumerate_paths(search_root: Path) -> tuple[list[str], dict[str, str]]:
     return container_paths, host_by_container
 
 
-def _dockerfile_path(name: str = PYTHON_RUNTIME.dockerfile) -> Path:
-    return Path(__file__).with_name(name)
-
-
-def _docker_error_detail(completed: subprocess.CompletedProcess[str]) -> str:
-    detail = (completed.stderr or completed.stdout or "unknown error").strip()
-    return detail[-500:]
-
-
-def _run_docker(
-    command: list[str],
-    *,
-    timeout: float,
-    input: bytes | str | None = None,
-    capture_output: bool = False,
-    text: bool = False,
-    stdout: int | None = None,
-    stderr: int | None = None,
-) -> subprocess.CompletedProcess[Any]:
-    """Run Docker and kill its whole CLI/plugin process group on timeout."""
-    captured_stdout = None
-    captured_stderr = None
-    if capture_output:
-        if stdout is not None or stderr is not None:
-            raise ValueError("stdout and stderr cannot be used with capture_output")
-        # Files, rather than pipes, are deliberate. Docker Desktop plugins can
-        # daemonize and retain inherited pipes after the CLI exits or is killed,
-        # causing subprocess.communicate() to wait forever for EOF.
-        captured_stdout = tempfile.TemporaryFile()  # noqa: SIM115 - closed below
-        captured_stderr = tempfile.TemporaryFile()  # noqa: SIM115 - closed below
-        stdout = captured_stdout.fileno()
-        stderr = captured_stderr.fileno()
-
-    process = subprocess.Popen(
-        command,
-        stdin=subprocess.PIPE if input is not None else None,
-        stdout=stdout,
-        stderr=stderr,
-        text=text,
-        start_new_session=os.name == "posix",
-    )
-    try:
-        output, errors = process.communicate(input=input, timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
-        if os.name == "posix":
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-        else:
-            process.kill()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=2)
-        if process.poll() is None:
-            process.kill()
-            process.wait()
-        output, errors = None, None
-        if captured_stdout is not None and captured_stderr is not None:
-            captured_stdout.seek(0)
-            captured_stderr.seek(0)
-            output = captured_stdout.read()
-            errors = captured_stderr.read()
-            if text:
-                output = output.decode(errors="replace")
-                errors = errors.decode(errors="replace")
-            captured_stdout.close()
-            captured_stderr.close()
-        raise subprocess.TimeoutExpired(
-            command, timeout, output=output or exc.output, stderr=errors or exc.stderr
-        ) from exc
-
-    if captured_stdout is not None and captured_stderr is not None:
-        captured_stdout.seek(0)
-        captured_stderr.seek(0)
-        output = captured_stdout.read()
-        errors = captured_stderr.read()
-        if text:
-            output = output.decode(errors="replace")
-            errors = errors.decode(errors="replace")
-        captured_stdout.close()
-        captured_stderr.close()
-    return subprocess.CompletedProcess(command, process.returncode, output, errors)
-
-
-def check_docker_available() -> None:
-    """Fail early with an actionable error when the Docker daemon is unavailable."""
-    try:
-        completed = _run_docker(
-            ["docker", "ps", "--quiet", "--no-trunc"],
-            capture_output=True,
-            text=True,
-            timeout=DOCKER_CHECK_TIMEOUT,
-        )
-    except FileNotFoundError as exc:
-        raise DockerUnavailableError(
-            "Docker CLI was not found. Install Docker and ensure 'docker' is on PATH."
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise DockerUnavailableError(
-            "Docker daemon did not respond within 10 seconds. Start or restart Docker, then retry."
-        ) from exc
-
-    daemon_error = completed.stderr.strip()
-    if completed.returncode != 0 or daemon_error:
-        detail = _docker_error_detail(completed)
-        raise DockerUnavailableError(
-            f"Docker daemon is unavailable: {detail}. "
-            "Start Docker Desktop (macOS/Windows) or the Docker daemon (Linux), then retry."
-        )
-
-
-def build_image(
-    image: str = DEFAULT_IMAGE,
-    *,
-    rebuild: bool = False,
-    build_timeout: float = DEFAULT_BUILD_TIMEOUT,
-    dockerfile: str = PYTHON_RUNTIME.dockerfile,
-) -> None:
-    """Build the base worker image when absent, or unconditionally when requested."""
-    if build_timeout <= 0:
-        raise ValueError("build_timeout must be positive")
-    check_docker_available()
-    if not rebuild:
-        try:
-            probe = _run_docker(
-                ["docker", "image", "inspect", image],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=DOCKER_CHECK_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise DockerUnavailableError(
-                "Docker timed out while inspecting the worker image. Restart Docker, then retry."
-            ) from exc
-        if probe.returncode == 0:
-            return
-
-    dockerfile_path = _dockerfile_path(dockerfile)
-    try:
-        completed = _run_docker(
-            [
-                "docker",
-                "build",
-                "--load",
-                "--file",
-                str(dockerfile_path),
-                "--tag",
-                image,
-                str(dockerfile_path.parent),
-            ],
-            timeout=build_timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise DockerError(
-            f"Docker worker image build exceeded the {build_timeout:g}s timeout. "
-            "Restart Docker and retry."
-        ) from exc
-    if completed.returncode != 0:
-        raise DockerError(
-            f"Docker worker image build failed with exit status {completed.returncode}. "
-            "The daemon may have stopped; verify it with 'docker info' and retry."
-        )
-
-
-def _image_exists(image: str) -> bool:
-    try:
-        probe = _run_docker(
-            ["docker", "image", "inspect", image],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=DOCKER_CHECK_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise DockerUnavailableError(
-            "Docker timed out while inspecting the worker image. Restart Docker, then retry."
-        ) from exc
-    return probe.returncode == 0
-
-
-def _derived_image_tag(image: str, dependencies: Sequence[str]) -> str:
-    """Stable per-dependency-set tag derived from the base image and packages."""
-    repository = image.split(":", 1)[0]
-    digest = hashlib.sha256("\n".join(sorted(dependencies)).encode()).hexdigest()[:12]
-    return f"{repository}:deps-{digest}"
-
-
 def build_worker_image(
     image: str = DEFAULT_IMAGE,
     dependencies: Sequence[str] = (),
@@ -593,122 +417,34 @@ def build_worker_image(
     runtime: Runtime = PYTHON_RUNTIME,
     rebuild: bool = False,
     build_timeout: float = DEFAULT_BUILD_TIMEOUT,
+    sandbox: Sandbox | None = None,
 ) -> str:
     """Ensure a runnable worker image and return the tag to run.
 
     With no dependencies this is the stdlib/runtime-only base image. With
     dependencies it builds (once, then caches) a derived image that layers the
     runtime's package install (``pip``/``npm``) on top of the base, and returns
-    that derived tag.
+    that derived tag. The actual Docker work is delegated to ``sandbox`` (a
+    :class:`~pfind.sandbox.DockerSandbox` for the runtime by default); this function
+    keeps only the pfind-specific ``Runtime``/dependency logic.
     """
-    build_image(image, rebuild=rebuild, build_timeout=build_timeout, dockerfile=runtime.dockerfile)
+    if sandbox is None:
+        sandbox = DockerSandbox(
+            image, dockerfile=_dockerfile_path(runtime.dockerfile), build_timeout=build_timeout
+        )
+    sandbox.ensure_image(rebuild=rebuild)
     if not dependencies:
         return image
 
-    derived = _derived_image_tag(image, dependencies)
-    if not rebuild and _image_exists(derived):
-        return derived
-
     packages = sorted(set(dependencies))
-    dockerfile = runtime.derived_dockerfile(image, packages)
-    with tempfile.TemporaryDirectory(prefix="pfind-deps-") as context:
-        (Path(context) / "Dockerfile").write_text(dockerfile)
-        try:
-            completed = _run_docker(
-                ["docker", "build", "--load", "--tag", derived, context],
-                timeout=build_timeout,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise DockerError(
-                f"Building the worker image with dependencies exceeded the "
-                f"{build_timeout:g}s timeout. Restart Docker and retry."
-            ) from exc
-    if completed.returncode != 0:
-        raise DockerError(
-            "Failed to install requested packages into the worker image "
-            f"({', '.join(packages)}); exit status {completed.returncode}."
-        )
-    return derived
+    dockerfile_text = runtime.derived_dockerfile(image, packages)
+    return sandbox.derive_image(dockerfile_text, rebuild=rebuild)
 
 
-def _remove_container(name: str) -> None:
-    with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
-        _run_docker(
-            ["docker", "rm", "--force", name],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        )
-
-
-def run_filter(
-    code: str,
-    search_root: Path,
-    container_paths: list[str],
-    *,
-    image: str = DEFAULT_IMAGE,
-    timeout: float = 10.0,
-    memory: str = "256m",
-    cpus: float = 1.0,
-    pids_limit: int = 64,
-    meta: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    """Execute generated code in a constrained, disposable container."""
-    if timeout <= 0 or cpus <= 0 or pids_limit <= 0:
-        raise ValueError("timeout, cpus, and pids_limit must be positive")
-
-    root = search_root.expanduser().resolve(strict=True)
-    name = f"pfind-search-{uuid.uuid4().hex}"
-    request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
-    command = [
-        "docker",
-        "run",
-        "--rm",
-        "--name",
-        name,
-        "--interactive",
-        "--network",
-        "none",
-        "--read-only",
-        "--cap-drop",
-        "ALL",
-        "--security-opt",
-        "no-new-privileges",
-        "--pids-limit",
-        str(pids_limit),
-        "--memory",
-        memory,
-        "--cpus",
-        str(cpus),
-        "--ulimit",
-        "nofile=128:128",
-        "--tmpfs",
-        "/tmp:rw,noexec,nosuid,nodev,size=16m",
-        "--mount",
-        f"type=bind,src={root},dst=/data,readonly",
-        image,
-    ]
-
+def _parse_worker_response(stdout: bytes) -> dict[str, Any]:
+    """Decode and validate the worker's JSON protocol reply (pfind-specific)."""
     try:
-        completed = _run_docker(
-            command,
-            input=request,
-            capture_output=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        _remove_container(name)
-        raise TimeoutError(f"Generated filter exceeded the {timeout:g}s timeout.") from exc
-
-    if len(completed.stdout) > MAX_RESULT_BYTES or len(completed.stderr) > MAX_RESULT_BYTES:
-        raise RuntimeError("Worker output exceeded the allowed size.")
-    if completed.returncode != 0:
-        error = completed.stderr.decode(errors="replace").strip()
-        detail = error or f"exit status {completed.returncode}"
-        raise RuntimeError(f"Docker worker failed: {detail}")
-
-    try:
-        response = json.loads(completed.stdout)
+        response = json.loads(stdout)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("Docker worker returned an invalid response.") from exc
     if not isinstance(response, dict) or response.get("ok") is not True:
@@ -718,7 +454,57 @@ def run_filter(
             else "invalid response"
         )
         raise RuntimeError(f"Generated filter failed: {message}")
+    return response
 
+
+def run_filter(
+    code: str,
+    search_root: Path,
+    container_paths: list[str],
+    *,
+    sandbox: Sandbox | None = None,
+    image: str = DEFAULT_IMAGE,
+    timeout: float = 10.0,
+    memory: str = "256m",
+    cpus: float = 1.0,
+    pids_limit: int = 64,
+    meta: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Execute generated code in the sandbox and return container-path records.
+
+    Builds the ``{code, paths, meta}`` request, hands it to ``sandbox.run`` (a
+    :class:`~pfind.sandbox.DockerSandbox` for ``image`` by default), then validates the
+    worker's ``{ok, results}`` reply against the supplied paths. The sandbox owns the
+    hardened container and its limits; this adapter owns the worker protocol.
+    """
+    if timeout <= 0 or cpus <= 0 or pids_limit <= 0:
+        raise ValueError("timeout, cpus, and pids_limit must be positive")
+
+    root = search_root.expanduser().resolve(strict=True)
+    if sandbox is None:
+        sandbox = DockerSandbox(image, dockerfile=_dockerfile_path())
+    request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
+    limits = Limits(
+        memory=memory,
+        cpus=cpus,
+        pids=pids_limit,
+        timeout=timeout,
+        max_output_bytes=MAX_RESULT_BYTES,
+    )
+
+    try:
+        run = sandbox.run(request, mounts=[Mount(root, "/data", read_only=True)], limits=limits)
+    except SandboxTimeout as exc:
+        raise TimeoutError(f"Generated filter exceeded the {timeout:g}s timeout.") from exc
+    except SandboxOutputTooLarge as exc:
+        raise RuntimeError("Worker output exceeded the allowed size.") from exc
+
+    if run.returncode != 0:
+        error = run.stderr.decode(errors="replace").strip()
+        detail = error or f"exit status {run.returncode}"
+        raise RuntimeError(f"Docker worker failed: {detail}")
+
+    response = _parse_worker_response(run.stdout)
     try:
         return _normalize_results(response.get("results"), set(container_paths))
     except ValueError as exc:
@@ -743,6 +529,7 @@ def search(
     whitelist: set[str] | None = None,
     macos_meta: bool = False,
     format_code: bool = True,
+    sandbox: Sandbox | None = None,
 ) -> list[dict[str, Any]]:
     """Generate and execute a filter, returning host-path result records.
 
@@ -772,6 +559,9 @@ def search(
     (Finder tags, quarantine/where-from) are read on the host and exposed to a Python
     filter as a global ``META`` dict, enabling queries that combine macOS metadata with
     file contents. It is a no-op on other platforms.
+
+    ``sandbox`` overrides the execution backend (a :class:`~pfind.sandbox.DockerSandbox`
+    built from the chosen runtime by default); pass a fake to run without Docker.
     """
     root = Path(path).expanduser().resolve(strict=True)
     container_paths, host_by_container = enumerate_paths(root)
@@ -802,6 +592,7 @@ def search(
         build_timeout=build_timeout,
         approve_dependencies=approve_dependencies,
         whitelist=whitelist,
+        sandbox=sandbox,
     )
 
 
@@ -821,6 +612,7 @@ def _run_generated(
     build_timeout: float,
     approve_dependencies: Callable[[list[str]], bool] | None,
     whitelist: set[str] | None,
+    sandbox: Sandbox | None = None,
 ) -> list[dict[str, Any]]:
     """Build the sandbox image for a filter and run it, returning host-path records.
 
@@ -844,11 +636,13 @@ def _run_generated(
         runtime=runtime,
         rebuild=rebuild,
         build_timeout=build_timeout,
+        sandbox=sandbox,
     )
     records = run_filter(
         generated.code,
         root,
         container_paths,
+        sandbox=sandbox,
         image=run_image,
         timeout=timeout,
         memory=memory,
@@ -878,6 +672,7 @@ def run_saved(
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
     on_generated: Callable[[GeneratedFilter], None] | None = None,
+    sandbox: Sandbox | None = None,
 ) -> list[dict[str, Any]]:
     """Replay a previously saved filter through the sandbox, skipping the LLM.
 
@@ -912,4 +707,5 @@ def run_saved(
         build_timeout=build_timeout,
         approve_dependencies=approve_dependencies,
         whitelist=whitelist,
+        sandbox=sandbox,
     )

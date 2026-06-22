@@ -55,6 +55,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Internal: extracted a reusable `Sandbox` component.** The hardened Docker execution
+  now lives behind a small, domain-agnostic `Sandbox` protocol in `pfind.sandbox`, with
+  `DockerSandbox` as the default backend. The security-relevant `docker run` flag set
+  (no network, read-only root, dropped capabilities, `no-new-privileges`, resource
+  limits) is assembled in one auditable place, and the Docker mechanics (`_run_docker`,
+  `build_image`, `check_docker_available`, image derive/cache) moved there too;
+  `build_worker_image` and `run_filter` are now thin adapters over it. `search` and
+  `run_saved` gained an optional `sandbox` parameter so callers (and the test suite) can
+  run the pfind logic without Docker or swap in an alternate backend later. The Docker
+  error hierarchy is now the `SandboxError` family; `DockerError`/`DockerUnavailableError`
+  remain as aliases, so existing `except` call sites and the public API are unchanged.
 - Filter-generation requests tolerate providers without strict JSON mode: pfind drops
   `response_format` on rejection and recovers the JSON object from a fenced or chatty
   reply, then validates as usual.

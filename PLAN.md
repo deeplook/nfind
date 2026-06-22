@@ -1,6 +1,7 @@
 # Plan: extract a reusable `Sandbox` component
 
-Status: **proposed, not yet implemented.**
+Status: **implemented** (Phase A). See `src/pfind/sandbox.py`, the `backend.py` adapters,
+and `tests/test_sandbox.py` / `tests/fakes.py`.
 
 Goal: isolate pfind's hardened-Docker execution into a small, domain-agnostic
 `Sandbox` component, behind an interface, so that (a) the security-relevant flag set

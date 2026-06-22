@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from fakes import FakeSandbox
 from pfind import backend as MODULE
 from pfind import cli, metadata, worker
 
@@ -106,66 +107,6 @@ def test_worker_rejects_non_object_meta():
 
     with pytest.raises(ValueError, match="meta"):
         MODULE._worker_response(payload)
-
-
-def test_build_image_loads_locally_runnable_image():
-    available = MODULE.subprocess.CompletedProcess(args=[], returncode=0, stdout="29.0", stderr="")
-    missing = MODULE.subprocess.CompletedProcess(args=[], returncode=1)
-    built = MODULE.subprocess.CompletedProcess(args=[], returncode=0)
-    with patch.object(MODULE, "_run_docker", side_effect=[available, missing, built]) as run:
-        MODULE.build_image("test-image")
-
-    assert "--load" in run.call_args_list[2].args[0]
-
-
-def test_build_image_reports_unavailable_daemon():
-    unavailable = MODULE.subprocess.CompletedProcess(
-        args=[], returncode=1, stdout="", stderr="EOF\n"
-    )
-    with (
-        patch.object(MODULE, "_run_docker", return_value=unavailable),
-        pytest.raises(MODULE.DockerUnavailableError, match="Docker daemon is unavailable: EOF"),
-    ):
-        MODULE.build_image("test-image")
-
-
-def test_docker_check_accepts_empty_container_list():
-    available = MODULE.subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-    with patch.object(MODULE, "_run_docker", return_value=available):
-        MODULE.check_docker_available()
-
-
-def test_build_image_treats_successful_exit_with_eof_as_unavailable():
-    misleading = MODULE.subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="", stderr="Error reading remote info: EOF\n"
-    )
-    with (
-        patch.object(MODULE, "_run_docker", return_value=misleading),
-        pytest.raises(MODULE.DockerUnavailableError, match="Error reading remote info: EOF"),
-    ):
-        MODULE.build_image("test-image")
-
-
-def test_build_image_reports_missing_docker_cli():
-    with (
-        patch.object(MODULE, "_run_docker", side_effect=FileNotFoundError),
-        pytest.raises(MODULE.DockerUnavailableError, match="Docker CLI was not found"),
-    ):
-        MODULE.build_image("test-image")
-
-
-def test_build_image_reports_timeout():
-    available = MODULE.subprocess.CompletedProcess(args=[], returncode=0, stdout="29.0", stderr="")
-    missing = MODULE.subprocess.CompletedProcess(args=[], returncode=1)
-    with (
-        patch.object(
-            MODULE,
-            "_run_docker",
-            side_effect=[available, missing, MODULE.subprocess.TimeoutExpired("docker", 7)],
-        ),
-        pytest.raises(MODULE.DockerError, match="build exceeded the 7s timeout"),
-    ):
-        MODULE.build_image("test-image", build_timeout=7)
 
 
 def test_search_checks_docker_before_generating_code(tmp_path):
@@ -308,79 +249,56 @@ def test_worker_main_reports_nonzero_child_exit(monkeypatch):
     assert "137" in written["error"]
 
 
-def _docker_result(stdout=b"", stderr=b"", returncode=0):
-    return subprocess.CompletedProcess(["docker"], returncode, stdout, stderr)
-
-
 def test_run_filter_returns_normalized_results(tmp_path):
-    with patch.object(
-        MODULE, "_run_docker", return_value=_docker_result(b'{"ok":true,"results":["/data/a"]}')
-    ):
-        results = MODULE.run_filter("code", tmp_path, ["/data/a"])
+    fake = FakeSandbox(stdout=b'{"ok":true,"results":["/data/a"]}')
+    results = MODULE.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
     assert results == [{"path": "/data/a"}]
+    # The adapter builds the {code, paths, meta} request and mounts the root read-only.
+    request, mounts, _ = fake.runs[0]
+    assert json.loads(request) == {"code": "code", "paths": ["/data/a"], "meta": {}}
+    assert mounts[0].target == "/data" and mounts[0].read_only is True
 
 
 @pytest.mark.parametrize("bad", [0, -1.5])
 def test_run_filter_rejects_nonpositive_limits(tmp_path, bad):
     with pytest.raises(ValueError):
-        MODULE.run_filter("code", tmp_path, [], timeout=bad)
+        MODULE.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), timeout=bad)
 
 
 def test_run_filter_maps_timeout_to_timeouterror(tmp_path):
-    with (
-        patch.object(MODULE, "_run_docker", side_effect=subprocess.TimeoutExpired("docker", 10)),
-        patch.object(MODULE, "_remove_container") as remove,
-        pytest.raises(TimeoutError, match="exceeded"),
-    ):
-        MODULE.run_filter("code", tmp_path, [], timeout=10)
-    remove.assert_called_once()
+    fake = FakeSandbox(run_error=MODULE.SandboxTimeout("boom"))
+    with pytest.raises(TimeoutError, match="exceeded"):
+        MODULE.run_filter("code", tmp_path, [], sandbox=fake, timeout=10)
 
 
-def test_run_filter_rejects_oversized_output(tmp_path, monkeypatch):
-    monkeypatch.setattr(MODULE, "MAX_RESULT_BYTES", 4)
-    with (
-        patch.object(MODULE, "_run_docker", return_value=_docker_result(b'{"ok":true}')),
-        pytest.raises(RuntimeError, match="exceeded the allowed size"),
-    ):
-        MODULE.run_filter("code", tmp_path, [])
+def test_run_filter_rejects_oversized_output(tmp_path):
+    fake = FakeSandbox(run_error=MODULE.SandboxOutputTooLarge("too big"))
+    with pytest.raises(RuntimeError, match="exceeded the allowed size"):
+        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_reports_nonzero_worker_exit(tmp_path):
-    with (
-        patch.object(
-            MODULE, "_run_docker", return_value=_docker_result(stderr=b"boom", returncode=1)
-        ),
-        pytest.raises(RuntimeError, match="Docker worker failed: boom"),
-    ):
-        MODULE.run_filter("code", tmp_path, [])
+    fake = FakeSandbox(stderr=b"boom", returncode=1)
+    with pytest.raises(RuntimeError, match="Docker worker failed: boom"):
+        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_rejects_invalid_json(tmp_path):
-    with (
-        patch.object(MODULE, "_run_docker", return_value=_docker_result(b"not json")),
-        pytest.raises(RuntimeError, match="invalid response"),
-    ):
-        MODULE.run_filter("code", tmp_path, [])
+    fake = FakeSandbox(stdout=b"not json")
+    with pytest.raises(RuntimeError, match="invalid response"):
+        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_propagates_worker_error(tmp_path):
-    with (
-        patch.object(
-            MODULE, "_run_docker", return_value=_docker_result(b'{"ok":false,"error":"nope"}')
-        ),
-        pytest.raises(RuntimeError, match="Generated filter failed: nope"),
-    ):
-        MODULE.run_filter("code", tmp_path, [])
+    fake = FakeSandbox(stdout=b'{"ok":false,"error":"nope"}')
+    with pytest.raises(RuntimeError, match="Generated filter failed: nope"):
+        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_rejects_disallowed_result_path(tmp_path):
-    with (
-        patch.object(
-            MODULE, "_run_docker", return_value=_docker_result(b'{"ok":true,"results":["/evil"]}')
-        ),
-        pytest.raises(RuntimeError, match="invalid result"),
-    ):
-        MODULE.run_filter("code", tmp_path, ["/data/a"])
+    fake = FakeSandbox(stdout=b'{"ok":true,"results":["/evil"]}')
+    with pytest.raises(RuntimeError, match="invalid result"):
+        MODULE.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
 
 
 def test_search_maps_host_paths_in_records(tmp_path):
@@ -566,7 +484,7 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
     (tmp_path / "a.ts").write_text("export const x = 1;")
     captured = {}
 
-    def fake_build(image, dependencies, *, runtime, rebuild, build_timeout):
+    def fake_build(image, dependencies, *, runtime, rebuild, build_timeout, sandbox=None):
         captured["image"] = image
         captured["runtime"] = runtime.name
         return "pfind-search-node:deps-x"
@@ -905,11 +823,14 @@ def test_validate_dependencies_rejects_specifiers():
         MODULE._validate_dependencies(["evil; rm -rf /"])
 
 
-def test_derived_image_tag_is_stable_and_order_independent():
-    tag1 = MODULE._derived_image_tag("pfind-search-paths:latest", ["a", "b"])
-    tag2 = MODULE._derived_image_tag("pfind-search-paths:latest", ["b", "a"])
-    assert tag1 == tag2
-    assert tag1.startswith("pfind-search-paths:deps-")
+def test_build_worker_image_derived_dockerfile_is_order_independent():
+    # The derived image is content-addressed on the Dockerfile text, and packages are
+    # sorted before the Dockerfile is rendered, so dependency order does not matter.
+    first = FakeSandbox()
+    MODULE.build_worker_image("base:latest", ["a", "b"], sandbox=first)
+    second = FakeSandbox()
+    MODULE.build_worker_image("base:latest", ["b", "a"], sandbox=second)
+    assert first.derive_calls == second.derive_calls
 
 
 def test_whitelist_round_trip(tmp_path, monkeypatch):
@@ -929,23 +850,20 @@ def test_kotlin_swift_dart_grammars_are_pre_approved():
 
 
 def test_build_worker_image_returns_base_when_no_dependencies():
-    with patch.object(MODULE, "build_image") as build:
-        assert MODULE.build_worker_image("base:latest") == "base:latest"
-    build.assert_called_once()
+    fake = FakeSandbox()
+    assert MODULE.build_worker_image("base:latest", sandbox=fake) == "base:latest"
+    assert fake.ensure_calls == [False]
+    assert fake.derive_calls == []
 
 
 def test_build_worker_image_builds_derived_for_dependencies():
-    built = MODULE.subprocess.CompletedProcess(args=[], returncode=0)
-    with (
-        patch.object(MODULE, "build_image"),
-        patch.object(MODULE, "_image_exists", return_value=False),
-        patch.object(MODULE, "_run_docker", return_value=built) as run,
-    ):
-        tag = MODULE.build_worker_image("base:latest", ["mutagen"])
+    fake = FakeSandbox(derived="base:deps-abc123")
+    tag = MODULE.build_worker_image("base:latest", ["mutagen"], sandbox=fake)
 
-    assert tag.startswith("base:deps-")
-    command = run.call_args.args[0]
-    assert command[0:2] == ["docker", "build"]
+    assert tag == "base:deps-abc123"
+    assert fake.ensure_calls == [False]
+    # The derived image is built from the runtime's pip-install Dockerfile.
+    assert "pip install" in fake.derive_calls[0]
 
 
 def test_cli_no_deps_rejects_packages(tmp_path):
@@ -1072,23 +990,6 @@ def test_cli_json_and_verbose_are_mutually_exclusive():
     assert "mutually exclusive" in result.output
 
 
-def test_docker_timeout_kills_plugin_process_group():
-    process = Mock(pid=123, returncode=-9)
-    process.communicate.side_effect = [
-        MODULE.subprocess.TimeoutExpired(["docker", "info"], 1),
-        ("", ""),
-    ]
-    with (
-        patch.object(MODULE.subprocess, "Popen", return_value=process),
-        patch.object(MODULE.os, "name", "posix"),
-        patch.object(MODULE.os, "killpg") as killpg,
-        pytest.raises(MODULE.subprocess.TimeoutExpired),
-    ):
-        MODULE._run_docker(["docker", "info"], timeout=1, capture_output=True)
-
-    killpg.assert_called_once_with(123, MODULE.signal.SIGKILL)
-
-
 def test_cli_prints_clean_docker_error():
     from typer.testing import CliRunner
 
@@ -1098,26 +999,6 @@ def test_cli_prints_clean_docker_error():
 
     assert result.exit_code == 1
     assert "error: offline" in result.output
-
-
-def test_run_filter_uses_security_and_resource_flags(tmp_path):
-    completed = MODULE.subprocess.CompletedProcess(
-        args=[], returncode=0, stdout=b'{"ok":true,"results":[]}', stderr=b""
-    )
-    with patch.object(MODULE, "_run_docker", return_value=completed) as run:
-        assert MODULE.run_filter("def filter_paths(paths): return []", tmp_path, []) == []
-
-    command = run.call_args.args[0]
-    assert command[0:2] == ["docker", "run"]
-    network_index = command.index("--network")
-    assert command[network_index : network_index + 2] == ["--network", "none"]
-    assert "--read-only" in command
-    assert command[command.index("--cap-drop") : command.index("--cap-drop") + 2] == [
-        "--cap-drop",
-        "ALL",
-    ]
-    assert "no-new-privileges" in command
-    assert f"type=bind,src={tmp_path.resolve()},dst=/data,readonly" in command
 
 
 # --- ruff cleanup of generated code ---------------------------------------------

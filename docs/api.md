@@ -42,6 +42,7 @@ def search(
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
     macos_meta: bool = False,            # macOS: expose tags/quarantine to the filter
+    sandbox: Sandbox | None = None,      # override the execution backend (see below)
 ) -> list[dict[str, Any]]:
 ```
 
@@ -202,3 +203,34 @@ records = backend.run_filter(generated.code, root, container_paths, image=image)
 | `check_docker_available()` | Raise `DockerUnavailableError` if Docker can't be reached. |
 
 These return container paths (`/data/...`); `search` maps them back to host paths.
+
+## The sandbox component
+
+The hardened Docker execution lives behind a small, domain-agnostic `Sandbox` protocol
+in `pfind.sandbox`. The default backend, `DockerSandbox`, owns the security-relevant
+`docker run` flag set (no network, read-only root, dropped capabilities,
+`no-new-privileges`, and process/memory/CPU/file-descriptor/tmpfs limits) in one
+auditable place, plus the image build/derive mechanics. `build_worker_image`,
+`run_filter`, `build_image`, and `check_docker_available` are thin adapters over it.
+
+`search` and `run_saved` accept an optional `sandbox` to override the backend — pass a
+fake implementing the protocol to drive the pfind logic without Docker, or an alternate
+backend later:
+
+```python
+from pfind import search
+from pfind.sandbox import CompletedRun, Limits, Mount
+
+class DryRunSandbox:                 # structural match for the Sandbox protocol
+    def ensure_image(self, *, rebuild: bool = False) -> None: ...
+    def derive_image(self, dockerfile_text: str, *, rebuild: bool = False) -> str:
+        return "dry-run:latest"
+    def run(self, stdin: bytes, *, mounts: list[Mount], limits: Limits) -> CompletedRun:
+        return CompletedRun(stdout=b'{"ok": true, "results": []}', stderr=b"", returncode=0)
+
+records = search(".", "files with no extension", sandbox=DryRunSandbox())
+```
+
+`run` raises `SandboxTimeout` / `SandboxOutputTooLarge` / `SandboxUnavailable`
+(`DockerUnavailableError` is an alias of `SandboxUnavailable`); it does not interpret
+exit codes or parse output — `run_filter` does that.
