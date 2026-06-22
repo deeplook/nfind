@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: install lint format test coverage clean install-tool check-all publish-test publish help
+.PHONY: install lint format test coverage clean install-tool check-all publish-test publish serve-docs build-docs help
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -28,10 +28,17 @@ check-all: install format lint test clean  ## Run format, lint, test, and clean
 install-tool:  ## Install pfind as a uv tool (reinstall)
 	uv tool install --reinstall .
 
+serve-docs:  ## Serve the MkDocs documentation locally (http://localhost:8000)
+	uv run --with mkdocs-material mkdocs serve
+
+build-docs:  ## Build the MkDocs site into ./site
+	uv run --with mkdocs-material mkdocs build
+
 clean:  ## Remove build artifacts and caches
 	rm -rf dist build *.egg-info
 	rm -rf .pytest_cache .mypy_cache .ruff_cache
 	rm -rf htmlcov .coverage coverage.xml
+	rm -rf site
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name .DS_Store -exec rm {} +
 

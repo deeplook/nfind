@@ -17,3 +17,6 @@ htmlcov/
 
 # Virtual environment
 .venv/
+
+# MkDocs build output
+site/
