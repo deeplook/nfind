@@ -7,9 +7,9 @@ from .backend import (
     DockerError,
     DockerUnavailableError,
     load_whitelist,
-    render_saved_filter,
     run_saved,
     search,
+    serialize_filter,
 )
 
 __version__ = "0.1.0"
@@ -19,7 +19,7 @@ __all__ = [
     "DockerError",
     "DockerUnavailableError",
     "load_whitelist",
-    "render_saved_filter",
+    "serialize_filter",
     "run_saved",
     "search",
     "__version__",

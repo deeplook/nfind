@@ -1,7 +1,7 @@
 """Serialization of generated filters to and from self-describing replay scripts.
 
-``render_saved_filter`` writes a filter as a PEP 723 script (python) or a commented
-source file (node); ``parse_saved_filter`` reconstructs a :class:`GeneratedFilter`
+``serialize_filter`` writes a filter as a PEP 723 script (python) or a commented
+source file (node); ``deserialize_filter`` reconstructs a :class:`GeneratedFilter`
 from such a file. Replaying a saved filter through the sandbox lives in
 ``backend.run_saved``.
 """
@@ -38,7 +38,7 @@ _SCRIPT_METADATA_RE = re.compile(
 _SCRIPT_DEP_RE = re.compile(r'"(?P<name>[^"]+)"')
 
 
-def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
+def _header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
     """Provenance + safety lines for a saved filter, each prefixed with ``comment``."""
     warning = (
         "WARNING: running this file directly (e.g. `uv run`) executes OUTSIDE the "
@@ -64,7 +64,7 @@ def _saved_header(prompt: str, model: str, runtime: str, comment: str) -> list[s
     return [f"{comment} {line}".rstrip() for line in lines]
 
 
-def render_saved_filter(generated: GeneratedFilter, prompt: str, model: str) -> str:
+def serialize_filter(generated: GeneratedFilter, prompt: str, model: str) -> str:
     """Render a generated filter as a self-describing, replayable script.
 
     For the python runtime the result is a PEP 723 script: a ``# /// script`` block
@@ -77,7 +77,7 @@ def render_saved_filter(generated: GeneratedFilter, prompt: str, model: str) -> 
     form can be replayed through the sandbox with :func:`backend.run_saved`.
     """
     if generated.runtime == "node":
-        header = "\n".join(_saved_header(prompt, model, generated.runtime, "//"))
+        header = "\n".join(_header(prompt, model, generated.runtime, "//"))
         note = (
             "// Note: standalone `uv run` is python-only; replay this file sandboxed "
             "with `pfind --run`."
@@ -94,14 +94,14 @@ def render_saved_filter(generated: GeneratedFilter, prompt: str, model: str) -> 
     pep723 = "\n".join(lines)
 
     # Docstring carries the same provenance/warning, without the comment prefix.
-    doc_lines = [line.lstrip() for line in _saved_header(prompt, model, generated.runtime, "")]
+    doc_lines = [line.lstrip() for line in _header(prompt, model, generated.runtime, "")]
     body = "\n".join(doc_lines).replace('"""', '\\"\\"\\"')
     docstring = f'"""\n{body}\n"""'
 
     return f"{pep723}\n{docstring}\n\n\n{generated.code.rstrip()}\n\n\n{_PYTHON_HARNESS}"
 
 
-def parse_saved_filter(source: str, *, filename: str = "") -> GeneratedFilter:
+def deserialize_filter(source: str, *, filename: str = "") -> GeneratedFilter:
     """Reconstruct a :class:`GeneratedFilter` from a saved filter file.
 
     The runtime is node when the file is a ``.cjs``/``.js`` or has no PEP 723 block but

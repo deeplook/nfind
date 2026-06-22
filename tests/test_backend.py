@@ -1254,9 +1254,9 @@ def test_search_skips_formatting_when_disabled(tmp_path):
 # --- saved filters: render / parse / replay -------------------------------------
 
 
-def test_render_saved_filter_python_is_valid_pep723_script():
+def test_serialize_filter_python_is_valid_pep723_script():
     code = "def filter_paths(paths):\n    import mutagen\n    return paths"
-    src = MODULE.render_saved_filter(_gen(code, ["mutagen"]), "MP3 files", "gpt-4o-mini")
+    src = MODULE.serialize_filter(_gen(code, ["mutagen"]), "MP3 files", "gpt-4o-mini")
 
     # Valid Python and a parseable PEP 723 block declaring the dependency.
     compile(src, "saved.py", "exec")
@@ -1270,27 +1270,27 @@ def test_render_saved_filter_python_is_valid_pep723_script():
     assert 'if __name__ == "__main__":' in src
 
 
-def test_render_saved_filter_wraps_header_within_line_length():
+def test_serialize_filter_wraps_header_within_line_length():
     long_code = "def filter_paths(paths):\n    return paths"
     for runtime in ("python", "node"):
         gen = MODULE.GeneratedFilter(code=long_code, dependencies=[], runtime=runtime)
-        src = MODULE.render_saved_filter(gen, "epub archives", "gpt-4o-mini")
+        src = MODULE.serialize_filter(gen, "epub archives", "gpt-4o-mini")
         longest = max(len(line) for line in src.splitlines())
         assert longest <= MODULE.FILTER_LINE_LENGTH, (runtime, longest)
         # The warning prose is wrapped across multiple lines, not left as one long line.
         assert sum("OUTSIDE the" in line or "trust." in line for line in src.splitlines()) >= 1
 
 
-def test_render_saved_filter_escapes_triple_quotes_in_prompt():
-    src = MODULE.render_saved_filter(
+def test_serialize_filter_escapes_triple_quotes_in_prompt():
+    src = MODULE.serialize_filter(
         _gen("def filter_paths(paths): return paths"), 'a """ quote', "gpt-4o-mini"
     )
     compile(src, "saved.py", "exec")
 
 
-def test_render_saved_filter_node_has_comment_header_and_raw_code():
+def test_serialize_filter_node_has_comment_header_and_raw_code():
     code = "function filterPaths(paths){ return paths; }"
-    src = MODULE.render_saved_filter(_gen_node(code, ["ts-morph"]), "TS files", "gpt-4o-mini")
+    src = MODULE.serialize_filter(_gen_node(code, ["ts-morph"]), "TS files", "gpt-4o-mini")
 
     assert src.startswith("// pfind filter")
     assert "// Prompt:  TS files" in src
@@ -1304,7 +1304,7 @@ def test_saved_filter_standalone_harness_runs(tmp_path):
     (tmp_path / "b.txt").write_text("x")
     code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".mp3")]'
     script = tmp_path / "mp3.py"
-    script.write_text(MODULE.render_saved_filter(_gen(code), "mp3 files", "gpt-4o-mini"))
+    script.write_text(MODULE.serialize_filter(_gen(code), "mp3 files", "gpt-4o-mini"))
 
     out = subprocess.run(  # noqa: S603
         [sys.executable, str(script), str(tmp_path)],
@@ -1316,20 +1316,20 @@ def test_saved_filter_standalone_harness_runs(tmp_path):
     assert "b.txt" not in out.stdout
 
 
-def test_parse_saved_filter_round_trips_python_dependencies():
-    src = MODULE.render_saved_filter(
+def test_deserialize_filter_round_trips_python_dependencies():
+    src = MODULE.serialize_filter(
         _gen("def filter_paths(paths): return paths", ["mutagen"]), "mp3", "gpt-4o-mini"
     )
-    parsed = MODULE.parse_saved_filter(src, filename="mp3.py")
+    parsed = MODULE.deserialize_filter(src, filename="mp3.py")
     assert parsed.runtime == "python"
     assert parsed.dependencies == ["mutagen"]
 
 
-def test_parse_saved_filter_detects_node_by_extension():
-    src = MODULE.render_saved_filter(
+def test_deserialize_filter_detects_node_by_extension():
+    src = MODULE.serialize_filter(
         _gen_node("function filterPaths(paths){return paths;}"), "ts", "gpt-4o-mini"
     )
-    parsed = MODULE.parse_saved_filter(src, filename="filter.cjs")
+    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
     assert parsed.runtime == "node"
 
 
@@ -1337,7 +1337,7 @@ def test_run_saved_replays_without_generating(tmp_path):
     (tmp_path / "a.mp3").write_text("x")
     code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".mp3")]'
     script = tmp_path / "mp3.py"
-    script.write_text(MODULE.render_saved_filter(_gen(code, ["mutagen"]), "mp3", "gpt-4o-mini"))
+    script.write_text(MODULE.serialize_filter(_gen(code, ["mutagen"]), "mp3", "gpt-4o-mini"))
 
     container = "/data/a.mp3"
     with (
@@ -1361,7 +1361,7 @@ def test_run_saved_replays_without_generating(tmp_path):
 def test_run_saved_gates_unapproved_dependencies(tmp_path):
     code = "def filter_paths(paths): return paths"
     script = tmp_path / "f.py"
-    script.write_text(MODULE.render_saved_filter(_gen(code, ["sketchy-pkg"]), "x", "gpt-4o-mini"))
+    script.write_text(MODULE.serialize_filter(_gen(code, ["sketchy-pkg"]), "x", "gpt-4o-mini"))
 
     container = "/data/a"
     with (

@@ -83,7 +83,7 @@ This is the same hook the CLI uses to implement
 
 ### Saving and replaying filters
 
-`render_saved_filter(generated, prompt, model)` renders a `GeneratedFilter` as a
+`serialize_filter(generated, prompt, model)` renders a `GeneratedFilter` as a
 self-describing, replayable script (a PEP 723 script for the Python runtime, a
 commented raw file for Node) — the same artifact the CLI's `--save` writes.
 `run_saved(filter_path, path, …)` parses such a file back and replays it through the
@@ -93,14 +93,14 @@ sandbox without an LLM call, gating any declared packages through
 ```python
 from pathlib import Path
 
-from pfind import render_saved_filter, run_saved, search
+from pfind import serialize_filter, run_saved, search
 from pfind.backend import GeneratedFilter
 
 # Capture and persist a filter while searching:
 saved: list[GeneratedFilter] = []
 search(".", "Python files that import os", on_generated=saved.append)
 Path("os-imports.py").write_text(
-    render_saved_filter(saved[0], "Python files that import os", "gpt-4o-mini")
+    serialize_filter(saved[0], "Python files that import os", "gpt-4o-mini")
 )
 
 # Later, replay it sandboxed with no model call:

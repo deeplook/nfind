@@ -63,8 +63,8 @@ from .sandbox import _run_docker as _run_docker
 from .sandbox import build_image as build_image
 from .sandbox import check_docker_available as check_docker_available
 from .serialization import _SCRIPT_METADATA_RE as _SCRIPT_METADATA_RE
-from .serialization import parse_saved_filter as parse_saved_filter
-from .serialization import render_saved_filter as render_saved_filter
+from .serialization import deserialize_filter as deserialize_filter
+from .serialization import serialize_filter as serialize_filter
 from .whitelist import _whitelist_path as _whitelist_path
 from .whitelist import approve_packages as approve_packages
 from .whitelist import load_whitelist as load_whitelist
@@ -879,7 +879,7 @@ def run_saved(
 ) -> list[dict[str, Any]]:
     """Replay a previously saved filter through the sandbox, skipping the LLM.
 
-    The file written by ``--save``/:func:`render_saved_filter` is parsed back into a
+    The file written by ``--save``/:func:`serialize_filter` is parsed back into a
     filter and run in the same hardened container as :func:`search`. Any third-party
     packages it declares are still gated through ``approve_dependencies``/the whitelist,
     so a saved filter cannot silently pull new packages. macOS metadata is not exposed
@@ -887,7 +887,7 @@ def run_saved(
     enumeration exactly as for :func:`search`.
     """
     saved = Path(filter_path).expanduser()
-    generated = parse_saved_filter(saved.read_text(), filename=saved.name)
+    generated = deserialize_filter(saved.read_text(), filename=saved.name)
     if on_generated is not None:
         on_generated(generated)
 

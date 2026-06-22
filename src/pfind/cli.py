@@ -305,7 +305,7 @@ def main(
 
     def on_generated(generated: GeneratedFilter) -> None:
         if save is not None:
-            save.write_text(backend.render_saved_filter(generated, prompt or "", model))
+            save.write_text(backend.serialize_filter(generated, prompt or "", model))
             typer.echo(f"saved generated filter to {save}", err=True)
         if show_code or confirm:
             # Show the full script as --save would write it. On a --run replay the
@@ -313,7 +313,7 @@ def main(
             preview = (
                 generated.code
                 if run is not None
-                else backend.render_saved_filter(generated, prompt or "", model)
+                else backend.serialize_filter(generated, prompt or "", model)
             )
             typer.echo(f"--- generated filter ({generated.runtime}) ---", err=True)
             typer.echo(_highlight(preview, generated.runtime), err=True)
