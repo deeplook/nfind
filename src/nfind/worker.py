@@ -50,8 +50,6 @@ def _normalize_results(results: Any, allowed: set[str]) -> list[dict[str, Any]]:
         if record["path"] not in allowed:
             raise ValueError("filter_paths returned a path outside its input set.")
         records.append(record)
-    if len(records) > len(allowed):
-        raise ValueError("filter_paths returned more results than input paths.")
     return records
 
 
