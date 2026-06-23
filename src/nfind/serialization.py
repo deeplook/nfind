@@ -94,7 +94,7 @@ def serialize_filter(generated: GeneratedFilter, prompt: str, model: str) -> str
         )
         return f"{header}\n// nfind-metadata: {metadata}\n{note}\n\n{generated.code.rstrip()}\n"
 
-    lines = ["# /// script", '# requires-python = ">=3.12"']
+    lines = ["# /// script", '# requires-python = ">=3.11"']
     if generated.dependencies:
         deps = ", ".join(f'"{pkg}"' for pkg in generated.dependencies)
         lines.append(f"# dependencies = [{deps}]")
