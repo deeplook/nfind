@@ -1,0 +1,68 @@
+site_name: nfind
+site_description: Find files by describing them in natural language, with the generated filter sandboxed in Docker
+site_url: https://deeplook.github.io/nfind
+repo_url: https://github.com/deeplook/nfind
+repo_name: deeplook/nfind
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Get started:
+    - Installation: installation.md
+    - Tutorial: getting-started.md
+    - Examples: examples.md
+  - Reference:
+    - CLI Reference: cli.md
+    - Configuration: configuration.md
+    - Output Modes: output-modes.md
+    - Python API: api.md
+  - Concepts:
+    - Safety Model: safety.md
+    - Runtimes: runtimes.md
+    - Dependencies: dependencies.md
+    - macOS Metadata: macos-metadata.md
+    - How nfind Compares: comparison.md
+  - Help:
+    - Troubleshooting: troubleshooting.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - toc:
+      permalink: true
+      # GitHub-compatible heading slugs so the docs' relative anchors (authored for
+      # GitHub rendering, e.g. "#saving--replaying-filters") resolve here too.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower

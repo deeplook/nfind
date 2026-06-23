@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Test & coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+
+# Build artifacts
+/dist/
+/build/
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# MkDocs build output
+site/
+
+# macOS metadata and editor backup files
+.DS_Store
+*~

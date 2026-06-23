@@ -1,0 +1,17 @@
+# Node.js worker image for nfind: runs an LLM-generated JavaScript filter against a
+# read-only /data mount. The base image needs no npm packages; derived images add
+# approved packages on top (see execution.build_worker_image). Build context is the
+# package directory, which contains worker_node.cjs alongside this Dockerfile.
+FROM node:22-slim
+
+# The node:slim image ships an unprivileged "node" user (uid 1000). /app is owned by
+# it so derived images can install packages into /app/node_modules. The container
+# additionally drops all capabilities and disables networking at run time.
+WORKDIR /app
+COPY worker_node.cjs /app/worker.cjs
+RUN chown -R node:node /app
+
+USER node
+
+# Reads a JSON request on stdin, writes a JSON response on stdout.
+ENTRYPOINT ["node", "/app/worker.cjs"]
