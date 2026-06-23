@@ -100,6 +100,37 @@ def _normalize_roots(path: str | Path | Sequence[str | Path]) -> list[Path]:
     return roots
 
 
+def _enumerate_root(
+    root: Path,
+    container_root: str,
+    *,
+    exclude: Sequence[str],
+    max_depth: int | None,
+    use_default_ignores: bool,
+) -> tuple[list[str], dict[str, str], Mount]:
+    """Enumerate one search root (a directory tree or a single file) and its mount.
+
+    A directory is walked as usual and bind-mounted at ``container_root``. A file root is
+    a degenerate enumeration -- a single entry mounted as a read-only file at
+    ``container_root/<name>`` -- so the filter receives exactly that path. ``exclude``,
+    ``max_depth``, and ``use_default_ignores`` only shape directory walks; they are no-ops
+    for a file root.
+    """
+    if root.is_dir():
+        paths, mapping = enumerate_paths(
+            root,
+            exclude=exclude,
+            max_depth=max_depth,
+            use_default_ignores=use_default_ignores,
+            container_root=container_root,
+        )
+        return paths, mapping, Mount(root, container_root, read_only=True)
+
+    container_path = str(PurePosixPath(container_root, root.name))
+    mount = Mount(root, container_path, read_only=True)
+    return [container_path], {container_path: str(root)}, mount
+
+
 def enumerate_roots(
     roots: Sequence[Path],
     *,
@@ -107,28 +138,28 @@ def enumerate_roots(
     max_depth: int | None = None,
     use_default_ignores: bool = True,
 ) -> tuple[list[str], dict[str, str], list[Mount]]:
-    """Enumerate one or more search roots and return the mounts that expose them."""
+    """Enumerate one or more search roots (directories or files) and the mounts for them.
+
+    A single root hangs off ``/data``; multiple roots are namespaced under ``/data/0``,
+    ``/data/1``, ... so identically named entries from different roots don't collide. Each
+    root may be a directory (walked) or a file (a single mounted path).
+    """
     if not roots:
         raise ValueError("at least one search root is required")
-    if len(roots) == 1:
-        container_paths, host_by_container = enumerate_paths(
-            roots[0], exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
-        )
-        return container_paths, host_by_container, [Mount(roots[0], "/data", read_only=True)]
 
-    container_paths = []
-    host_by_container = {}
+    container_paths: list[str] = []
+    host_by_container: dict[str, str] = {}
     mounts: list[Mount] = []
     for index, root in enumerate(roots):
-        target = f"/data/{index}"
-        paths, mapping = enumerate_paths(
+        container_root = "/data" if len(roots) == 1 else f"/data/{index}"
+        paths, mapping, mount = _enumerate_root(
             root,
+            container_root,
             exclude=exclude,
             max_depth=max_depth,
             use_default_ignores=use_default_ignores,
-            container_root=target,
         )
         container_paths.extend(paths)
         host_by_container.update(mapping)
-        mounts.append(Mount(root, target, read_only=True))
+        mounts.append(mount)
     return container_paths, host_by_container, mounts

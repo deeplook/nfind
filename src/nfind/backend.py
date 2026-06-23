@@ -154,9 +154,10 @@ def search(
     ``sandbox`` overrides the execution backend (a :class:`~nfind.sandbox.DockerSandbox`
     built from the chosen runtime by default); pass a fake to run without Docker.
 
-    ``path`` is a single directory or a sequence of directories; with several roots each
-    is mounted separately and its entries are namespaced so identically named files don't
-    collide. ``exclude`` (glob patterns), ``use_default_ignores`` (skip common
+    ``path`` is a single root or a sequence of roots; each root may be a directory (walked)
+    or a single file. With several roots each is mounted separately and its entries are
+    namespaced so identically named files don't collide. ``exclude`` (glob patterns),
+    ``use_default_ignores`` (skip common
     VCS/dependency/cache directories), and ``max_depth`` (limit traversal depth) shape
     which paths are enumerated and handed to the filter; see :func:`enumerate_roots`.
     """
@@ -220,9 +221,9 @@ def run_saved(
     filter and run in the same hardened container as :func:`search`. Any third-party
     packages it declares are still gated through ``approve_dependencies``/the whitelist,
     so a saved filter cannot silently pull new packages. macOS metadata is not exposed
-    on the replay path. ``path`` may be one directory or several (mounted and namespaced
-    as in :func:`search`); ``exclude``/``use_default_ignores``/``max_depth`` shape
-    enumeration exactly as for :func:`search`.
+    on the replay path. ``path`` may be one root or several, each a directory or a file
+    (mounted and namespaced as in :func:`search`); ``exclude``/``use_default_ignores``/
+    ``max_depth`` shape enumeration exactly as for :func:`search`.
     """
     saved = Path(filter_path).expanduser()
     generated = deserialize_filter(saved.read_text(), filename=saved.name)

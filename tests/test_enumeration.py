@@ -118,6 +118,36 @@ def test_enumerate_roots_namespaces_each_root(tmp_path):
     assert [mount.source for mount in mounts] == [first, second]
 
 
+def test_enumerate_roots_single_file_root(tmp_path):
+    # A file root is a degenerate enumeration: one entry, mounted as a file at /data/<name>.
+    file_path = tmp_path / "worker.py"
+    file_path.write_text("x")
+    paths, mapping, mounts = MODULE.enumerate_roots([file_path])
+    assert paths == ["/data/worker.py"]
+    assert mapping["/data/worker.py"] == str(file_path)
+    assert len(mounts) == 1
+    assert mounts[0].source == file_path
+    assert mounts[0].target == "/data/worker.py"  # the file itself, not a directory
+    assert mounts[0].read_only is True
+
+
+def test_enumerate_roots_mixed_file_and_directory(tmp_path):
+    file_root = tmp_path / "solo.py"
+    file_root.write_text("x")
+    dir_root = tmp_path / "pkg"
+    dir_root.mkdir()
+    (dir_root / "a.py").write_text("x")
+
+    paths, mapping, mounts = MODULE.enumerate_roots([file_root, dir_root])
+
+    # Namespaced under /data/0 (file) and /data/1 (directory tree).
+    assert "/data/0/solo.py" in paths
+    assert "/data/1/a.py" in paths
+    assert mapping["/data/0/solo.py"] == str(file_root)
+    assert mapping["/data/1/a.py"] == str(dir_root / "a.py")
+    assert [m.target for m in mounts] == ["/data/0/solo.py", "/data/1"]
+
+
 def test_normalize_roots_dedupes_and_requires_existing(tmp_path):
     (tmp_path / "x").write_text("x")
     roots = MODULE._normalize_roots([tmp_path, tmp_path])

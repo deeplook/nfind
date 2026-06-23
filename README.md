@@ -78,6 +78,9 @@ nfind "directories that contain only audio files"
 # Search a specific directory
 nfind "Python files that import requests" ./src
 
+# Search specific files (a root may be a file, not just a directory)
+nfind "files that define a class" ./src/app.py ./src/models.py
+
 # Help (both forms work)
 nfind -h
 nfind --help

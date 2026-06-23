@@ -115,8 +115,8 @@ def main(
         list[str] | None,
         typer.Argument(
             metavar="[PATH]...",
-            help="One or more directories to search (default: current directory). "
-            "With several, each is searched and results are merged.",
+            help="One or more directories or files to search (default: current "
+            "directory). With several, each is searched and results are merged.",
         ),
     ] = None,
     config_file: Annotated[
