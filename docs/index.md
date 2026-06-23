@@ -13,6 +13,32 @@ nfind "directories that contain only audio files"
 nfind "Python files that import requests" ./src
 ```
 
+## What can you ask?
+
+The prompt is free-form. These are examples of the kind of query that isn't possible
+with `find` or `grep` — they show why generating a real program per question matters:
+
+```bash
+# Cross-file structural analysis
+nfind "Helm charts where replicaCount in values.yaml defaults to 1 but the Deployment template never overrides it" ~/k8s
+
+# Semantic code quality
+nfind "JavaScript files that define async functions but never handle Promise rejections" ./src
+
+# Security: context-sensitive pattern analysis
+nfind "shell scripts that pass an unquoted variable to rm -rf" ~/bin
+
+# Binary introspection
+nfind "MP3 files whose embedded cover art is larger in bytes than the audio data itself" ~/Music
+
+# macOS provenance × file contents (Spotlight can do each alone; nfind combines them)
+nfind "PDFs I downloaded from arxiv.org that mention 'mechanistic interpretability'" ~/Papers --macos-meta
+```
+
+Because nfind **generates a real program per query** — rather than matching fixed
+predicates or sending your files to a model — the answer is: almost anything you can
+describe in a sentence. See the [Examples gallery](examples.md).
+
 ## How it works
 
 1. **Enumerate** — nfind walks the search directory on the host and collects every
@@ -31,6 +57,8 @@ nfind "Python files that import requests" ./src
 
 Because the filter runs inside the sandbox, it can safely inspect file *contents* and
 metadata — not just names — to answer questions classic `find` + `grep` can't.
+
+<!-- diagram: architecture — to be added -->
 
 ## Why it exists
 
@@ -90,18 +118,29 @@ See [Installation](installation.md) for details.
 
 ## Documentation
 
-- [Installation](installation.md)
-- [Getting started](getting-started.md)
-- [Configuration](configuration.md)
+### Get started
+
+- [Installation](installation.md) — install via `uv`, `pipx`, or `pip`; Docker and API key setup
+- [Tutorial](getting-started.md) — a hands-on walkthrough of every feature, from first search to advanced options
+- [Examples](examples.md) — a gallery of prompts to adapt, with runtime and image information
+
+### Reference
+
 - [CLI reference](cli.md)
-- [Examples](examples.md)
+- [Configuration](configuration.md) — env vars, config file, and model/provider selection
 - [Output modes](output-modes.md)
-- [Dependencies & the whitelist](dependencies.md)
-- [Runtimes (Python & Node.js)](runtimes.md)
-- [macOS metadata](macos-metadata.md)
-- [How nfind compares](comparison.md)
-- [Safety model](safety.md)
 - [Python API](api.md)
+
+### Concepts
+
+- [Safety model](safety.md) — what the sandbox does and doesn't protect
+- [Runtimes (Python & Node.js)](runtimes.md) — how the model picks a runtime and why only two exist
+- [Dependencies & the whitelist](dependencies.md) — third-party packages inside the sandbox
+- [macOS metadata](macos-metadata.md) — Finder tags and download provenance
+- [How nfind compares](comparison.md) — nfind vs. Spotlight, `find`, lfind, and others
+
+### Help
+
 - [Troubleshooting](troubleshooting.md)
 
 ## Transparency

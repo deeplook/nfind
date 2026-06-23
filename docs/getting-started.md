@@ -1,9 +1,10 @@
-# Getting started
+# Tutorial
 
 ← [Home](index.md)
 
-A hands-on tour of nfind, from your first search to its most advanced features. Each
-section builds on the last; by the end you'll have touched every command-line option.
+A hands-on walkthrough of nfind, from your first search to its most advanced features.
+Each section builds on the last; by the end you'll have used every command-line option
+at least once.
 
 - [Prerequisites](#prerequisites)
 - [1. Your first search](#1-your-first-search)
