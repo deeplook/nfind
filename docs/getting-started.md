@@ -243,8 +243,9 @@ It's a no-op on other platforms. Field schema and examples:
 ## 10. Save a filter and replay it
 
 `--save` writes the generated filter as a self-describing, dependency-declaring
-[PEP 723](https://peps.python.org/pep-0723/) script — a reusable artifact you can read,
-version, and re-run:
+artifact you can read, version, and re-run. Python filters are saved as
+[PEP 723](https://peps.python.org/pep-0723/) scripts; Node filters are saved with a
+comment header and machine-readable dependency metadata.
 
 ```bash
 nfind "audio files with no album-art embedded" ~/Music --save no-art.py
@@ -257,8 +258,8 @@ are still gated by the whitelist):
 nfind --run no-art.py ~/Music          # with --run, the lone positional is the PATH
 ```
 
-Because the saved file is a standalone PEP 723 script, you can also run it directly with
-`uv` once you trust it (this executes on the host, outside the sandbox):
+When the saved file is a Python PEP 723 script, you can also run it directly with `uv`
+once you trust it (this executes on the host, outside the sandbox):
 
 ```bash
 uv run no-art.py ~/Music
@@ -412,7 +413,7 @@ from Python instead of the shell, see the [Python API](api.md).
 | `--rebuild` | Rebuild the worker image before searching. |
 | `--build-timeout SECS` | Seconds allowed for building the image (default: `120`). |
 | `--show-code` | Print the generated filter before running it. |
-| `--save PATH` | Save the filter as a replayable PEP 723 script. |
+| `--save PATH` | Save the filter as a replayable script with dependency metadata. |
 | `--run PATH` | Replay a saved filter (no LLM call); lone positional is the PATH. |
 | `--confirm`, `-i` | Show the code and ask before running. |
 | `--json` | Output a `{count, results}` JSON object. |

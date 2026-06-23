@@ -5,7 +5,7 @@
 FROM python:3.12-slim
 
 # Run as an unprivileged user; the container additionally drops all Linux
-# capabilities and disables networking at run time (see backend.run_filter).
+# capabilities and disables networking at run time (see execution.run_filter).
 RUN useradd --create-home --uid 10001 worker
 
 COPY worker.py /app/worker.py

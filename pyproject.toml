@@ -3,13 +3,41 @@ name = "nfind"
 version = "0.1.0"
 description = "Find files by describing them in natural language, with the generated filter sandboxed in Docker."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Dinu Gherman", email = "gherman@darwin.in-berlin.de" }]
+keywords = ["find", "search", "files", "llm", "natural-language", "docker", "sandbox"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: JavaScript",
+    "Topic :: Utilities",
+    "Topic :: System :: Filesystems",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "openai>=1",
     "pygments>=2",
     "ruff>=0.4",
     "typer>=0.12",
 ]
+
+[project.urls]
+Homepage = "https://deeplook.github.io/nfind/"
+Documentation = "https://deeplook.github.io/nfind/"
+Repository = "https://github.com/deeplook/nfind"
+Issues = "https://github.com/deeplook/nfind/issues"
 
 [project.scripts]
 nfind = "nfind.cli:app"
@@ -43,7 +71,7 @@ dev = [
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -58,7 +86,7 @@ quote-style = "double"
 # Mypy
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]

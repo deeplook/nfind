@@ -1,6 +1,6 @@
 # Node.js worker image for nfind: runs an LLM-generated JavaScript filter against a
 # read-only /data mount. The base image needs no npm packages; derived images add
-# approved packages on top (see backend.build_worker_image). Build context is the
+# approved packages on top (see execution.build_worker_image). Build context is the
 # package directory, which contains worker_node.cjs alongside this Dockerfile.
 FROM node:22-slim
 

@@ -17,6 +17,12 @@ from .backend import (
     DockerError,
     GeneratedFilter,
 )
+from .command_plan import (
+    GeneratedSearchRequest,
+    ListModelsRequest,
+    SavedReplayRequest,
+    plan_command,
+)
 from .config import ConfigError, default_config_path, load_config
 
 app = typer.Typer(
@@ -130,7 +136,7 @@ def main(
         str,
         typer.Option(
             help="Model used to generate the filter. Bare name uses OpenAI; use "
-            "'provider/model' for others (e.g. anthropic/claude-3-5-sonnet-latest, "
+            "'provider/model' for others (e.g. anthropic/claude-opus-4-8, "
             "ollama/llama3.1, openrouter/<vendor>/<model>).",
         ),
     ] = DEFAULT_MODEL,
@@ -262,57 +268,51 @@ def main(
     ] = False,
 ) -> None:
     """Search PATH for files matching PROMPT and print one path per line."""
-    if list_models:
+    try:
+        request = plan_command(
+            prompt=prompt,
+            paths=paths,
+            list_models=list_models,
+            model=model,
+            run=run,
+            save=save,
+            confirm=confirm,
+            macos_meta=macos_meta,
+            as_json=as_json,
+            verbose=verbose,
+            print0=print0,
+            yes=yes,
+            no_deps=no_deps,
+            max_depth=max_depth,
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    if isinstance(request, ListModelsRequest):
         try:
-            for model_id in backend.list_models(model):
+            for model_id in backend.list_models(request.model):
                 typer.echo(model_id)
         except (RuntimeError, ValueError) as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from exc
         raise typer.Exit(0)
-    if as_json and verbose:
-        typer.echo("error: --json and --verbose are mutually exclusive.", err=True)
-        raise typer.Exit(2)
-    if print0 and (as_json or verbose):
-        typer.echo("error: --print0 cannot be combined with --json or --verbose.", err=True)
-        raise typer.Exit(2)
-    if max_depth is not None and max_depth < 1:
-        typer.echo("error: --max-depth must be at least 1.", err=True)
-        raise typer.Exit(2)
-    if yes and no_deps:
-        typer.echo("error: --yes and --no-deps are mutually exclusive.", err=True)
-        raise typer.Exit(2)
-    if macos_meta and sys.platform != "darwin":
+
+    if isinstance(request, GeneratedSearchRequest) and macos_meta and sys.platform != "darwin":
         typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
-    if run is not None:
-        # With --run there is no PROMPT, so every positional is a search PATH. Typer
-        # binds the first positional to `prompt`; fold it back into the path list.
-        if prompt is not None:
-            paths = [prompt, *(paths or [])]
-            prompt = None
-        for flag, used in (
-            ("--save", save is not None),
-            ("--confirm", confirm),
-            ("--macos-meta", macos_meta),
-        ):
-            if used:
-                typer.echo(f"error: {flag} cannot be combined with --run.", err=True)
-                raise typer.Exit(2)
-    elif prompt is None:
-        typer.echo("error: PROMPT is required (or use --run to replay a saved filter).", err=True)
-        raise typer.Exit(2)
 
     def on_generated(generated: GeneratedFilter) -> None:
         if save is not None:
-            save.write_text(backend.serialize_filter(generated, prompt or "", model))
+            plan_prompt = request.prompt if isinstance(request, GeneratedSearchRequest) else ""
+            save.write_text(backend.serialize_filter(generated, plan_prompt, model))
             typer.echo(f"saved generated filter to {save}", err=True)
         if show_code or confirm:
             # Show the full script as --save would write it. On a --run replay the
             # code already is that full file, so show it as-is (no double-wrapping).
             preview = (
                 generated.code
-                if run is not None
-                else backend.serialize_filter(generated, prompt or "", model)
+                if isinstance(request, SavedReplayRequest)
+                else backend.serialize_filter(generated, request.prompt, model)
             )
             typer.echo(f"--- generated filter ({generated.runtime}) ---", err=True)
             typer.echo(_highlight(preview, generated.runtime), err=True)
@@ -341,13 +341,12 @@ def main(
     hook = on_generated if (show_code or save is not None or confirm) else None
     exclude_globs = tuple(exclude or ())
     use_default_ignores = not no_ignore
-    search_paths = paths if paths else ["."]
 
     try:
-        if run is not None:
+        if isinstance(request, SavedReplayRequest):
             results = backend.run_saved(
-                run,
-                search_paths,
+                request.filter_path,
+                request.paths,
                 image=image,
                 timeout=timeout,
                 memory=memory,
@@ -362,10 +361,10 @@ def main(
                 use_default_ignores=use_default_ignores,
             )
         else:
-            assert prompt is not None  # guaranteed by the validation above
+            assert isinstance(request, GeneratedSearchRequest)
             results = backend.search(
-                search_paths,
-                prompt,
+                request.paths,
+                request.prompt,
                 image=image,
                 model=model,
                 timeout=timeout,

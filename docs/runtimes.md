@@ -42,6 +42,11 @@ npm packages are installed into a derived Node image
 (`nfind-search-node:deps-<hash>`) with `npm install`, exactly like pip packages are
 layered onto the Python base. See [Dependencies & the whitelist](dependencies.md).
 
+When a Node.js filter is saved with [`--save`](cli.md#saving--replaying-filters), the
+saved file includes a `// nfind-metadata: ...` comment that records its npm
+dependencies. Replaying it with `nfind --run` uses that metadata to apply the same
+whitelist checks and derived-image build path as a fresh generated filter.
+
 ## Examples
 
 ```bash
