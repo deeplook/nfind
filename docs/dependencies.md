@@ -28,9 +28,10 @@ that the compiler API provides.
 3. **Approve new packages.** If a package isn't already approved, nfind asks before
    installing it. On approval it is **remembered** so you're not asked again.
 4. **Build a derived image.** Approved packages are installed into a derived worker
-   image (`nfind-search-paths:deps-<hash>`) layered on the base. The image is cached
-   and reused for the same set of packages. Prompts that need no packages keep using
-   the stdlib-only base image.
+   image (`nfind-search-paths:deps-<hash>` for Python,
+   `nfind-search-node:deps-<hash>` for Node.js) layered on the chosen runtime's base.
+   The image is cached and reused for the same set of packages. Prompts that need no
+   packages keep using the stdlib-only base image.
 5. **Run.** The filter executes in the derived image — with the packages available,
    but still no network, read-only mount, and dropped capabilities at run time.
 
@@ -58,7 +59,8 @@ nfind "files containing the word TODO" . --no-deps
 
 If a filter needs a package that isn't approved and you don't approve it (or you pass
 `--no-deps`), nfind aborts with a `DependencyError` before building or running
-anything.
+anything. The same checks apply when replaying saved Python or Node filters with
+`nfind --run`; saved metadata cannot silently install packages.
 
 ## The default list
 

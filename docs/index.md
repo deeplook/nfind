@@ -53,8 +53,8 @@ attribute index can't express. See [How nfind compares](comparison.md).
   [`--show-code`](cli.md#options), [`--save`](cli.md#options), and
   [`--confirm`](cli.md#options) let you inspect, keep, or approve the generated filter.
 - **[Save & replay](cli.md#saving--replaying-filters)** — `--save` writes the filter as
-  a self-describing, dependency-declaring PEP 723 script; replay it sandboxed with
-  `--run` or run it directly (if trusted) via `uv run`.
+  a self-describing, dependency-declaring artifact; replay it sandboxed with `--run`
+  or run trusted Python saves directly via `uv run`.
 - **[Output modes](output-modes.md)** — a clean path list by default, `--verbose` for
   extra per-path fields, `--json` for machine-readable records.
 - **[Declared dependencies](dependencies.md)** — filters can request libraries (to read

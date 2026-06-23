@@ -183,13 +183,18 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | `--cpus` | `1.0` | Worker container CPU limit |
 | `--pids-limit` | `64` | Max processes inside the worker |
 | `--rebuild` | off | Rebuild the worker image first |
+| `--exclude GLOB` | — | Skip matching names/paths during enumeration (repeatable) |
+| `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
+| `--max-depth N` | unlimited | Descend at most `N` levels below each search path |
 | `--verbose` / `-v` | off | Show extra per-path fields alongside each path |
 | `--json` | off | Output records (path + extra fields) as JSON |
+| `--print0` / `-0` | off | Separate result paths with NUL bytes for `xargs -0` |
 | `--yes` / `-y` | off | Approve any requested packages without prompting |
 | `--no-deps` | off | Reject third-party packages (standard library only) |
 | `--macos-meta` | off | macOS: expose Finder tags and download metadata to the filter |
 | `--show-code` | off | Print the generated filter before running |
-| `--save` | — | Write the generated filter to a file |
+| `--save` | — | Write the generated filter as a replayable script |
+| `--run` | — | Replay a saved filter through the sandbox without an LLM call |
 | `--confirm` / `-i` | off | Show the code and confirm before running |
 
 ### Providers
@@ -234,8 +239,8 @@ paths = [record["path"] for record in records]
 
 ## Safety model
 
-- The search root is mounted **read-only** at `/data`; results are mapped back to
-  host paths afterward.
+- Search roots are mounted **read-only** under `/data`; results are mapped back to host
+  paths afterward.
 - The worker container runs with `--network none`, `--cap-drop ALL`,
   `--security-opt no-new-privileges`, a read-only root filesystem, and a small
   `tmpfs` for scratch space.

@@ -89,10 +89,10 @@ nfind "files with no extension" --save filter.py
 nfind "files with no extension" -i        # or --confirm
 ```
 
-`--show-code` and `--confirm` print the **full script as [`--save`](#saving--replaying-filters)
-would write it** — the PEP 723 metadata, the prompt/provenance docstring, the
-`filter_paths` function, and the run harness — so the preview matches the saved
-artifact exactly. (On a `--run` replay the saved file is shown as-is.)
+`--show-code` and `--confirm` print the **full artifact as
+[`--save`](#saving--replaying-filters) would write it** — a Python PEP 723 script or a
+Node.js file with comment metadata — so the preview matches the saved artifact exactly.
+(On a `--run` replay the saved file is shown as-is.)
 
 Before it is shown, saved, or run, the generated Python filter is tidied with **ruff**:
 unused imports are removed, imports are sorted, and the source is reformatted. These

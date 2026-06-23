@@ -26,7 +26,7 @@ environment. The first call builds the worker image; later calls reuse it.
 
 ```python
 def search(
-    path: str,
+    path: str | Path | Sequence[str | Path],
     prompt: str,
     *,
     image: str | None = None,         # override the chosen runtime's base tag
@@ -42,15 +42,22 @@ def search(
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
     macos_meta: bool = False,            # macOS: expose tags/quarantine to the filter
+    format_code: bool = True,            # tidy generated Python with ruff before running
     sandbox: Sandbox | None = None,      # override the execution backend (see below)
+    exclude: Sequence[str] = (),         # glob patterns to prune before filtering
+    max_depth: int | None = None,
+    use_default_ignores: bool = True,
 ) -> list[dict[str, Any]]:
 ```
 
 Generates a filter for `prompt`, runs it against `path` in the sandbox, and returns
 the matching paths as records (host paths plus any extra fields the prompt produced).
-The model picks the [runtime](runtimes.md) (Python or Node.js) and the matching base
-image is used unless `image` overrides it. The keyword arguments mirror the
-[CLI options](cli.md#options).
+`path` may be one directory or a sequence of directories; with several roots each is
+mounted separately and results are merged as host paths. The model picks the
+[runtime](runtimes.md) (Python or Node.js) and the matching base image is used unless
+`image` overrides it. The keyword arguments mirror the [CLI options](cli.md#options):
+`exclude`, `max_depth`, and `use_default_ignores` shape host-side enumeration before
+the generated filter runs, and `format_code=False` matches `--no-format`.
 
 `model` accepts a bare name (OpenAI) or a `provider/model` selector for any
 OpenAI-compatible provider in `backend.PROVIDERS` (`anthropic/…`, `gemini/…`,
@@ -88,8 +95,10 @@ self-describing, replayable script (a PEP 723 script for the Python runtime, a
 commented file with a machine-readable metadata line for Node) — the same artifact the
 CLI's `--save` writes.
 `run_saved(filter_path, path, …)` parses such a file back and replays it through the
-sandbox without an LLM call, gating any declared packages through
-`approve_dependencies`/the whitelist exactly as `search` does:
+sandbox without an LLM call, gating any declared Python or Node packages through
+`approve_dependencies`/the per-runtime whitelist exactly as `search` does. It accepts
+the same one-or-many `path`, `exclude`, `max_depth`, and `use_default_ignores`
+enumeration controls as `search`:
 
 ```python
 from pathlib import Path
@@ -109,7 +118,7 @@ records = run_saved("os-imports.py", "./src")
 ```
 
 See [Saving & replaying filters](cli.md#saving--replaying-filters) for the file format
-and the `uv run` trusted fast path.
+and the Python-only `uv run` trusted fast path.
 
 ### Generation retries
 
@@ -185,27 +194,40 @@ orchestrates those pieces and re-exports the older helper names for compatibilit
 
 ```python
 from pathlib import Path
-from nfind import enumeration, execution, generation
+from nfind import enumeration, execution, generation, runtimes
 
 root = Path(".").resolve()
-container_paths, host_by_container = enumeration.enumerate_paths(root)
+container_paths, host_by_container, mounts = enumeration.enumerate_roots([root])
 generated = generation.generate_filter("files with no extension")   # .code and .dependencies
-image = execution.build_worker_image(dependencies=generated.dependencies)
-records = execution.run_filter(generated.code, root, container_paths, image=image)
+runtime = runtimes.RUNTIMES[generated.runtime]
+image = execution.build_worker_image(
+    runtime.base_image,
+    generated.dependencies,
+    runtime=runtime,
+)
+records = execution.run_filter(
+    generated.code,
+    root,
+    container_paths,
+    image=image,
+    mounts=mounts,
+)
 ```
 
 | Function | Purpose |
 |---|---|
-| `enumeration.enumerate_paths(root, exclude=…, max_depth=…, use_default_ignores=…)` | Walk the tree; return container paths and a container→host map. `exclude` prunes matching globs, `max_depth` bounds depth, and default VCS/dependency/cache dirs are skipped unless disabled. Also re-exported from `nfind.backend` for compatibility. |
+| `enumeration.enumerate_paths(root, exclude=…, max_depth=…, use_default_ignores=…)` | Walk one tree; return container paths and a container→host map. `exclude` prunes matching globs, `max_depth` bounds depth, and default VCS/dependency/cache dirs are skipped unless disabled. Also re-exported from `nfind.backend` for compatibility. |
+| `enumeration.enumerate_roots(roots, exclude=…, max_depth=…, use_default_ignores=…)` | Walk one or more roots; return container paths, a container→host map, and the mounts needed for execution. This is what `search` and `run_saved` use. |
 | `collect_macos_metadata(host_by_container)` | macOS: read tags/quarantine/where-from per path; `{}` off macOS. |
 | `generation.generate_filter(prompt, model=…, attempts=…, on_retry=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape; retries on invalid replies. Also re-exported from `nfind.backend` for compatibility. |
 | `build_image(image=…, rebuild=…, build_timeout=…)` | Build the stdlib-only base worker image when absent or on request. |
 | `execution.build_worker_image(image=…, dependencies=…, …)` | Ensure a runnable image (base, or a derived image with packages); return the tag to run. Also re-exported from `nfind.backend` for compatibility. |
 | `execution.run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. Pass `limits=Limits(…)` to set the resource/output caps directly, or a `sandbox=` to override the backend. Also re-exported from `nfind.backend` for compatibility. |
-| `load_whitelist()` / `approve_packages(pkgs)` | Read the approved-package set / persist new approvals. |
+| `load_whitelist(runtime="python")` / `approve_packages(pkgs, runtime="python")` | Read the approved-package set / persist new approvals for one runtime (`"python"` or `"node"`). |
 | `check_docker_available()` | Raise `DockerUnavailableError` if Docker can't be reached. |
 
-These return container paths (`/data/...`); `search` maps them back to host paths.
+These lower-level helpers return container paths (`/data/...`, or `/data/0/...` for
+multi-root runs); `search` and `run_saved` map them back to host paths.
 
 ## The sandbox component
 
