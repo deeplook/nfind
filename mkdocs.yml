@@ -30,19 +30,23 @@ theme:
 
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Getting Started: getting-started.md
-  - Configuration: configuration.md
-  - CLI Reference: cli.md
-  - Examples: examples.md
-  - Output Modes: output-modes.md
-  - Dependencies: dependencies.md
-  - Runtimes: runtimes.md
-  - macOS Metadata: macos-metadata.md
-  - How nfind Compares: comparison.md
-  - Safety Model: safety.md
-  - Python API: api.md
-  - Troubleshooting: troubleshooting.md
+  - Get started:
+    - Installation: installation.md
+    - Tutorial: getting-started.md
+    - Examples: examples.md
+  - Reference:
+    - CLI Reference: cli.md
+    - Configuration: configuration.md
+    - Output Modes: output-modes.md
+    - Python API: api.md
+  - Concepts:
+    - Safety Model: safety.md
+    - Runtimes: runtimes.md
+    - Dependencies: dependencies.md
+    - macOS Metadata: macos-metadata.md
+    - How nfind Compares: comparison.md
+  - Help:
+    - Troubleshooting: troubleshooting.md
 
 plugins:
   - search
