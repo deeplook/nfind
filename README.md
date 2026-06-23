@@ -2,8 +2,8 @@
 
 **Find files by describing them in natural language.**
 
-The name is short for **p**rompt(ed)-**find** — `find`, but driven by a prompt instead
-of a filter expression. `nfind` takes a plain-English description, asks an LLM to write
+The name is short for **n**atural-**find** — `find`, but driven by a natural-language
+description instead of a filter expression. `nfind` takes a plain-English description, asks an LLM to write
 a small filter function for it — in Python (`filter_paths`) or Node.js (`filterPaths`) —
 and runs that function against your file tree to print the matching paths — a
 natural-language cousin of `find`.
@@ -46,12 +46,20 @@ a folder — safely, and without your files leaving your machine. See
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.11+
 - [Docker](https://docs.docker.com/get-docker/) installed and running
 - An API key for your provider — `OPENAI_API_KEY` by default, or the matching key for
   another [provider](#providers)
 
 ## Install
+
+```bash
+uv tool install nfind
+# or
+pip install nfind
+```
+
+To install from a local checkout:
 
 ```bash
 uv tool install .
