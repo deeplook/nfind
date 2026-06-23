@@ -1,7 +1,8 @@
 """Best-effort cache of which API endpoint a model needs (chat vs. responses).
 
 Most models answer on ``/chat/completions``; OpenAI reasoning/codex models are served
-only on ``/responses`` and reject the former with a 404 (see ``backend._is_responses_only``).
+only on ``/responses`` and reject the former with a 404 (see
+``generation._is_responses_only``).
 Discovering that costs one throwaway request per process. Caching the ``"responses"``
 verdict -- keyed by the full ``provider/model`` selector -- lets later runs skip the probe.
 
