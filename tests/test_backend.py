@@ -1441,6 +1441,41 @@ def test_saved_filter_standalone_harness_handles_file_and_multiple_roots(tmp_pat
     }
 
 
+def test_harness_ignore_set_matches_default_ignores():
+    # The standalone runner hardcodes the ignore set (it can't import nfind); guard drift.
+    from nfind import _filter_harness
+    from nfind.constants import DEFAULT_IGNORES
+
+    assert set(DEFAULT_IGNORES) == _filter_harness._IGNORE
+
+
+def test_saved_filter_standalone_harness_json_and_verbose(tmp_path):
+    # Keep the script out of the searched tree so it doesn't match itself.
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "a.py").write_text("x")
+    code = (
+        "def filter_paths(paths):\n"
+        '    return [{"path": p, "n": 1} for p in paths if p.endswith(".py")]'
+    )
+    script = tmp_path / "py.py"
+    script.write_text(MODULE.serialize_filter(_gen(code), "py files", "gpt-4o-mini"))
+
+    def _run(*flags):
+        return subprocess.run(  # noqa: S603
+            [sys.executable, str(script), str(data), *flags],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    # Default: bare path. --verbose: path + extras. --json: count + records with extras.
+    assert _run().strip() == str(data / "a.py")
+    assert _run("--verbose").strip() == f"{data / 'a.py'}\tn=1"
+    payload = json.loads(_run("--json"))
+    assert payload == {"count": 1, "results": [{"path": str(data / "a.py"), "n": 1}]}
+
+
 def test_saved_filter_standalone_harness_prunes_default_ignores(tmp_path):
     (tmp_path / "keep.py").write_text("x")
     (tmp_path / ".git").mkdir()
