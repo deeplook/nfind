@@ -12,6 +12,7 @@ import pytest
 from fakes import FakeSandbox
 from nfind import backend as MODULE
 from nfind import cli, metadata, worker
+from nfind import execution as EXECUTION
 from nfind import generation as GENERATION
 
 
@@ -261,7 +262,7 @@ def test_worker_main_reports_nonzero_child_exit(monkeypatch):
 
 def test_run_filter_returns_normalized_results(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":true,"results":["/data/a"]}')
-    results = MODULE.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
+    results = EXECUTION.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
     assert results == [{"path": "/data/a"}]
     # The adapter builds the {code, paths, meta} request and mounts the root read-only.
     request, mounts, _ = fake.runs[0]
@@ -272,75 +273,75 @@ def test_run_filter_returns_normalized_results(tmp_path):
 @pytest.mark.parametrize("bad", [0, -1.5])
 def test_run_filter_rejects_nonpositive_limits(tmp_path, bad):
     with pytest.raises(ValueError):
-        MODULE.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), timeout=bad)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), timeout=bad)
 
 
 def test_run_filter_maps_timeout_to_timeouterror(tmp_path):
-    fake = FakeSandbox(run_error=MODULE.SandboxTimeout("boom"))
+    fake = FakeSandbox(run_error=EXECUTION.SandboxTimeout("boom"))
     with pytest.raises(TimeoutError, match="exceeded"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake, timeout=10)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake, timeout=10)
 
 
 def test_run_filter_rejects_oversized_output(tmp_path):
-    fake = FakeSandbox(run_error=MODULE.SandboxOutputTooLarge("too big"))
+    fake = FakeSandbox(run_error=EXECUTION.SandboxOutputTooLarge("too big"))
     with pytest.raises(RuntimeError, match="exceeded the allowed size"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_reports_nonzero_worker_exit(tmp_path):
     fake = FakeSandbox(stderr=b"boom", returncode=1)
     with pytest.raises(RuntimeError, match="Docker worker failed: boom"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_rejects_invalid_json(tmp_path):
     fake = FakeSandbox(stdout=b"not json")
     with pytest.raises(RuntimeError, match="invalid response"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_propagates_worker_error(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":false,"error":"nope"}')
     with pytest.raises(RuntimeError, match="Generated filter failed: nope"):
-        MODULE.run_filter("code", tmp_path, [], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
 def test_run_filter_rejects_disallowed_result_path(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":true,"results":["/evil"]}')
     with pytest.raises(RuntimeError, match="invalid result"):
-        MODULE.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
+        EXECUTION.run_filter("code", tmp_path, ["/data/a"], sandbox=fake)
 
 
 def test_run_filter_accepts_explicit_limits(tmp_path):
     fake = FakeSandbox(stdout=b'{"ok":true,"results":[]}')
-    limits = MODULE.Limits(memory="64m", cpus=2.0, pids=8, timeout=3.0, max_output_bytes=512)
-    MODULE.run_filter("code", tmp_path, [], sandbox=fake, limits=limits)
+    limits = EXECUTION.Limits(memory="64m", cpus=2.0, pids=8, timeout=3.0, max_output_bytes=512)
+    EXECUTION.run_filter("code", tmp_path, [], sandbox=fake, limits=limits)
     # The supplied Limits is passed straight through to the sandbox.
     assert fake.runs[0][2] is limits
 
 
 def test_run_filter_rejects_nonpositive_explicit_limits(tmp_path):
-    bad = MODULE.Limits(timeout=0)
+    bad = EXECUTION.Limits(timeout=0)
     with pytest.raises(ValueError):
-        MODULE.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), limits=bad)
+        EXECUTION.run_filter("code", tmp_path, [], sandbox=FakeSandbox(), limits=bad)
 
 
 def test_build_worker_image_surfaces_package_names_on_build_failure():
-    fake = FakeSandbox(derive_error=MODULE.SandboxError("exit status 1"))
-    with pytest.raises(MODULE.DockerError, match=r"packages \(mutagen, rarfile\)"):
-        MODULE.build_worker_image("base:latest", ["rarfile", "mutagen"], sandbox=fake)
+    fake = FakeSandbox(derive_error=EXECUTION.SandboxError("exit status 1"))
+    with pytest.raises(EXECUTION.DockerError, match=r"packages \(mutagen, rarfile\)"):
+        EXECUTION.build_worker_image("base:latest", ["rarfile", "mutagen"], sandbox=fake)
 
 
 def test_search_maps_host_paths_in_records(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return paths")
         ),
         patch.object(
-            MODULE,
+            EXECUTION,
             "run_filter",
             return_value=[{"path": "/data/file.txt", "lines": 1}],
         ),
@@ -355,11 +356,11 @@ def test_search_invokes_on_generated_before_running(tmp_path):
     seen: list[str] = []
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "files", on_generated=seen.append, format_code=False)
 
@@ -375,11 +376,11 @@ def test_search_aborts_when_on_generated_raises(tmp_path):
 
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(EXECUTION, "run_filter") as run_filter,
         pytest.raises(RuntimeError, match="declined"),
     ):
         MODULE.search(str(tmp_path), "files", on_generated=decline)
@@ -391,13 +392,13 @@ def test_search_rejects_unapproved_dependencies(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image") as build,
+        patch.object(EXECUTION, "build_worker_image") as build,
         patch.object(
             MODULE,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["sketchy-pkg"]),
         ),
-        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(EXECUTION, "run_filter") as run_filter,
         pytest.raises(MODULE.DependencyError, match="sketchy-pkg"),
     ):
         MODULE.search(str(tmp_path), "files", whitelist=set())
@@ -410,14 +411,14 @@ def test_search_uses_whitelisted_dependency_without_prompt(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value="img:deps") as build,
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps") as build,
         patch.object(
             MODULE,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["mutagen"]),
         ),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
-        patch.object(MODULE, "approve_packages") as persist,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "approve_packages") as persist,
     ):
         # "mutagen" is in the default whitelist, so no approver call is needed.
         MODULE.search(str(tmp_path), "files", approve_dependencies=lambda pkgs: False)
@@ -433,14 +434,14 @@ def test_search_approves_new_dependency_and_persists(tmp_path):
     asked: list[list[str]] = []
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value="img:deps") as build,
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps") as build,
         patch.object(
             MODULE,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["rarfile"]),
         ),
-        patch.object(MODULE, "run_filter", return_value=[]),
-        patch.object(MODULE, "approve_packages") as persist,
+        patch.object(EXECUTION, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "approve_packages") as persist,
     ):
 
         def approver(pkgs):
@@ -461,11 +462,11 @@ def test_cli_confirm_aborts_without_running(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(cli.backend, "run_filter") as run_filter,
+        patch.object(EXECUTION, "run_filter") as run_filter,
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--confirm"], input="n\n")
 
@@ -571,8 +572,8 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
             "generate_filter",
             return_value=_gen_node("function filterPaths(p){return p;}", ["ts-morph"]),
         ),
-        patch.object(MODULE, "build_worker_image", side_effect=fake_build),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "build_worker_image", side_effect=fake_build),
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "typescript files")
 
@@ -1069,9 +1070,9 @@ def test_build_worker_image_derived_dockerfile_is_order_independent():
     # The derived image is content-addressed on the Dockerfile text, and packages are
     # sorted before the Dockerfile is rendered, so dependency order does not matter.
     first = FakeSandbox()
-    MODULE.build_worker_image("base:latest", ["a", "b"], sandbox=first)
+    EXECUTION.build_worker_image("base:latest", ["a", "b"], sandbox=first)
     second = FakeSandbox()
-    MODULE.build_worker_image("base:latest", ["b", "a"], sandbox=second)
+    EXECUTION.build_worker_image("base:latest", ["b", "a"], sandbox=second)
     assert first.derive_calls == second.derive_calls
 
 
@@ -1093,14 +1094,14 @@ def test_kotlin_swift_dart_grammars_are_pre_approved():
 
 def test_build_worker_image_returns_base_when_no_dependencies():
     fake = FakeSandbox()
-    assert MODULE.build_worker_image("base:latest", sandbox=fake) == "base:latest"
+    assert EXECUTION.build_worker_image("base:latest", sandbox=fake) == "base:latest"
     assert fake.ensure_calls == [False]
     assert fake.derive_calls == []
 
 
 def test_build_worker_image_builds_derived_for_dependencies():
     fake = FakeSandbox(derived="base:deps-abc123")
-    tag = MODULE.build_worker_image("base:latest", ["mutagen"], sandbox=fake)
+    tag = EXECUTION.build_worker_image("base:latest", ["mutagen"], sandbox=fake)
 
     assert tag == "base:deps-abc123"
     assert fake.ensure_calls == [False]
@@ -1120,8 +1121,8 @@ def test_cli_no_deps_rejects_packages(tmp_path):
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["rarfile"]),
         ),
-        patch.object(cli.backend, "build_worker_image") as build,
-        patch.object(cli.backend, "load_whitelist", return_value=set()),
+        patch.object(EXECUTION, "build_worker_image") as build,
+        patch.object(EXECUTION, "load_whitelist", return_value=set()),
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--no-deps"])
 
@@ -1142,10 +1143,10 @@ def test_cli_yes_approves_packages(tmp_path):
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return paths", ["rarfile"]),
         ),
-        patch.object(cli.backend, "build_worker_image", return_value="img:deps"),
-        patch.object(cli.backend, "run_filter", return_value=[]),
-        patch.object(cli.backend, "load_whitelist", return_value=set()),
-        patch.object(cli.backend, "approve_packages") as persist,
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps"),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "load_whitelist", return_value=set()),
+        patch.object(EXECUTION, "approve_packages") as persist,
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--yes"])
 
@@ -1181,11 +1182,11 @@ def test_cli_save_writes_generated_code(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(cli.backend, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--save", str(out)])
 
@@ -1320,9 +1321,9 @@ def test_search_formats_generated_code_before_running(tmp_path):
     messy = "def filter_paths(paths):\n    import os\n    return paths\n"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "files")
 
@@ -1335,9 +1336,9 @@ def test_search_skips_formatting_when_disabled(tmp_path):
     messy = "def filter_paths(paths):\n    import os\n    return paths\n"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value=MODULE.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
-        patch.object(MODULE, "run_filter", return_value=[]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
     ):
         MODULE.search(str(tmp_path), "files", format_code=False)
 
@@ -1463,9 +1464,9 @@ def test_run_saved_replays_without_generating(tmp_path):
     container = "/data/a.mp3"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image", return_value="img:deps"),
+        patch.object(EXECUTION, "build_worker_image", return_value="img:deps"),
         patch.object(MODULE, "generate_filter") as generate,
-        patch.object(MODULE, "run_filter", return_value=[{"path": container}]) as run_filter,
+        patch.object(EXECUTION, "run_filter", return_value=[{"path": container}]) as run_filter,
         patch.object(
             MODULE,
             "enumerate_paths",
@@ -1487,8 +1488,8 @@ def test_run_saved_gates_unapproved_dependencies(tmp_path):
     container = "/data/a"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image") as build,
-        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(EXECUTION, "build_worker_image") as build,
+        patch.object(EXECUTION, "run_filter") as run_filter,
         patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
         pytest.raises(MODULE.DependencyError, match="sketchy-pkg"),
     ):
@@ -1506,8 +1507,8 @@ def test_run_saved_gates_unapproved_node_dependencies(tmp_path):
     container = "/data/a"
     with (
         patch.object(MODULE, "check_docker_available"),
-        patch.object(MODULE, "build_worker_image") as build,
-        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(EXECUTION, "build_worker_image") as build,
+        patch.object(EXECUTION, "run_filter") as run_filter,
         patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
         pytest.raises(MODULE.DependencyError, match="left-pad"),
     ):
@@ -1525,11 +1526,11 @@ def test_cli_save_writes_replayable_script(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
         ),
-        patch.object(cli.backend, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
     ):
         result = runner.invoke(cli.app, ["files", str(tmp_path), "--save", str(out)])
 
@@ -1546,13 +1547,13 @@ def test_cli_show_code_renders_full_saved_script(tmp_path):
     runner = CliRunner()
     with (
         patch.object(cli.backend, "check_docker_available"),
-        patch.object(cli.backend, "build_worker_image", return_value=cli.backend.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend,
             "generate_filter",
             return_value=_gen("def filter_paths(paths): return []"),
         ),
-        patch.object(cli.backend, "run_filter", return_value=[]),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
     ):
         result = runner.invoke(cli.app, ["epub files", str(tmp_path), "--show-code"])
 

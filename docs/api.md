@@ -179,18 +179,19 @@ results) surface as `TimeoutError` and `RuntimeError`.
 ## Lower-level building blocks
 
 For finer control, `nfind.generation` owns the model-to-filter step,
-`nfind.enumeration` owns host-side path enumeration, and `nfind.backend` exposes the
-sandbox image, execution, and compatibility helpers that `search` orchestrates:
+`nfind.enumeration` owns host-side path enumeration, and `nfind.execution` owns
+sandbox image preparation, dependency gating, and worker execution. `nfind.backend`
+orchestrates those pieces and re-exports the older helper names for compatibility:
 
 ```python
 from pathlib import Path
-from nfind import backend, enumeration, generation
+from nfind import enumeration, execution, generation
 
 root = Path(".").resolve()
 container_paths, host_by_container = enumeration.enumerate_paths(root)
 generated = generation.generate_filter("files with no extension")   # .code and .dependencies
-image = backend.build_worker_image(dependencies=generated.dependencies)
-records = backend.run_filter(generated.code, root, container_paths, image=image)
+image = execution.build_worker_image(dependencies=generated.dependencies)
+records = execution.run_filter(generated.code, root, container_paths, image=image)
 ```
 
 | Function | Purpose |
@@ -199,8 +200,8 @@ records = backend.run_filter(generated.code, root, container_paths, image=image)
 | `collect_macos_metadata(host_by_container)` | macOS: read tags/quarantine/where-from per path; `{}` off macOS. |
 | `generation.generate_filter(prompt, model=…, attempts=…, on_retry=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape; retries on invalid replies. Also re-exported from `nfind.backend` for compatibility. |
 | `build_image(image=…, rebuild=…, build_timeout=…)` | Build the stdlib-only base worker image when absent or on request. |
-| `build_worker_image(image=…, dependencies=…, …)` | Ensure a runnable image (base, or a derived image with packages); return the tag to run. |
-| `run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. Pass `limits=Limits(…)` to set the resource/output caps directly, or a `sandbox=` to override the backend. |
+| `execution.build_worker_image(image=…, dependencies=…, …)` | Ensure a runnable image (base, or a derived image with packages); return the tag to run. Also re-exported from `nfind.backend` for compatibility. |
+| `execution.run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. Pass `limits=Limits(…)` to set the resource/output caps directly, or a `sandbox=` to override the backend. Also re-exported from `nfind.backend` for compatibility. |
 | `load_whitelist()` / `approve_packages(pkgs)` | Read the approved-package set / persist new approvals. |
 | `check_docker_available()` | Raise `DockerUnavailableError` if Docker can't be reached. |
 
@@ -212,8 +213,9 @@ The hardened Docker execution lives behind a small, domain-agnostic `Sandbox` pr
 in `nfind.sandbox`. The default backend, `DockerSandbox`, owns the security-relevant
 `docker run` flag set (no network, read-only root, dropped capabilities,
 `no-new-privileges`, and process/memory/CPU/file-descriptor/tmpfs limits) in one
-auditable place, plus the image build/derive mechanics. `build_worker_image`,
-`run_filter`, `build_image`, and `check_docker_available` are thin adapters over it.
+auditable place, plus the image build/derive mechanics. `execution.build_worker_image`
+and `execution.run_filter` are nfind-specific adapters over it; `build_image` and
+`check_docker_available` are lower-level sandbox helpers re-exported by `backend`.
 
 `search` and `run_saved` accept an optional `sandbox` to override the backend — pass a
 fake implementing the protocol to drive the nfind logic without Docker, or an alternate
