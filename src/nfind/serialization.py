@@ -21,12 +21,12 @@ from .runtimes import RUNTIMES, GeneratedFilter
 def _python_harness() -> str:
     """The standalone ``__main__`` runner appended to saved python filters.
 
-    The body is :mod:`nfind._filter_harness` (a real, linted, tested module) read
+    The body is :mod:`nfind.filter_harness` (a real, linted, tested module) read
     verbatim, followed by a call that hands the saved ``filter_paths`` to its ``_main``.
     Keeping it a module rather than an inline string keeps it valid Python that ``ruff``
     and ``mypy`` check and tests exercise directly.
     """
-    body = Path(__file__).with_name("_filter_harness.py").read_text().rstrip()
+    body = Path(__file__).with_name("filter_harness.py").read_text().rstrip()
     return f'{body}\n\n\nif __name__ == "__main__":\n    _main(filter_paths)\n'
 
 

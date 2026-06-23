@@ -1443,10 +1443,10 @@ def test_saved_filter_standalone_harness_handles_file_and_multiple_roots(tmp_pat
 
 def test_harness_ignore_set_matches_default_ignores():
     # The standalone runner hardcodes the ignore set (it can't import nfind); guard drift.
-    from nfind import _filter_harness
+    from nfind import filter_harness
     from nfind.constants import DEFAULT_IGNORES
 
-    assert set(DEFAULT_IGNORES) == _filter_harness._IGNORE
+    assert set(DEFAULT_IGNORES) == filter_harness._IGNORE
 
 
 def test_saved_filter_standalone_harness_json_and_verbose(tmp_path):
