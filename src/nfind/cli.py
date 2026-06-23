@@ -307,15 +307,8 @@ def main(
             save.write_text(backend.serialize_filter(generated, plan_prompt, model))
             typer.echo(f"saved generated filter to {save}", err=True)
         if show_code or confirm:
-            # Show the full script as --save would write it. On a --run replay the
-            # code already is that full file, so show it as-is (no double-wrapping).
-            preview = (
-                generated.code
-                if isinstance(request, SavedReplayRequest)
-                else backend.serialize_filter(generated, request.prompt, model)
-            )
             typer.echo(f"--- generated filter ({generated.runtime}) ---", err=True)
-            typer.echo(_highlight(preview, generated.runtime), err=True)
+            typer.echo(_highlight(generated.code, generated.runtime), err=True)
             typer.echo("------------------------", err=True)
         if confirm and not typer.confirm("Run this filter?", default=False, err=True):
             typer.echo("aborted.", err=True)

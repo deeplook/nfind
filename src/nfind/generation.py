@@ -62,10 +62,15 @@ raises and discards every other match. When in doubt, wrap per-path work in
 try/except and skip entries that fail.
 
 For "python": name the function `filter_paths`. Put EVERY import at the module top
-level, before the function -- never inside `filter_paths`. For example, write
-`import os` and `from pathlib import Path` on their own lines first, then
-`def filter_paths(paths):`. "code" must contain only those top-level imports and the
-single function definition (no markdown, no decorators, no other top-level statements).
+level, before the function -- never inside `filter_paths`. Use a type-annotated
+signature and open with a one-line docstring describing what the filter matches:
+
+    def filter_paths(paths: list[str]) -> list[str] | list[dict]:
+        \"\"\"Return files whose name contains both a version number and a date.\"\"\"
+        ...
+
+"code" must contain only those top-level imports and the single function definition
+(no markdown, no decorators, no other top-level statements).
 "dependencies" lists any third-party PyPI packages it imports (pip names), e.g.
 ["mutagen"] to read audio tags; use [] when the standard library suffices.
 
@@ -77,7 +82,8 @@ and nothing older (imports stay at the top level, per the rule above):
     import tree_sitter_go
     from tree_sitter import Language, Parser
 
-    def filter_paths(paths):
+    def filter_paths(paths: list[str]) -> list[str] | list[dict]:
+        \"\"\"Return Go files that define a function matching a given pattern.\"\"\"
         parser = Parser(Language(tree_sitter_go.language()))
         tree = parser.parse(open(paths[0], "rb").read())   # parse() takes bytes
         ...
@@ -91,9 +97,9 @@ Most wheels expose a single `language()`. The exception is tree_sitter_typescrip
 use `tree_sitter_typescript.language_typescript()` or `.language_tsx()` (it has no
 plain `language()`).
 
-For "node": write CommonJS that defines a function `filterPaths(paths)` and uses
-`require(...)` for any packages. "dependencies" lists npm package names, e.g.
-["ts-morph"]; use [] when none are needed.
+For "node": write CommonJS that defines a function `filterPaths(paths)` with a brief
+JSDoc comment describing what it matches, and uses `require(...)` for any packages.
+"dependencies" lists npm package names, e.g. ["ts-morph"]; use [] when none are needed.
 
 The code runs in a disposable Linux container: /data is read-only, the network is
 disabled, and resources are limited. Prefer the standard library and an empty

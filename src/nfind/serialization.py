@@ -8,6 +8,7 @@ from such a file. Replaying a saved filter through the sandbox lives in
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import textwrap
@@ -112,6 +113,32 @@ def serialize_filter(generated: GeneratedFilter, prompt: str, model: str) -> str
     return f"{pep723}\n{docstring}\n\n\n{generated.code.rstrip()}\n\n\n{_PYTHON_HARNESS}"
 
 
+_HARNESS_MARKER = "\n# --- standalone runner"
+
+
+def _extract_python_filter_code(source: str) -> str:
+    """Extract only the filter code (imports + filter_paths) from a full saved Python file.
+
+    Saved files contain a PEP 723 header, a module docstring, the filter code, and an
+    appended standalone harness.  The worker only needs the filter code; this strips the
+    rest so the worker namespace stays clean.
+    """
+    idx = source.find(_HARNESS_MARKER)
+    pre = source[:idx].rstrip() if idx != -1 else source
+    try:
+        tree = ast.parse(pre)
+    except SyntaxError:
+        return pre
+    func_defs = (ast.FunctionDef, ast.AsyncFunctionDef)
+    nodes = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom, *func_defs))]
+    if not nodes:
+        return pre
+    lines = pre.splitlines()
+    first = nodes[0].lineno - 1
+    last = max(n.end_lineno for n in nodes if n.end_lineno is not None)
+    return "\n".join(lines[first:last])
+
+
 def deserialize_filter(source: str, *, filename: str = "") -> GeneratedFilter:
     """Reconstruct a :class:`GeneratedFilter` from a saved filter file.
 
@@ -152,4 +179,8 @@ def deserialize_filter(source: str, *, filename: str = "") -> GeneratedFilter:
     # saved file cannot smuggle pip arguments (e.g. "pkg --extra-index-url ...") through
     # the replay path into the image-build `pip install` line.
     dependencies = RUNTIMES["python"].validate_packages(dependencies)
-    return GeneratedFilter(code=source, dependencies=dependencies, runtime="python")
+    return GeneratedFilter(
+        code=_extract_python_filter_code(source),
+        dependencies=dependencies,
+        runtime="python",
+    )

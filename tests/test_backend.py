@@ -1505,6 +1505,25 @@ def test_deserialize_filter_round_trips_python_dependencies():
     assert parsed.dependencies == ["mutagen"]
 
 
+def test_filter_and_harness_are_separate_in_serialized_and_deserialized_forms():
+    """Serialized file carries filter + harness; deserialized code carries only the filter."""
+    code = (
+        "import os\n\ndef filter_paths(paths):\n    return [p for p in paths if os.path.isfile(p)]"
+    )
+    src = MODULE.serialize_filter(_gen(code), "Python files", "gpt-4o-mini")
+
+    # The saved file contains both the filter function and the standalone harness.
+    assert "def filter_paths(paths):" in src
+    assert "def _main(" in src
+    assert 'if __name__ == "__main__"' in src
+
+    # The deserialized code is only the filter: no harness, exact same source.
+    parsed = MODULE.deserialize_filter(src, filename="filter.py")
+    assert parsed.code == code
+    assert "def _main(" not in parsed.code
+    assert "__main__" not in parsed.code
+
+
 def test_deserialize_filter_detects_node_by_extension():
     src = MODULE.serialize_filter(
         _gen_node("function filterPaths(paths){return paths;}"), "ts", "gpt-4o-mini"
@@ -1640,7 +1659,7 @@ def test_cli_save_writes_replayable_script(tmp_path):
     assert "Prompt:  files" in written
 
 
-def test_cli_show_code_renders_full_saved_script(tmp_path):
+def test_cli_show_code_renders_filter_function(tmp_path):
     from typer.testing import CliRunner
 
     (tmp_path / "file.txt").write_text("content")
@@ -1658,10 +1677,10 @@ def test_cli_show_code_renders_full_saved_script(tmp_path):
         result = runner.invoke(cli.app, ["epub files", str(tmp_path), "--show-code"])
 
     assert result.exit_code == 0
-    # --show-code previews the full script --save would write, not just the function.
-    assert "# /// script" in result.output
-    assert "Prompt:  epub files" in result.output
+    # --show-code shows only the filter function, not the full saved-script form.
     assert "def filter_paths(paths):" in result.output
+    assert "# /// script" not in result.output
+    assert "_main" not in result.output
 
 
 def test_cli_run_uses_single_positional_as_path(tmp_path):
