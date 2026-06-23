@@ -1474,6 +1474,7 @@ def test_saved_filter_standalone_harness_json_and_verbose(tmp_path):
     assert _run("--verbose").strip() == f"{data / 'a.py'}\tn=1"
     payload = json.loads(_run("--json"))
     assert payload == {"count": 1, "results": [{"path": str(data / "a.py"), "n": 1}]}
+    assert _run("--print0") == f"{data / 'a.py'}\0"
 
 
 def test_saved_filter_standalone_harness_prunes_default_ignores(tmp_path):

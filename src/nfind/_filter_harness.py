@@ -1,9 +1,9 @@
 # --- standalone runner (embedded verbatim into saved filters by nfind --save) --------
 # Reproduces nfind's DEFAULT output when a saved filter is run via `uv run FILE [PATH]...`
 # without nfind installed: each root is walked (a directory has the common ignored dirs
-# pruned; a file contributes just itself), then matches are printed. --json and --verbose
-# work as in nfind. It does NOT reproduce --exclude/--max-depth/--no-ignore (those are not
-# saved). nfind itself never imports this module; it only reads the source. _IGNORE is kept
+# pruned; a file contributes just itself), then matches are printed. --json, --verbose, and
+# --print0 work as in nfind. It does NOT reproduce --exclude/--max-depth/--no-ignore (those
+# are not saved). nfind itself never imports this module; it only reads the source. _IGNORE is kept
 # in sync with nfind.constants.DEFAULT_IGNORES by a test.
 
 import json
@@ -31,6 +31,7 @@ _IGNORE = {
 def _main(filter_paths: Callable[[list[str]], list[Any]]) -> None:
     args = sys.argv[1:]
     as_json = "--json" in args
+    print0 = "--print0" in args or "-0" in args
     verbose = not as_json and ("--verbose" in args or "-v" in args)
     roots = [arg for arg in args if not arg.startswith("-")] or ["."]
 
@@ -49,6 +50,10 @@ def _main(filter_paths: Callable[[list[str]], list[Any]]) -> None:
     ]
     if as_json:
         print(json.dumps({"count": len(records), "results": records}, indent=2))
+        return
+    if print0:
+        # NUL-terminate each path (the find -print0 / xargs -0 convention).
+        sys.stdout.write("".join(f"{record['path']}\0" for record in records))
         return
     for record in records:
         extras = {key: value for key, value in record.items() if key != "path"}
