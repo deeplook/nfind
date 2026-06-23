@@ -51,7 +51,7 @@ sandbox that runs the generated code has networking disabled. See the
 On first use, nfind builds a small base worker image for the chosen
 [runtime](runtimes.md) and reuses it on later runs:
 
-- **Python** — `nfind-search-paths:latest` (based on `python:3.12-slim`)
+- **Python** — `nfind-search-paths:latest` (based on `python:3.11-slim`)
 - **Node.js** — `nfind-search-node:latest` (based on `node:22-slim`)
 
 Each base needs only its standard runtime. Force a rebuild with
@@ -62,6 +62,6 @@ When a prompt needs a third-party library, nfind builds a **derived** image
 (`…:deps-<hash>`) that layers the approved packages (pip or npm) on top of the base,
 and caches it for reuse. See [Dependencies & the whitelist](dependencies.md).
 
-Building images requires Docker to pull `python:3.12-slim` once (and, for derived
+Building images requires Docker to pull `python:3.11-slim` once (and, for derived
 images, to reach PyPI). After that, searches work offline apart from the OpenAI API
 call — the container that runs the filter never has network access.

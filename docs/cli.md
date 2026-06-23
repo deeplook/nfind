@@ -26,13 +26,15 @@ and print one path per line. Both `-h` and `--help` show usage. With `--run`, a
 previously saved filter is replayed instead and `PROMPT` is omitted (see
 [Saving & replaying filters](#saving--replaying-filters)).
 
-Pass several directories to search them in one run; each root is mounted separately and
-its entries are namespaced internally, so identically named files in different roots
-never collide. Results are merged into a single list of host paths.
+Pass several roots to search them in one run; each is mounted separately and its
+entries are namespaced internally, so identically named files in different roots never
+collide. Results are merged into a single list of host paths. A root may be a directory
+(walked) or a single file, so you can target specific files directly.
 
 ```bash
 nfind "directories that contain only audio files"
 nfind "Python files that import requests" ./src
+nfind "files that define a class" ./src/app.py ./src/models.py
 nfind "TODO comments left in the code" ./src ./tests ~/scratch
 nfind "files larger than 1 MB, with their size" --verbose
 ```
@@ -42,7 +44,7 @@ nfind "files larger than 1 MB, with their size" --verbose
 | Argument | Default | Description |
 |---|---|---|
 | `PROMPT` | — (required) | Natural-language description of the paths to find. |
-| `PATH`... | `.` | One or more directories to search. With several, results are merged. |
+| `PATH`... | `.` | One or more directories or files to search. With several, results are merged. |
 
 ## Options
 
@@ -120,7 +122,7 @@ nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save 
 
 ```python
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.11"
 # dependencies = ["mutagen"]
 # ///
 """

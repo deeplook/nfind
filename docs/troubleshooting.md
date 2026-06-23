@@ -106,7 +106,7 @@ diagnose and stabilise:
 
 ### Worker image build is slow or fails
 
-The first run builds `nfind-search-paths:latest` and must pull `python:3.12-slim`
+The first run builds `nfind-search-paths:latest` and must pull `python:3.11-slim`
 once, which needs network access. If a build hangs, raise `--build-timeout`, or
 rebuild explicitly:
 

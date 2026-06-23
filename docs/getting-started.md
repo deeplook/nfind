@@ -27,7 +27,7 @@ section builds on the last; by the end you'll have touched every command-line op
 
 ## Prerequisites
 
-- **Python 3.12+** and **[Docker](https://docs.docker.com/get-docker/)** installed and
+- **Python 3.11+** and **[Docker](https://docs.docker.com/get-docker/)** installed and
   running (nfind runs every generated filter inside a throwaway container).
 - An API key for your model provider. The default is OpenAI:
 

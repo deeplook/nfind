@@ -52,8 +52,9 @@ def search(
 
 Generates a filter for `prompt`, runs it against `path` in the sandbox, and returns
 the matching paths as records (host paths plus any extra fields the prompt produced).
-`path` may be one directory or a sequence of directories; with several roots each is
-mounted separately and results are merged as host paths. The model picks the
+`path` may be one root or a sequence of roots, each a directory (walked) or a single
+file; with several roots each is mounted separately and results are merged as host
+paths. The model picks the
 [runtime](runtimes.md) (Python or Node.js) and the matching base image is used unless
 `image` overrides it. The keyword arguments mirror the [CLI options](cli.md#options):
 `exclude`, `max_depth`, and `use_default_ignores` shape host-side enumeration before

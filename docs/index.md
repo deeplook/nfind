@@ -1,10 +1,10 @@
 # nfind
 
-**nfind** — short for **p**rompt(ed)-**find** — finds files by describing them in plain
-language (it's `find`, but driven by a prompt instead of a filter expression). You give
-a natural-language prompt; an LLM writes a small Python filter for it; that filter
-runs against your file tree inside a hardened, disposable Docker container and prints
-the matching paths — a natural-language cousin of `find`.
+**nfind** — short for **n**atural-**find** — finds files by describing them in plain
+language (it's `find`, but driven by a natural-language description instead of a filter
+expression). You give a natural-language prompt; an LLM writes a small Python filter for
+it; that filter runs against your file tree inside a hardened, disposable Docker
+container and prints the matching paths — a natural-language cousin of `find`.
 
 ```bash
 uv tool install nfind
@@ -82,7 +82,7 @@ See [Examples](examples.md) for the full prompt gallery.
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.11+
 - [Docker](https://docs.docker.com/get-docker/) installed and running
 - An OpenAI API key in `OPENAI_API_KEY` (or another [provider's](cli.md#providers) key)
 
