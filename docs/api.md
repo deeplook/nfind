@@ -178,16 +178,16 @@ results) surface as `TimeoutError` and `RuntimeError`.
 
 ## Lower-level building blocks
 
-For finer control, `nfind.generation` owns the model-to-filter step and
-`nfind.backend` exposes the path enumeration, sandbox image, execution, and compatibility
-helpers that `search` orchestrates:
+For finer control, `nfind.generation` owns the model-to-filter step,
+`nfind.enumeration` owns host-side path enumeration, and `nfind.backend` exposes the
+sandbox image, execution, and compatibility helpers that `search` orchestrates:
 
 ```python
 from pathlib import Path
-from nfind import backend, generation
+from nfind import backend, enumeration, generation
 
 root = Path(".").resolve()
-container_paths, host_by_container = backend.enumerate_paths(root)
+container_paths, host_by_container = enumeration.enumerate_paths(root)
 generated = generation.generate_filter("files with no extension")   # .code and .dependencies
 image = backend.build_worker_image(dependencies=generated.dependencies)
 records = backend.run_filter(generated.code, root, container_paths, image=image)
@@ -195,7 +195,7 @@ records = backend.run_filter(generated.code, root, container_paths, image=image)
 
 | Function | Purpose |
 |---|---|
-| `enumerate_paths(root, exclude=…, max_depth=…, use_default_ignores=…)` | Walk the tree; return container paths and a container→host map. `exclude` prunes matching globs, `max_depth` bounds depth, and default VCS/dependency/cache dirs are skipped unless disabled. |
+| `enumeration.enumerate_paths(root, exclude=…, max_depth=…, use_default_ignores=…)` | Walk the tree; return container paths and a container→host map. `exclude` prunes matching globs, `max_depth` bounds depth, and default VCS/dependency/cache dirs are skipped unless disabled. Also re-exported from `nfind.backend` for compatibility. |
 | `collect_macos_metadata(host_by_container)` | macOS: read tags/quarantine/where-from per path; `{}` off macOS. |
 | `generation.generate_filter(prompt, model=…, attempts=…, on_retry=…)` | Ask the LLM for a `GeneratedFilter` (`.code` + `.dependencies`), validated for shape; retries on invalid replies. Also re-exported from `nfind.backend` for compatibility. |
 | `build_image(image=…, rebuild=…, build_timeout=…)` | Build the stdlib-only base worker image when absent or on request. |

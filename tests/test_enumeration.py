@@ -5,8 +5,8 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from nfind import backend as MODULE
 from nfind import cli
+from nfind import enumeration as MODULE
 
 
 @pytest.fixture

@@ -12,20 +12,17 @@ a self-contained, standard-library-only module the Docker image ships and runs a
 
 from __future__ import annotations
 
-import fnmatch
 import json
-import os
 import subprocess as subprocess
 import sys as sys
 from collections.abc import Callable, Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from .constants import _RETRY_TEMPERATURE as _RETRY_TEMPERATURE
 from .constants import DEFAULT_ALLOWED_PACKAGES as DEFAULT_ALLOWED_PACKAGES
 from .constants import DEFAULT_BUILD_TIMEOUT as DEFAULT_BUILD_TIMEOUT
 from .constants import DEFAULT_GENERATION_ATTEMPTS as DEFAULT_GENERATION_ATTEMPTS
-from .constants import DEFAULT_IGNORES as DEFAULT_IGNORES
 from .constants import DEFAULT_IMAGE as DEFAULT_IMAGE
 from .constants import DEFAULT_MODEL as DEFAULT_MODEL
 from .constants import DEFAULT_NODE_IMAGE as DEFAULT_NODE_IMAGE
@@ -36,6 +33,10 @@ from .constants import FILTER_LINE_LENGTH as FILTER_LINE_LENGTH
 from .constants import PROVIDERS as PROVIDERS
 from .endpoint_cache import get_endpoint as get_endpoint
 from .endpoint_cache import set_endpoint as set_endpoint
+from .enumeration import _matches_any as _matches_any
+from .enumeration import _normalize_roots as _normalize_roots
+from .enumeration import enumerate_paths as enumerate_paths
+from .enumeration import enumerate_roots as enumerate_roots
 from .errors import DependencyError as DependencyError
 from .errors import DockerError as DockerError
 from .errors import DockerUnavailableError as DockerUnavailableError
@@ -93,137 +94,6 @@ from .worker import _normalize_results as _normalize_results
 from .worker import _worker_response as _worker_response
 from .worker import execute_worker_main as execute_worker_main
 from .worker import worker_main as worker_main
-
-
-def _matches_any(name: str, relative_posix: str, patterns: Sequence[str]) -> bool:
-    """True when ``name`` or its root-relative POSIX path matches any glob in ``patterns``."""
-    return any(
-        fnmatch.fnmatch(name, pattern) or fnmatch.fnmatch(relative_posix, pattern)
-        for pattern in patterns
-    )
-
-
-def enumerate_paths(
-    search_root: Path,
-    *,
-    exclude: Sequence[str] = (),
-    max_depth: int | None = None,
-    use_default_ignores: bool = True,
-    container_root: str = "/data",
-) -> tuple[list[str], dict[str, str]]:
-    """Return container paths and a container-to-host result mapping.
-
-    ``exclude`` is a list of glob patterns matched against each entry's name *and* its
-    path relative to the search root (POSIX form); a matching directory is pruned --
-    skipped from the results and not descended into. When ``use_default_ignores`` is true
-    (the default), the common VCS/dependency/cache names in :data:`DEFAULT_IGNORES` are
-    excluded too. ``max_depth`` bounds how deep below the root to descend -- a direct child
-    is depth 1 -- and ``None`` (the default) means unlimited. ``container_root`` is the
-    in-container mount point the relative entries hang off (``/data`` for a single root;
-    :func:`enumerate_roots` passes ``/data/0``, ``/data/1``, … to keep multiple roots from
-    colliding).
-    """
-    root = search_root.expanduser().resolve(strict=True)
-    if not root.is_dir():
-        raise ValueError(f"Search root is not a directory: {root}")
-    if max_depth is not None and max_depth < 1:
-        raise ValueError("max_depth must be at least 1")
-
-    patterns = [*exclude]
-    if use_default_ignores:
-        patterns += sorted(DEFAULT_IGNORES)
-
-    container_paths: list[str] = []
-    host_by_container: dict[str, str] = {}
-    for current, directories, files in os.walk(root, followlinks=False):
-        current_path = Path(current)
-        depth = len(current_path.relative_to(root).parts)
-
-        # Prune excluded directories in place so os.walk neither lists nor descends them.
-        kept: list[str] = []
-        for name in directories:
-            relative_posix = (current_path / name).relative_to(root).as_posix()
-            if not _matches_any(name, relative_posix, patterns):
-                kept.append(name)
-        directories[:] = kept
-
-        for name in [*directories, *files]:
-            host_path = current_path / name
-            relative = host_path.relative_to(root)
-            if name in files and _matches_any(name, relative.as_posix(), patterns):
-                continue
-            container_path = str(PurePosixPath(container_root, *relative.parts))
-            container_paths.append(container_path)
-            host_by_container[container_path] = str(host_path)
-
-        # Stop descending once the next level would exceed max_depth; entries at the
-        # current level (including directories) have already been recorded above.
-        if max_depth is not None and depth + 1 >= max_depth:
-            directories[:] = []
-    return container_paths, host_by_container
-
-
-def _normalize_roots(path: str | Path | Sequence[str | Path]) -> list[Path]:
-    """Resolve one-or-many search paths to a de-duplicated list of existing roots.
-
-    A bare string/``Path`` is treated as a single root; a sequence yields one root per
-    entry. Each is expanded and resolved (``strict=True``, so a missing path raises), and
-    exact duplicates are dropped so the same tree is never enumerated -- or mounted --
-    twice. An empty sequence defaults to the current directory.
-    """
-    items: Sequence[str | Path]
-    items = [path] if isinstance(path, (str, Path)) else list(path)
-    if not items:
-        items = ["."]
-    roots: list[Path] = []
-    seen: set[Path] = set()
-    for item in items:
-        root = Path(item).expanduser().resolve(strict=True)
-        if root not in seen:
-            seen.add(root)
-            roots.append(root)
-    return roots
-
-
-def enumerate_roots(
-    roots: Sequence[Path],
-    *,
-    exclude: Sequence[str] = (),
-    max_depth: int | None = None,
-    use_default_ignores: bool = True,
-) -> tuple[list[str], dict[str, str], list[Mount]]:
-    """Enumerate one or more search roots and return the mounts that expose them.
-
-    For a single root this mounts it at ``/data`` (unchanged from the single-root past).
-    For several roots, root *i* is mounted at ``/data/<i>`` and its entries are namespaced
-    under that prefix, so identically named files in different roots never collide. The
-    returned ``host_by_container`` map covers every root, and the ``Mount`` list is handed
-    straight to :func:`run_filter`.
-    """
-    if not roots:
-        raise ValueError("at least one search root is required")
-    if len(roots) == 1:
-        container_paths, host_by_container = enumerate_paths(
-            roots[0], exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
-        )
-        return container_paths, host_by_container, [Mount(roots[0], "/data", read_only=True)]
-
-    container_paths = []
-    host_by_container = {}
-    mounts: list[Mount] = []
-    for index, root in enumerate(roots):
-        target = f"/data/{index}"
-        paths, mapping = enumerate_paths(
-            root,
-            exclude=exclude,
-            max_depth=max_depth,
-            use_default_ignores=use_default_ignores,
-            container_root=target,
-        )
-        container_paths.extend(paths)
-        host_by_container.update(mapping)
-        mounts.append(Mount(root, target, read_only=True))
-    return container_paths, host_by_container, mounts
 
 
 def build_worker_image(
