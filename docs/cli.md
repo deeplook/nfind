@@ -17,18 +17,23 @@
 ## Synopsis
 
 ```bash
-nfind PROMPT [PATH] [OPTIONS]
-nfind --run FILTER [PATH] [OPTIONS]   # replay a saved filter, no PROMPT
+nfind PROMPT [PATH]... [OPTIONS]
+nfind --run FILTER [PATH]... [OPTIONS]   # replay a saved filter, no PROMPT
 ```
 
-Search `PATH` for files and directories matching the natural-language `PROMPT` and
-print one path per line. Both `-h` and `--help` show usage. With `--run`, a previously
-saved filter is replayed instead and `PROMPT` is omitted (see
+Search each `PATH` for files and directories matching the natural-language `PROMPT`
+and print one path per line. Both `-h` and `--help` show usage. With `--run`, a
+previously saved filter is replayed instead and `PROMPT` is omitted (see
 [Saving & replaying filters](#saving--replaying-filters)).
+
+Pass several directories to search them in one run; each root is mounted separately and
+its entries are namespaced internally, so identically named files in different roots
+never collide. Results are merged into a single list of host paths.
 
 ```bash
 nfind "directories that contain only audio files"
 nfind "Python files that import requests" ./src
+nfind "TODO comments left in the code" ./src ./tests ~/scratch
 nfind "files larger than 1 MB, with their size" --verbose
 ```
 
@@ -37,7 +42,7 @@ nfind "files larger than 1 MB, with their size" --verbose
 | Argument | Default | Description |
 |---|---|---|
 | `PROMPT` | — (required) | Natural-language description of the paths to find. |
-| `PATH` | `.` | Directory to search. |
+| `PATH`... | `.` | One or more directories to search. With several, results are merged. |
 
 ## Options
 

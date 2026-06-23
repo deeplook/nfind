@@ -6,8 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Help on no arguments.** Running `nfind` with no arguments now prints the help text
+  instead of the terse "PROMPT is required" error. Giving options without a PROMPT (and
+  without `--run`) is still a usage error.
+
 ### Added
 
+- **Multiple search roots.** `nfind PROMPT PATH...` now accepts more than one directory
+  (e.g. `nfind "TODO comments" ./src ./tests`); `--run` replays accept several paths too.
+  Each root is mounted separately and its entries are namespaced internally (`/data/0`,
+  `/data/1`, …), so identically named files in different roots never collide, and results
+  are merged into one list. `search`/`run_saved` accept a sequence of paths, and the new
+  `enumerate_roots` helper returns the combined paths, host mapping, and mounts.
 - **find-style enumeration filters.** New options narrow what's searched *before* the
   path list reaches the generated filter (host-side, deterministic, and faster on large
   trees): `--exclude GLOB` (repeatable; matches an entry's name and its root-relative

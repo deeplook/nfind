@@ -26,6 +26,15 @@ def test_validate_code_shape_accepts_one_filter_function():
     MODULE._validate_code_shape("def filter_paths(paths):\n    return paths")
 
 
+def test_validate_code_shape_accepts_top_level_imports():
+    MODULE._validate_code_shape(
+        "import os\n"
+        "from pathlib import Path\n\n"
+        "def filter_paths(paths):\n"
+        "    return [p for p in paths if os.path.isfile(p)]"
+    )
+
+
 @pytest.mark.parametrize(
     "code",
     [
@@ -488,6 +497,51 @@ def test_parse_generation_rejects_unknown_runtime():
         MODULE._parse_generation(content)
 
 
+def test_check_undefined_names_accepts_top_level_import():
+    MODULE._check_undefined_names(
+        "import os\n\ndef filter_paths(paths):\n    return [p for p in paths if os.path.isfile(p)]"
+    )
+
+
+def test_check_undefined_names_rejects_missing_import():
+    # `os` is used but never imported at the top level -- the bug this gate exists to catch.
+    with pytest.raises(ValueError, match=r"undefined name.*'os'"):
+        MODULE._check_undefined_names(
+            "def filter_paths(paths):\n    return [p for p in paths if os.path.isfile(p)]"
+        )
+
+
+def test_check_undefined_names_allows_injected_meta_global():
+    code = "def filter_paths(paths):\n    return [p for p in paths if META.get(p, {}).get('q')]"
+    with pytest.raises(ValueError, match="META"):
+        MODULE._check_undefined_names(code)  # without the builtin declared, META is undefined
+    MODULE._check_undefined_names(code, extra_builtins=("META",))  # declared -> accepted
+
+
+def test_check_undefined_names_fails_open_without_ruff():
+    # No ruff -> the gate must not block generation on a tooling gap.
+    with patch.object(MODULE, "_ruff_path", return_value=None):
+        MODULE._check_undefined_names("def filter_paths(paths):\n    return os.listdir(paths)")
+
+
+def test_parse_generation_rejects_filter_using_undefined_name():
+    content = json.dumps(
+        {"code": "def filter_paths(paths):\n    return [p for p in paths if re.match('x', p)]"}
+    )
+    with pytest.raises(ValueError, match=r"undefined name.*'re'"):
+        MODULE._parse_generation(content)
+
+
+def test_parse_generation_whitelists_meta_when_macos_meta_enabled():
+    content = json.dumps(
+        {"code": "def filter_paths(paths):\n    return [p for p in paths if META.get(p)]"}
+    )
+    with pytest.raises(ValueError, match="META"):
+        MODULE._parse_generation(content)  # META undefined without metadata in play
+    result = MODULE._parse_generation(content, macos_meta=True)
+    assert result.runtime == "python"
+
+
 def test_node_runtime_validates_code_and_scoped_packages():
     MODULE.NODE_RUNTIME.validate_code("const filterPaths = (paths) => paths;")
     assert MODULE.NODE_RUNTIME.validate_packages(["@babel/parser", "ts-morph"]) == [
@@ -898,6 +952,19 @@ def test_generate_filter_retries_on_invalid_then_succeeds():
     assert messages[-1]["role"] == "user"
     # Retries leave temperature 0 behind so the model diverges.
     assert second_call.kwargs["temperature"] == MODULE._RETRY_TEMPERATURE
+
+
+def test_generate_filter_retries_on_undefined_name_then_succeeds():
+    body = "def filter_paths(paths):\n    return [p for p in paths if os.stat(p)]"
+    bad = json.dumps({"code": body})
+    good = json.dumps({"code": f"import os\n\n{body}"})
+    patcher, client = _fake_openai(bad, good)
+    retries = []
+    with patcher:
+        result = MODULE.generate_filter("anything", on_retry=lambda n, exc: retries.append(exc))
+    assert "import os" in result.code
+    assert client.chat.completions.create.call_count == 2
+    assert retries and "undefined name" in str(retries[0])
 
 
 def test_generate_filter_raises_after_exhausting_attempts():
@@ -1462,25 +1529,51 @@ def test_cli_run_uses_single_positional_as_path(tmp_path):
 
     assert result.exit_code == 0
     # The lone positional is the search PATH (not a PROMPT) when --run is used.
-    assert run_saved.call_args.args[1] == str(target)
+    assert run_saved.call_args.args[1] == [str(target)]
 
 
-def test_cli_run_rejects_extra_positional_and_save(tmp_path):
+def test_cli_run_accepts_multiple_positionals_as_paths(tmp_path):
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    script = tmp_path / "f.py"
+    script.write_text("def filter_paths(paths): return paths")
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+
+    with patch.object(cli.backend, "run_saved", return_value=[]) as run_saved:
+        result = runner.invoke(cli.app, ["--run", str(script), str(first), str(second)])
+
+    assert result.exit_code == 0
+    # Every positional is a search PATH under --run; none is taken as a PROMPT.
+    assert run_saved.call_args.args[1] == [str(first), str(second)]
+
+
+def test_cli_run_rejects_save(tmp_path):
     from typer.testing import CliRunner
 
     runner = CliRunner()
     script = tmp_path / "f.py"
     script.write_text("def filter_paths(paths): return paths")
 
-    two_positionals = runner.invoke(cli.app, ["prompt", "path", "--run", str(script)])
-    assert two_positionals.exit_code == 2
-
     with_save = runner.invoke(cli.app, ["--run", str(script), "--save", str(tmp_path / "o.py")])
     assert with_save.exit_code == 2
+
+
+def test_cli_shows_help_with_no_args():
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(cli.app, [])
+    assert result.exit_code == 2
+    assert "Usage:" in result.output
 
 
 def test_cli_requires_prompt_without_run():
     from typer.testing import CliRunner
 
-    result = CliRunner().invoke(cli.app, [])
+    # Options but no PROMPT and no --run is a usage error (not bare no-args help).
+    result = CliRunner().invoke(cli.app, ["--json"])
     assert result.exit_code == 2
+    assert "PROMPT is required" in result.output

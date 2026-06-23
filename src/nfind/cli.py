@@ -96,7 +96,7 @@ def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool, print0
             typer.echo(path)
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def main(
     prompt: Annotated[
         str | None,
@@ -105,10 +105,14 @@ def main(
             "Omit when replaying a saved filter with --run.",
         ),
     ] = None,
-    path: Annotated[
-        str,
-        typer.Argument(help="Directory to search."),
-    ] = ".",
+    paths: Annotated[
+        list[str] | None,
+        typer.Argument(
+            metavar="[PATH]...",
+            help="One or more directories to search (default: current directory). "
+            "With several, each is searched and results are merged.",
+        ),
+    ] = None,
     config_file: Annotated[
         Path | None,
         typer.Option(
@@ -281,17 +285,11 @@ def main(
     if macos_meta and sys.platform != "darwin":
         typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
     if run is not None:
-        # With --run there is no PROMPT, so a single positional is the search PATH.
-        # Typer binds the first positional to `prompt`; shift it over to `path`.
-        if prompt is not None and path == ".":
-            path, prompt = prompt, None
+        # With --run there is no PROMPT, so every positional is a search PATH. Typer
+        # binds the first positional to `prompt`; fold it back into the path list.
         if prompt is not None:
-            typer.echo(
-                "error: with --run, pass only the search PATH (the filter is replayed, "
-                "there is no PROMPT).",
-                err=True,
-            )
-            raise typer.Exit(2)
+            paths = [prompt, *(paths or [])]
+            prompt = None
         for flag, used in (
             ("--save", save is not None),
             ("--confirm", confirm),
@@ -343,12 +341,13 @@ def main(
     hook = on_generated if (show_code or save is not None or confirm) else None
     exclude_globs = tuple(exclude or ())
     use_default_ignores = not no_ignore
+    search_paths = paths if paths else ["."]
 
     try:
         if run is not None:
             results = backend.run_saved(
                 run,
-                path,
+                search_paths,
                 image=image,
                 timeout=timeout,
                 memory=memory,
@@ -365,7 +364,7 @@ def main(
         else:
             assert prompt is not None  # guaranteed by the validation above
             results = backend.search(
-                path,
+                search_paths,
                 prompt,
                 image=image,
                 model=model,

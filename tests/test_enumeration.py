@@ -88,6 +88,44 @@ def test_excluded_dirs_are_not_descended(tree):
     assert not any(name.startswith("/src") for name in names)
 
 
+# --- enumerate_roots (multiple search roots) ------------------------------------
+
+
+def test_enumerate_roots_single_root_keeps_data_prefix(tmp_path):
+    (tmp_path / "a.txt").write_text("x")
+    paths, mapping, mounts = MODULE.enumerate_roots([tmp_path])
+    assert "/data/a.txt" in paths
+    assert mapping["/data/a.txt"] == str(tmp_path / "a.txt")
+    assert len(mounts) == 1
+    assert mounts[0].source == tmp_path and mounts[0].target == "/data"
+
+
+def test_enumerate_roots_namespaces_each_root(tmp_path):
+    first = tmp_path / "one"
+    second = tmp_path / "two"
+    first.mkdir()
+    second.mkdir()
+    # Identically named files in different roots must not collide.
+    (first / "dup.txt").write_text("x")
+    (second / "dup.txt").write_text("y")
+
+    paths, mapping, mounts = MODULE.enumerate_roots([first, second])
+
+    assert "/data/0/dup.txt" in paths and "/data/1/dup.txt" in paths
+    assert mapping["/data/0/dup.txt"] == str(first / "dup.txt")
+    assert mapping["/data/1/dup.txt"] == str(second / "dup.txt")
+    assert [mount.target for mount in mounts] == ["/data/0", "/data/1"]
+    assert [mount.source for mount in mounts] == [first, second]
+
+
+def test_normalize_roots_dedupes_and_requires_existing(tmp_path):
+    (tmp_path / "x").write_text("x")
+    roots = MODULE._normalize_roots([tmp_path, tmp_path])
+    assert roots == [tmp_path.resolve()]
+    with pytest.raises(FileNotFoundError):
+        MODULE._normalize_roots([tmp_path / "missing"])
+
+
 # --- CLI wiring -----------------------------------------------------------------
 
 
@@ -107,6 +145,22 @@ def test_cli_threads_enumeration_flags_to_search():
     assert kwargs["exclude"] == ("*.min.js", "build")
     assert kwargs["max_depth"] == 3
     assert kwargs["use_default_ignores"] is False
+
+
+def test_cli_passes_multiple_paths_to_search():
+    runner = CliRunner()
+    with patch.object(cli.backend, "search", return_value=[]) as search:
+        result = runner.invoke(cli.app, ["prompt", "/tmp", "/var"])
+    assert result.exit_code == 0
+    assert search.call_args.args[0] == ["/tmp", "/var"]
+
+
+def test_cli_defaults_to_current_directory():
+    runner = CliRunner()
+    with patch.object(cli.backend, "search", return_value=[]) as search:
+        result = runner.invoke(cli.app, ["prompt"])
+    assert result.exit_code == 0
+    assert search.call_args.args[0] == ["."]
 
 
 def test_cli_default_enumeration_flags():

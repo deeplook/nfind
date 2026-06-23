@@ -79,19 +79,28 @@ class GeneratedFilter:
 
 
 def _validate_code_shape(code: str) -> None:
-    """Require one undecorated top-level filter function.
+    """Require one undecorated top-level filter function, optionally preceded by imports.
 
-    This is an interface check, not a security boundary. Docker provides the
-    isolation for the intentionally expressive generated Python.
+    Top-level ``import``/``from ... import`` statements are allowed (and preferred over
+    function-local imports) so the filter's globals carry them at call time; any other
+    top-level statement is rejected. This is an interface check, not a security boundary.
+    Docker provides the isolation for the intentionally expressive generated Python.
     """
     try:
         tree = ast.parse(code)
     except SyntaxError as exc:
         raise ValueError(f"Generated code has a syntax error: {exc}") from exc
 
-    if len(tree.body) != 1 or not isinstance(tree.body[0], (ast.FunctionDef, ast.AsyncFunctionDef)):
-        raise ValueError("Generated code must contain exactly one top-level function definition.")
-    function = tree.body[0]
+    func_defs = (ast.FunctionDef, ast.AsyncFunctionDef)
+    allowed = (ast.Import, ast.ImportFrom, *func_defs)
+    functions = [n for n in tree.body if isinstance(n, func_defs)]
+    extras = [n for n in tree.body if not isinstance(n, allowed)]
+    if len(functions) != 1 or extras:
+        raise ValueError(
+            "Generated code must contain exactly one top-level function definition, "
+            "preceded only by import statements."
+        )
+    function = functions[0]
     if isinstance(function, ast.AsyncFunctionDef):
         raise ValueError("filter_paths must be a synchronous function.")
     if function.name != "filter_paths":

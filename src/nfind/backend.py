@@ -101,19 +101,31 @@ matching entries, each corresponding to one of the input paths, as either:
 Use the object form only when the description requests extra per-path information;
 otherwise return a plain list of paths.
 
-For "python": name the function `filter_paths`; "code" must contain only that
-function definition (no markdown, no decorators, no top-level statements).
+`paths` contains directory entries as well as files. When a filter inspects file
+contents (reads bytes, parses tags, opens the path), it MUST skip entries that are
+not regular files -- guard with `os.path.isfile(p)` (or filter by extension) before
+opening. A single uncaught exception from `filter_paths` aborts the whole run, so make
+per-path work defensive: opening a directory like a file (e.g. mutagen on a folder)
+raises and discards every other match. When in doubt, wrap per-path work in
+try/except and skip entries that fail.
+
+For "python": name the function `filter_paths`. Put EVERY import at the module top
+level, before the function -- never inside `filter_paths`. For example, write
+`import os` and `from pathlib import Path` on their own lines first, then
+`def filter_paths(paths):`. "code" must contain only those top-level imports and the
+single function definition (no markdown, no decorators, no other top-level statements).
 "dependencies" lists any third-party PyPI packages it imports (pip names), e.g.
 ["mutagen"] to read audio tags; use [] when the standard library suffices.
 
 To parse source code structure (functions, imports, classes) in the python runtime,
 use tree-sitter with the per-language grammar wheel (named tree-sitter-<lang>, e.g.
 tree-sitter-go). The installed tree-sitter is modern (>= 0.22); use EXACTLY this API
-and nothing older (keep all imports inside filter_paths, per the rule above):
+and nothing older (imports stay at the top level, per the rule above):
+
+    import tree_sitter_go
+    from tree_sitter import Language, Parser
 
     def filter_paths(paths):
-        import tree_sitter_go
-        from tree_sitter import Language, Parser
         parser = Parser(Language(tree_sitter_go.language()))
         tree = parser.parse(open(paths[0], "rb").read())   # parse() takes bytes
         ...
@@ -239,6 +251,68 @@ def _format_generated_code(code: str, runtime: str) -> str:
     return cleaned
 
 
+def _check_undefined_names(code: str, *, extra_builtins: Sequence[str] = ()) -> None:
+    """Reject Python filters that reference names they never import or define.
+
+    Lints the bare ``filter_paths`` source -- exactly what the sandbox worker execs -- with
+    ruff's pyflakes ``F821`` (undefined name). This catches the common failure where the
+    model uses ``os``/``re``/etc. without a top-level import: the standalone replay script
+    hides it (an ``import`` in the ``__main__`` harness still binds the name at module
+    scope), but the worker runs only the function and dies with ``NameError`` at call time.
+    Raising ``ValueError`` here routes the problem back through ``generate_filter``'s retry
+    loop so the model fixes it.
+
+    ``extra_builtins`` names globals the worker injects rather than the code defining them
+    (e.g. ``META`` for macOS metadata); they are declared to ruff so they are not flagged.
+    The check fails open -- if ruff is missing or errors, generation proceeds unchecked --
+    so it never blocks on tooling problems, only on a definite undefined-name bug.
+    """
+    ruff = _ruff_path()
+    if ruff is None:
+        return
+    cmd = [
+        ruff,
+        "check",
+        "--quiet",
+        "--isolated",
+        "--select",
+        "F821",
+        "--output-format",
+        "json",
+        "--stdin-filename",
+        "filter_paths.py",
+    ]
+    if extra_builtins:
+        names = ", ".join(f"'{name}'" for name in extra_builtins)
+        cmd += ["--config", f"builtins=[{names}]"]
+    cmd.append("-")
+    try:
+        result = subprocess.run(
+            cmd, input=code, capture_output=True, text=True, timeout=30, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    if result.returncode == 0:
+        return
+    try:
+        findings = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return  # unexpected ruff output -- fail open rather than block generation
+    matches = (_UNDEFINED_NAME_RE.match(f["message"]) for f in findings)
+    undefined = sorted({m.group(1) for m in matches if m})
+    if not undefined:
+        return
+    names = ", ".join(repr(name) for name in undefined)
+    raise ValueError(
+        f"filter_paths references undefined name(s) {names}. Every name a filter uses must "
+        "be imported at the module top level (before the function) or defined in the code."
+    )
+
+
+# ruff's F821 message is `Undefined name \`os\``; capture the backticked name.
+_UNDEFINED_NAME_RE = re.compile(r"Undefined name `([^`]+)`")
+
+
 def _split_model(model: str) -> tuple[str, str]:
     """Split a "provider/model" selector into (provider, model_name).
 
@@ -300,7 +374,7 @@ def _extract_json_object(content: str) -> str:
     return content
 
 
-def _parse_generation(content: str) -> GeneratedFilter:
+def _parse_generation(content: str, *, macos_meta: bool = False) -> GeneratedFilter:
     """Parse and validate the model's JSON response into a GeneratedFilter."""
     try:
         payload = json.loads(_extract_json_object(content))
@@ -317,6 +391,9 @@ def _parse_generation(content: str) -> GeneratedFilter:
         raise ValueError("Model response is missing a 'code' string.")
     code = _strip_code_fence(code)
     runtime.validate_code(code)
+    if runtime_name == DEFAULT_RUNTIME:
+        # ruff is a Python tool; the Node runtime has no equivalent undefined-name check.
+        _check_undefined_names(code, extra_builtins=("META",) if macos_meta else ())
     dependencies = runtime.validate_packages(payload.get("dependencies", []))
     return GeneratedFilter(code=code, dependencies=dependencies, runtime=runtime_name)
 
@@ -525,7 +602,7 @@ def generate_filter(
             on_responses_switch=lambda: set_endpoint(model, "responses"),
         )
         try:
-            return _parse_generation(content)
+            return _parse_generation(content, macos_meta=macos_meta)
         except ValueError as exc:
             last_error = exc
             if attempt + 1 < attempts:
@@ -554,6 +631,7 @@ def enumerate_paths(
     exclude: Sequence[str] = (),
     max_depth: int | None = None,
     use_default_ignores: bool = True,
+    container_root: str = "/data",
 ) -> tuple[list[str], dict[str, str]]:
     """Return container paths and a container-to-host result mapping.
 
@@ -562,7 +640,10 @@ def enumerate_paths(
     skipped from the results and not descended into. When ``use_default_ignores`` is true
     (the default), the common VCS/dependency/cache names in :data:`DEFAULT_IGNORES` are
     excluded too. ``max_depth`` bounds how deep below the root to descend -- a direct child
-    is depth 1 -- and ``None`` (the default) means unlimited.
+    is depth 1 -- and ``None`` (the default) means unlimited. ``container_root`` is the
+    in-container mount point the relative entries hang off (``/data`` for a single root;
+    :func:`enumerate_roots` passes ``/data/0``, ``/data/1``, … to keep multiple roots from
+    colliding).
     """
     root = search_root.expanduser().resolve(strict=True)
     if not root.is_dir():
@@ -593,7 +674,7 @@ def enumerate_paths(
             relative = host_path.relative_to(root)
             if name in files and _matches_any(name, relative.as_posix(), patterns):
                 continue
-            container_path = str(PurePosixPath("/data", *relative.parts))
+            container_path = str(PurePosixPath(container_root, *relative.parts))
             container_paths.append(container_path)
             host_by_container[container_path] = str(host_path)
 
@@ -602,6 +683,69 @@ def enumerate_paths(
         if max_depth is not None and depth + 1 >= max_depth:
             directories[:] = []
     return container_paths, host_by_container
+
+
+def _normalize_roots(path: str | Path | Sequence[str | Path]) -> list[Path]:
+    """Resolve one-or-many search paths to a de-duplicated list of existing roots.
+
+    A bare string/``Path`` is treated as a single root; a sequence yields one root per
+    entry. Each is expanded and resolved (``strict=True``, so a missing path raises), and
+    exact duplicates are dropped so the same tree is never enumerated -- or mounted --
+    twice. An empty sequence defaults to the current directory.
+    """
+    items: Sequence[str | Path]
+    items = [path] if isinstance(path, (str, Path)) else list(path)
+    if not items:
+        items = ["."]
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for item in items:
+        root = Path(item).expanduser().resolve(strict=True)
+        if root not in seen:
+            seen.add(root)
+            roots.append(root)
+    return roots
+
+
+def enumerate_roots(
+    roots: Sequence[Path],
+    *,
+    exclude: Sequence[str] = (),
+    max_depth: int | None = None,
+    use_default_ignores: bool = True,
+) -> tuple[list[str], dict[str, str], list[Mount]]:
+    """Enumerate one or more search roots and return the mounts that expose them.
+
+    For a single root this mounts it at ``/data`` (unchanged from the single-root past).
+    For several roots, root *i* is mounted at ``/data/<i>`` and its entries are namespaced
+    under that prefix, so identically named files in different roots never collide. The
+    returned ``host_by_container`` map covers every root, and the ``Mount`` list is handed
+    straight to :func:`run_filter`.
+    """
+    if not roots:
+        raise ValueError("at least one search root is required")
+    if len(roots) == 1:
+        container_paths, host_by_container = enumerate_paths(
+            roots[0], exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
+        )
+        return container_paths, host_by_container, [Mount(roots[0], "/data", read_only=True)]
+
+    container_paths = []
+    host_by_container = {}
+    mounts: list[Mount] = []
+    for index, root in enumerate(roots):
+        target = f"/data/{index}"
+        paths, mapping = enumerate_paths(
+            root,
+            exclude=exclude,
+            max_depth=max_depth,
+            use_default_ignores=use_default_ignores,
+            container_root=target,
+        )
+        container_paths.extend(paths)
+        host_by_container.update(mapping)
+        mounts.append(Mount(root, target, read_only=True))
+    return container_paths, host_by_container, mounts
 
 
 def build_worker_image(
@@ -670,6 +814,7 @@ def run_filter(
     pids_limit: int = 64,
     meta: dict[str, Any] | None = None,
     limits: Limits | None = None,
+    mounts: list[Mount] | None = None,
 ) -> list[dict[str, Any]]:
     """Execute generated code in the sandbox and return container-path records.
 
@@ -681,6 +826,10 @@ def run_filter(
     Pass a :class:`~nfind.sandbox.Limits` as ``limits`` to set the resource/output caps
     directly; otherwise they are built from the ``timeout``/``memory``/``cpus``/
     ``pids_limit`` arguments (with the host's :data:`MAX_RESULT_BYTES` output cap).
+
+    ``mounts`` overrides what is bound into the container; when omitted, ``search_root``
+    is mounted read-only at ``/data`` (the single-root default). :func:`enumerate_roots`
+    supplies multi-root mounts (``/data/0``, ``/data/1``, …).
     """
     if limits is None:
         limits = Limits(
@@ -694,12 +843,14 @@ def run_filter(
         raise ValueError("timeout, cpus, and pids must be positive")
 
     root = search_root.expanduser().resolve(strict=True)
+    if mounts is None:
+        mounts = [Mount(root, "/data", read_only=True)]
     if sandbox is None:
         sandbox = DockerSandbox(image, dockerfile=_dockerfile_path())
     request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
 
     try:
-        run = sandbox.run(request, mounts=[Mount(root, "/data", read_only=True)], limits=limits)
+        run = sandbox.run(request, mounts=mounts, limits=limits)
     except SandboxTimeout as exc:
         raise TimeoutError(f"Generated filter exceeded the {limits.timeout:g}s timeout.") from exc
     except SandboxOutputTooLarge as exc:
@@ -718,7 +869,7 @@ def run_filter(
 
 
 def search(
-    path: str,
+    path: str | Path | Sequence[str | Path],
     prompt: str,
     *,
     image: str | None = None,
@@ -772,13 +923,15 @@ def search(
     ``sandbox`` overrides the execution backend (a :class:`~nfind.sandbox.DockerSandbox`
     built from the chosen runtime by default); pass a fake to run without Docker.
 
-    ``exclude`` (glob patterns), ``use_default_ignores`` (skip common VCS/dependency/cache
-    directories), and ``max_depth`` (limit traversal depth) shape which paths are
-    enumerated and handed to the filter; see :func:`enumerate_paths`.
+    ``path`` is a single directory or a sequence of directories; with several roots each
+    is mounted separately and its entries are namespaced so identically named files don't
+    collide. ``exclude`` (glob patterns), ``use_default_ignores`` (skip common
+    VCS/dependency/cache directories), and ``max_depth`` (limit traversal depth) shape
+    which paths are enumerated and handed to the filter; see :func:`enumerate_roots`.
     """
-    root = Path(path).expanduser().resolve(strict=True)
-    container_paths, host_by_container = enumerate_paths(
-        root, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
+    roots = _normalize_roots(path)
+    container_paths, host_by_container, mounts = enumerate_roots(
+        roots, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
     )
     if not container_paths:
         return []
@@ -794,7 +947,7 @@ def search(
 
     return _run_generated(
         generated,
-        root,
+        mounts,
         container_paths,
         host_by_container,
         meta=meta,
@@ -813,7 +966,7 @@ def search(
 
 def _run_generated(
     generated: GeneratedFilter,
-    root: Path,
+    mounts: list[Mount],
     container_paths: list[str],
     host_by_container: dict[str, str],
     *,
@@ -855,7 +1008,7 @@ def _run_generated(
     )
     records = run_filter(
         generated.code,
-        root,
+        mounts[0].source,
         container_paths,
         sandbox=sandbox,
         image=run_image,
@@ -864,6 +1017,7 @@ def _run_generated(
         cpus=cpus,
         pids_limit=pids_limit,
         meta=meta,
+        mounts=mounts,
     )
     host_records: list[dict[str, Any]] = []
     for record in records:
@@ -875,7 +1029,7 @@ def _run_generated(
 
 def run_saved(
     filter_path: str | Path,
-    path: str | Path = ".",
+    path: str | Path | Sequence[str | Path] = ".",
     *,
     image: str | None = None,
     timeout: float = 10.0,
@@ -898,7 +1052,8 @@ def run_saved(
     filter and run in the same hardened container as :func:`search`. Any third-party
     packages it declares are still gated through ``approve_dependencies``/the whitelist,
     so a saved filter cannot silently pull new packages. macOS metadata is not exposed
-    on the replay path. ``exclude``/``use_default_ignores``/``max_depth`` shape
+    on the replay path. ``path`` may be one directory or several (mounted and namespaced
+    as in :func:`search`); ``exclude``/``use_default_ignores``/``max_depth`` shape
     enumeration exactly as for :func:`search`.
     """
     saved = Path(filter_path).expanduser()
@@ -906,16 +1061,16 @@ def run_saved(
     if on_generated is not None:
         on_generated(generated)
 
-    root = Path(path).expanduser().resolve(strict=True)
-    container_paths, host_by_container = enumerate_paths(
-        root, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
+    roots = _normalize_roots(path)
+    container_paths, host_by_container, mounts = enumerate_roots(
+        roots, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
     )
     if not container_paths:
         return []
     check_docker_available()
     return _run_generated(
         generated,
-        root,
+        mounts,
         container_paths,
         host_by_container,
         meta={},
