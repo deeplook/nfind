@@ -9,7 +9,7 @@ DEFAULT_RUNTIME = "python"
 DEFAULT_PROVIDER = "openai"
 
 # Providers reachable through the OpenAI-compatible chat-completions API. A model is
-# selected as "provider/model" (e.g. "anthropic/claude-3-5-sonnet-latest"); a bare name
+# selected as "provider/model" (e.g. "anthropic/claude-opus-4-8"); a bare name
 # means the default provider. Each entry is (base_url, api-key env var); a None base_url
 # uses the OpenAI SDK default, and a None env var marks a local server needing no key.
 # OpenRouter is a near-universal escape hatch: "openrouter/<vendor>/<model>".

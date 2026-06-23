@@ -136,7 +136,7 @@ def main(
         str,
         typer.Option(
             help="Model used to generate the filter. Bare name uses OpenAI; use "
-            "'provider/model' for others (e.g. anthropic/claude-3-5-sonnet-latest, "
+            "'provider/model' for others (e.g. anthropic/claude-opus-4-8, "
             "ollama/llama3.1, openrouter/<vendor>/<model>).",
         ),
     ] = DEFAULT_MODEL,

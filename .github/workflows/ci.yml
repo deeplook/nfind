@@ -4,54 +4,66 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
-  lint:
+  test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every Python version the package claims to support (pyproject classifiers,
+        # requires-python = ">=3.11").
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
-      - name: Install uv (with Python 3.12)
-        uses: astral-sh/setup-uv@v5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      # Required by tests/test_worker_node.py: those tests run the Node.js worker
+      # (src/nfind/worker_node.cjs) through a real `node` process. Without this they
+      # would be silently skipped. nfind's own node runtime runs inside Docker, so
+      # end users don't need node locally — this is a dev/CI requirement only.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: lts/*
 
       - name: Install dependencies
         run: uv sync
 
-      - name: Lint (ruff)
-        run: uv run ruff check src tests
-
       - name: Check formatting (ruff)
         run: uv run ruff format --check src tests
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests
 
       - name: Type-check (mypy)
         run: uv run mypy src
 
-  test:
-    # Run the suite on Linux and Windows so the host-side code (path handling,
-    # subprocess/Docker invocation, config/cache locations) is verified on both.
-    # The Docker integration tests self-skip where no Linux Docker daemon is
-    # reachable (Windows runners), so they exercise the real container path on
-    # Linux and the host logic everywhere.
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+      - name: Test
+        run: uv run pytest --cov=src --cov-report=xml
+
+  test-windows:
+    # Verify host-side path handling and subprocess/config logic on Windows. The Docker
+    # integration tests self-skip where no Linux daemon is reachable, so the focus here
+    # is the non-Docker code paths.
+    runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Install uv (with Python 3.12)
-        uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
-      # Required by tests/test_worker_node.py: those tests run the Node.js worker
-      # (src/nfind/worker_node.cjs) through a real `node` process and skip when node
-      # is absent, so without this step they would be silently skipped rather than run.
-      # (nfind's own node *runtime* runs inside Docker, so end users don't need node
-      # locally -- this is a dev/CI requirement only.)
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -61,4 +73,4 @@ jobs:
         run: uv sync
 
       - name: Test
-        run: uv run pytest
+        run: uv run pytest --cov=src --cov-report=xml

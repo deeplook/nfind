@@ -147,4 +147,8 @@ def deserialize_filter(source: str, *, filename: str = "") -> GeneratedFilter:
                 _, _, rest = stripped.partition("=")
                 dependencies = _SCRIPT_DEP_RE.findall(rest)
                 break
+    # Validate/canonicalize exactly as the node branch (and generation) do, so a crafted
+    # saved file cannot smuggle pip arguments (e.g. "pkg --extra-index-url ...") through
+    # the replay path into the image-build `pip install` line.
+    dependencies = RUNTIMES["python"].validate_packages(dependencies)
     return GeneratedFilter(code=source, dependencies=dependencies, runtime="python")

