@@ -1,5 +1,13 @@
 # nfind
 
+[![CI](https://github.com/deeplook/nfind/actions/workflows/ci.yml/badge.svg)](https://github.com/deeplook/nfind/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/nfind.svg)](https://pypi.org/project/nfind/)
+[![Python](https://img.shields.io/pypi/pyversions/nfind.svg)](https://pypi.org/project/nfind/)
+[![Downloads](https://img.shields.io/pypi/dm/nfind.svg)](https://pepy.tech/project/nfind)
+[![License](https://img.shields.io/pypi/l/nfind.svg)](https://pypi.org/project/nfind/)
+[![Docs](https://img.shields.io/badge/docs-deeplook.github.io%2Fnfind-blue)](https://deeplook.github.io/nfind)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/deeplook)
+
 **Find files by describing them in natural language.**
 
 The name is short for **n**atural-**find** — `find`, but driven by a natural-language
