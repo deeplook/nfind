@@ -13,23 +13,43 @@ import re
 import textwrap
 from datetime import date
 
-from .constants import FILTER_LINE_LENGTH
+from .constants import DEFAULT_IGNORES, FILTER_LINE_LENGTH
 from .runtimes import RUNTIMES, GeneratedFilter
 
-_PYTHON_HARNESS = """\
+# Standalone __main__ harness for saved python filters. It mirrors nfind's default
+# enumeration so `uv run FILE [PATH]...` produces the same matches as `nfind`: each root
+# may be a directory (walked, with the default-ignored dirs pruned) or a single file
+# (contributing just itself), and several roots may be passed. Per-invocation flags
+# (--exclude, --max-depth, --no-ignore) are not reproduced; the default ignores are
+# baked in from DEFAULT_IGNORES. Output is one path per line, matching nfind's default
+# (extra per-path fields, shown by --verbose/--json, are not printed here).
+_PYTHON_HARNESS_TEMPLATE = """\
 if __name__ == "__main__":
     import os
     import sys
 
-    root = sys.argv[1] if len(sys.argv) > 1 else "."
-    paths = [
-        os.path.abspath(os.path.join(dirpath, name))
-        for dirpath, dirnames, filenames in os.walk(root)
-        for name in (*dirnames, *filenames)
-    ]
+    _IGNORE = {ignores}
+    paths = []
+    for _root in sys.argv[1:] or ["."]:
+        if os.path.isfile(_root):
+            paths.append(os.path.abspath(_root))
+            continue
+        for dirpath, dirnames, filenames in os.walk(_root):
+            dirnames[:] = [d for d in dirnames if d not in _IGNORE]
+            for name in (*dirnames, *filenames):
+                paths.append(os.path.abspath(os.path.join(dirpath, name)))
     for record in filter_paths(paths):
         print(record if isinstance(record, str) else record["path"])
 """
+
+
+def _ignore_set_literal() -> str:
+    """A multi-line set literal of the default-ignored names, kept under the line limit."""
+    items = "".join(f'        "{name}",\n' for name in sorted(DEFAULT_IGNORES))
+    return "{\n" + items + "    }"
+
+
+_PYTHON_HARNESS = _PYTHON_HARNESS_TEMPLATE.format(ignores=_ignore_set_literal())
 
 # PEP 723 inline script-metadata block: `uv run` reads dependencies from here.
 _SCRIPT_METADATA_RE = re.compile(

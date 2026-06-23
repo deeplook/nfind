@@ -1411,6 +1411,55 @@ def test_saved_filter_standalone_harness_runs(tmp_path):
     assert "b.txt" not in out.stdout
 
 
+def test_saved_filter_standalone_harness_handles_file_and_multiple_roots(tmp_path):
+    (tmp_path / "a.py").write_text("x")
+    (tmp_path / "b.py").write_text("x")
+    (tmp_path / "c.txt").write_text("x")
+    code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".py")]'
+    script = tmp_path / "py.py"
+    script.write_text(MODULE.serialize_filter(_gen(code), "py files", "gpt-4o-mini"))
+
+    # A single file root: the file is enumerated (os.walk on a file would yield nothing).
+    single = subprocess.run(  # noqa: S603
+        [sys.executable, str(script), str(tmp_path / "a.py")],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert single.stdout.strip() == str(tmp_path / "a.py")
+
+    # Several file roots passed at once are all enumerated.
+    multi = subprocess.run(  # noqa: S603
+        [sys.executable, str(script), str(tmp_path / "a.py"), str(tmp_path / "b.py")],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert set(multi.stdout.splitlines()) == {
+        str(tmp_path / "a.py"),
+        str(tmp_path / "b.py"),
+    }
+
+
+def test_saved_filter_standalone_harness_prunes_default_ignores(tmp_path):
+    (tmp_path / "keep.py").write_text("x")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "hook.py").write_text("x")
+    code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".py")]'
+    script = tmp_path / "py.py"
+    script.write_text(MODULE.serialize_filter(_gen(code), "py files", "gpt-4o-mini"))
+
+    out = subprocess.run(  # noqa: S603
+        [sys.executable, str(script), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    # Mirrors nfind's default enumeration: .git is pruned, like `nfind` without --no-ignore.
+    assert str(tmp_path / "keep.py") in out.stdout
+    assert ".git" not in out.stdout
+
+
 def test_deserialize_filter_round_trips_python_dependencies():
     src = MODULE.serialize_filter(
         _gen("def filter_paths(paths): return paths", ["mutagen"]), "mp3", "gpt-4o-mini"
