@@ -165,6 +165,10 @@ nfind "files with no extension" --show-code
 # Save the generated filter to a file
 nfind "files with no extension" --save filter.py
 
+# Replay a saved filter through the sandbox (no LLM call, no network)
+nfind --run filter.py
+nfind --run filter.py ./other-directory   # different search root
+
 # Show the code and ask for confirmation before running (aborts on "no")
 nfind "files with no extension" -i        # or --confirm
 ```

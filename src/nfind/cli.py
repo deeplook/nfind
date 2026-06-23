@@ -386,7 +386,7 @@ def main(
         # Control-flow exceptions (e.g. a declined --confirm) subclass RuntimeError;
         # let them propagate to Typer instead of reporting them as errors.
         raise
-    except (DockerError, TimeoutError, RuntimeError, ValueError) as exc:
+    except (DockerError, TimeoutError, RuntimeError, ValueError, OSError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
