@@ -85,7 +85,8 @@ This is the same hook the CLI uses to implement
 
 `serialize_filter(generated, prompt, model)` renders a `GeneratedFilter` as a
 self-describing, replayable script (a PEP 723 script for the Python runtime, a
-commented raw file for Node) — the same artifact the CLI's `--save` writes.
+commented file with a machine-readable metadata line for Node) — the same artifact the
+CLI's `--save` writes.
 `run_saved(filter_path, path, …)` parses such a file back and replays it through the
 sandbox without an LLM call, gating any declared packages through
 `approve_dependencies`/the whitelist exactly as `search` does:

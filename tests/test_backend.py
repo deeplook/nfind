@@ -1386,6 +1386,7 @@ def test_serialize_filter_node_has_comment_header_and_raw_code():
 
     assert src.startswith("// nfind filter")
     assert "// Prompt:  TS files" in src
+    assert '// nfind-metadata: {"runtime":"node","dependencies":["ts-morph"]}' in src
     assert "python-only" in src
     assert code in src
     assert "# /// script" not in src  # no PEP 723 block for node
@@ -1425,6 +1426,33 @@ def test_deserialize_filter_detects_node_by_extension():
     assert parsed.runtime == "node"
 
 
+def test_deserialize_filter_round_trips_node_dependencies():
+    src = MODULE.serialize_filter(
+        _gen_node("function filterPaths(paths){return paths;}", ["ts-morph", "@babel/parser"]),
+        "ts",
+        "gpt-4o-mini",
+    )
+    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
+    assert parsed.runtime == "node"
+    assert parsed.dependencies == ["@babel/parser", "ts-morph"]
+
+
+def test_deserialize_filter_accepts_legacy_node_without_metadata():
+    src = "// nfind filter\n// Runtime: node\n\nfunction filterPaths(paths){return paths;}\n"
+    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
+    assert parsed.runtime == "node"
+    assert parsed.dependencies == []
+
+
+def test_deserialize_filter_rejects_invalid_node_metadata():
+    src = (
+        '// nfind-metadata: {"runtime":"node","dependencies":["not a package"]}\n'
+        "function filterPaths(paths){return paths;}\n"
+    )
+    with pytest.raises(ValueError, match="Invalid package name"):
+        MODULE.deserialize_filter(src, filename="filter.cjs")
+
+
 def test_run_saved_replays_without_generating(tmp_path):
     (tmp_path / "a.mp3").write_text("x")
     code = 'def filter_paths(paths):\n    return [p for p in paths if p.endswith(".mp3")]'
@@ -1462,6 +1490,25 @@ def test_run_saved_gates_unapproved_dependencies(tmp_path):
         patch.object(MODULE, "run_filter") as run_filter,
         patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
         pytest.raises(MODULE.DependencyError, match="sketchy-pkg"),
+    ):
+        MODULE.run_saved(script, str(tmp_path), whitelist=set())
+
+    build.assert_not_called()
+    run_filter.assert_not_called()
+
+
+def test_run_saved_gates_unapproved_node_dependencies(tmp_path):
+    code = "function filterPaths(paths){ return paths; }"
+    script = tmp_path / "f.cjs"
+    script.write_text(MODULE.serialize_filter(_gen_node(code, ["left-pad"]), "x", "gpt-4o-mini"))
+
+    container = "/data/a"
+    with (
+        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "build_worker_image") as build,
+        patch.object(MODULE, "run_filter") as run_filter,
+        patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
+        pytest.raises(MODULE.DependencyError, match="left-pad"),
     ):
         MODULE.run_saved(script, str(tmp_path), whitelist=set())
 

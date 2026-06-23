@@ -8,12 +8,13 @@ from such a file. Replaying a saved filter through the sandbox lives in
 
 from __future__ import annotations
 
+import json
 import re
 import textwrap
 from datetime import date
 
 from .constants import FILTER_LINE_LENGTH
-from .runtimes import GeneratedFilter
+from .runtimes import RUNTIMES, GeneratedFilter
 
 _PYTHON_HARNESS = """\
 if __name__ == "__main__":
@@ -36,6 +37,7 @@ _SCRIPT_METADATA_RE = re.compile(
     re.MULTILINE,
 )
 _SCRIPT_DEP_RE = re.compile(r'"(?P<name>[^"]+)"')
+_NODE_METADATA_RE = re.compile(r"^// nfind-metadata: (?P<payload>\{.*\})$", re.MULTILINE)
 
 
 def _header(prompt: str, model: str, runtime: str, comment: str) -> list[str]:
@@ -73,16 +75,24 @@ def serialize_filter(generated: GeneratedFilter, prompt: str, model: str) -> str
     harness so it runs via ``uv run FILE [PATH]`` outside the sandbox.
 
     For the node runtime (which has no uv/PEP 723 equivalent) the result is the raw
-    ``filterPaths`` source preceded by a ``//`` provenance/safety comment block. Either
-    form can be replayed through the sandbox with :func:`backend.run_saved`.
+    ``filterPaths`` source preceded by a ``//`` provenance/safety comment block and a
+    machine-readable metadata line carrying its npm dependencies. Either form can be
+    replayed through the sandbox with :func:`backend.run_saved`.
     """
     if generated.runtime == "node":
         header = "\n".join(_header(prompt, model, generated.runtime, "//"))
+        metadata = json.dumps(
+            {
+                "runtime": generated.runtime,
+                "dependencies": generated.dependencies,
+            },
+            separators=(",", ":"),
+        )
         note = (
             "// Note: standalone `uv run` is python-only; replay this file sandboxed "
             "with `nfind --run`."
         )
-        return f"{header}\n{note}\n\n{generated.code.rstrip()}\n"
+        return f"{header}\n// nfind-metadata: {metadata}\n{note}\n\n{generated.code.rstrip()}\n"
 
     lines = ["# /// script", '# requires-python = ">=3.12"']
     if generated.dependencies:
@@ -106,15 +116,27 @@ def deserialize_filter(source: str, *, filename: str = "") -> GeneratedFilter:
 
     The runtime is node when the file is a ``.cjs``/``.js`` or has no PEP 723 block but
     defines ``filterPaths``; otherwise python. Dependencies are read from the PEP 723
-    ``dependencies`` list (python) and otherwise left empty. The full source is used as
-    the filter code -- the sandbox worker extracts ``filter_paths``/``filterPaths`` and
-    never runs the standalone ``__main__`` harness.
+    ``dependencies`` list (python) or the ``// nfind-metadata: ...`` line (node). Older
+    node saves without metadata remain dependency-free. The full source is used as the
+    filter code -- the sandbox worker extracts ``filter_paths``/``filterPaths`` and never
+    runs the standalone ``__main__`` harness.
     """
     is_node = filename.endswith((".cjs", ".js")) or (
         not _SCRIPT_METADATA_RE.search(source) and "filterPaths" in source
     )
     if is_node:
-        return GeneratedFilter(code=source, dependencies=[], runtime="node")
+        node_dependencies: list[str] = []
+        if match := _NODE_METADATA_RE.search(source):
+            try:
+                payload = json.loads(match.group("payload"))
+            except json.JSONDecodeError as exc:
+                raise ValueError("invalid nfind node metadata") from exc
+            if not isinstance(payload, dict):
+                raise ValueError("nfind node metadata must be a JSON object")
+            if payload.get("runtime", "node") != "node":
+                raise ValueError("nfind node metadata has the wrong runtime")
+            node_dependencies = RUNTIMES["node"].validate_packages(payload.get("dependencies", []))
+        return GeneratedFilter(code=source, dependencies=node_dependencies, runtime="node")
 
     dependencies: list[str] = []
     match = _SCRIPT_METADATA_RE.search(source)

@@ -168,9 +168,11 @@ Notes and limits:
   `--confirm`, or `--macos-meta` (using them together exits with code 2).
 - `--macos-meta` is **not** available on the replay path — `META` is collected on the
   host during generation and isn't reconstructed for saved filters.
-- **Node.js** filters are saved with a `//` provenance/safety comment header plus the
-  raw `filterPaths` code. There's no PEP 723 equivalent for Node, so the standalone
-  `uv run` path is Python-only; Node filters still replay with `nfind --run`.
+- **Node.js** filters are saved with a `//` provenance/safety comment header, a
+  machine-readable `// nfind-metadata: ...` line carrying the runtime and npm
+  dependencies, and the raw `filterPaths` code. There's no PEP 723 equivalent for Node,
+  so the standalone `uv run` path is Python-only; Node filters still replay with
+  `nfind --run`, including the same dependency whitelist checks as fresh searches.
 
 ## Filtering what's searched
 
