@@ -478,7 +478,7 @@ def test_cli_confirm_aborts_without_running(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     runner = CliRunner()
     with (
-        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
