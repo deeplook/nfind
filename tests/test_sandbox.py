@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from nfind import sandbox
-from nfind.sandbox import DockerSandbox, Limits, Mount
+from nfind.sandbox import AppleContainerSandbox, DockerSandbox, Limits, Mount
 
 
 def test_docker_error_aliases_map_to_sandbox_hierarchy():
@@ -23,6 +23,10 @@ def test_docker_error_aliases_map_to_sandbox_hierarchy():
     assert DockerUnavailableError is sandbox.SandboxUnavailable
     assert DockerError is sandbox.SandboxError
     assert issubclass(sandbox.SandboxUnavailable, DockerError)
+
+
+def test_default_sandbox_backend_is_docker():
+    assert sandbox.DEFAULT_SANDBOX_BACKEND == "docker"
 
 
 # --- check_docker_available -----------------------------------------------------
@@ -186,6 +190,153 @@ def test_run_rejects_oversized_output():
         pytest.raises(sandbox.SandboxOutputTooLarge),
     ):
         box.run(b"{}", mounts=[], limits=Limits(max_output_bytes=4))
+
+
+# --- AppleContainerSandbox ------------------------------------------------------
+
+
+def test_check_apple_container_available_uses_system_status():
+    available = subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr="")
+    with patch.object(sandbox, "_run_apple_container", return_value=available) as run:
+        sandbox.check_apple_container_available()
+
+    assert run.call_args.args[0] == ["container", "system", "status", "--format", "json"]
+
+
+def test_check_apple_container_available_reports_missing_cli():
+    with (
+        patch.object(sandbox, "_run_apple_container", side_effect=FileNotFoundError),
+        pytest.raises(sandbox.SandboxUnavailable, match="Apple container CLI was not found"),
+    ):
+        sandbox.check_apple_container_available()
+
+
+def test_build_apple_container_image_omits_docker_load_flag():
+    available = subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr="")
+    missing = subprocess.CompletedProcess(args=[], returncode=1)
+    built = subprocess.CompletedProcess(args=[], returncode=0)
+    with patch.object(
+        sandbox,
+        "_run_apple_container",
+        side_effect=[available, missing, built],
+    ) as run:
+        sandbox.build_apple_container_image("test-image")
+
+    command = run.call_args_list[2].args[0]
+    assert command[0:2] == ["container", "build"]
+    assert "--load" not in command
+    assert "--tag" in command and "test-image" in command
+
+
+def test_apple_derive_image_builds_and_returns_tag():
+    built = subprocess.CompletedProcess(args=[], returncode=0)
+    box = AppleContainerSandbox("base:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(sandbox, "_apple_image_exists", return_value=False),
+        patch.object(sandbox, "_run_apple_container", return_value=built) as run,
+    ):
+        tag = box.derive_image("FROM base:latest\nRUN pip install mutagen\n")
+
+    assert tag.startswith("base:deps-")
+    assert run.call_args.args[0][0:2] == ["container", "build"]
+    assert "--load" not in run.call_args.args[0]
+
+
+def test_apple_run_uses_supported_security_and_resource_flags(tmp_path):
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=b'{"ok":true,"results":[]}', stderr=b""
+    )
+    box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
+    with patch.object(sandbox, "_run_apple_container", return_value=completed) as run:
+        result = box.run(
+            b"{}",
+            mounts=[Mount(tmp_path.resolve(), "/data", read_only=True)],
+            limits=Limits(),
+        )
+
+    assert result.returncode == 0
+    command = run.call_args.args[0]
+    assert command[0:2] == ["container", "run"]
+    assert "--read-only" in command
+    assert command[command.index("--cap-drop") : command.index("--cap-drop") + 2] == [
+        "--cap-drop",
+        "ALL",
+    ]
+    assert "--no-dns" in command
+    assert "--network" not in command
+    assert "--pids-limit" not in command
+    assert "--security-opt" not in command
+    assert command[command.index("--cpus") : command.index("--cpus") + 2] == ["--cpus", "1"]
+    assert f"type=bind,source={tmp_path.resolve()},target=/data,readonly" in command
+    assert command[-1] == "img:latest"
+
+
+def test_apple_run_uses_no_network_on_macos_26(tmp_path):
+    box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
+
+    with patch.object(sandbox.platform, "mac_ver", return_value=("26.0", ("", "", ""), "")):
+        command = box._container_run_command(
+            "name",
+            [Mount(tmp_path.resolve(), "/data", read_only=True)],
+            Limits(),
+        )
+
+    assert command[command.index("--network") : command.index("--network") + 2] == [
+        "--network",
+        "none",
+    ]
+    assert "--no-dns" not in command
+
+
+def test_apple_run_falls_back_to_no_dns_before_macos_26(tmp_path):
+    box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
+
+    with patch.object(sandbox.platform, "mac_ver", return_value=("15.7.3", ("", "", ""), "")):
+        command = box._container_run_command(
+            "name",
+            [Mount(tmp_path.resolve(), "/data", read_only=True)],
+            Limits(),
+        )
+
+    assert "--no-dns" in command
+    assert "--network" not in command
+
+
+def test_apple_run_rejects_fractional_cpus_before_running(tmp_path):
+    box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(sandbox, "_run_apple_container") as run,
+        pytest.raises(ValueError, match="requires --cpus to be a whole number"),
+    ):
+        box.run(
+            b"{}",
+            mounts=[Mount(tmp_path.resolve(), "/data", read_only=True)],
+            limits=Limits(cpus=0.5),
+        )
+
+    run.assert_not_called()
+
+
+def test_apple_run_maps_timeout_and_removes_container():
+    box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(
+            sandbox, "_run_apple_container", side_effect=subprocess.TimeoutExpired("container", 10)
+        ),
+        patch.object(sandbox, "_remove_apple_container") as remove,
+        pytest.raises(sandbox.SandboxTimeout, match="exceeded"),
+    ):
+        box.run(b"{}", mounts=[], limits=Limits(timeout=10))
+
+    remove.assert_called_once()
+
+
+def test_create_sandbox_returns_requested_backend():
+    docker = sandbox.create_sandbox("docker", "img:latest", dockerfile="Dockerfile.python")
+    apple = sandbox.create_sandbox("apple", "img:latest", dockerfile="Dockerfile.python")
+
+    assert isinstance(docker, DockerSandbox)
+    assert isinstance(apple, AppleContainerSandbox)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="os.killpg and signal.SIGKILL are POSIX-only")

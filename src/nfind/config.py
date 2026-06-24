@@ -16,7 +16,7 @@ from __future__ import annotations
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from .paths import user_dir
 
@@ -29,6 +29,13 @@ def _as_str(value: Any) -> str:
     if not isinstance(value, str):
         raise ConfigError("expected a string")
     return value
+
+
+def _as_sandbox_backend(value: Any) -> Literal["docker", "apple"]:
+    backend = _as_str(value)
+    if backend not in {"docker", "apple"}:
+        raise ConfigError("expected one of: docker, apple")
+    return cast(Literal["docker", "apple"], backend)
 
 
 def _as_bool(value: Any) -> bool:
@@ -61,6 +68,7 @@ def _as_str_list(value: Any) -> list[str]:
 # per-invocation actions (--save/--run) and approval shortcuts (--yes/--no-deps) are not.
 _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "model": ("model", _as_str),
+    "sandbox": ("sandbox_backend", _as_sandbox_backend),
     "image": ("image", _as_str),
     "timeout": ("timeout", _as_float),
     "memory": ("memory", _as_str),

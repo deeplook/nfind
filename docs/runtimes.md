@@ -21,11 +21,13 @@ It picks `node` only when the JS/TS ecosystem is clearly the better tool; otherw
 stays with Python. You can nudge it in the prompt ("…using ts-morph", "use the node
 runtime").
 
-Everything else is identical across runtimes: the same read-only `/data` mount, no
-network, dropped capabilities, resource limits, the same result shapes (a list of
-paths, or objects with a `path` field plus extra data), and the same
-[output modes](output-modes.md). The host validates that every returned path was one
-it supplied, regardless of runtime.
+Everything else is identical across runtimes within a given sandbox backend: the same
+read-only `/data` mount, dropped capabilities, resource limits, result shapes (a list
+of paths, or objects with a `path` field plus extra data), and the same
+[output modes](output-modes.md). The default Docker backend also disables networking.
+The experimental Apple Containers backend on macOS 15 cannot disable networking; see
+[Safety model](safety.md). The host validates that every returned path was one it
+supplied, regardless of runtime.
 
 ## Dependencies per runtime
 

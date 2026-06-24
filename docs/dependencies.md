@@ -12,7 +12,8 @@ The defaults include `tree-sitter` plus a set of per-language grammar wheels
 `-bash`, `-kotlin`, `-swift`, `-dart`), so a Python filter can parse source
 *structure* — functions, imports,
 classes — without a dedicated runtime. Each wheel bundles its compiled grammar, so it
-works in the no-network, read-only sandbox; the generated code uses the standard API,
+works in the default Docker backend's no-network, read-only sandbox; the generated
+code uses the standard API,
 `Parser(Language(tree_sitter_python.language()))`. Reach for the
 [Node.js runtime](runtimes.md) only when you need type-aware TypeScript/JS analysis
 that the compiler API provides.
@@ -33,10 +34,12 @@ that the compiler API provides.
    The image is cached and reused for the same set of packages. Prompts that need no
    packages keep using the stdlib-only base image.
 5. **Run.** The filter executes in the derived image — with the packages available,
-   but still no network, read-only mount, and dropped capabilities at run time.
+   read-only mount, and dropped capabilities at run time. The default Docker backend
+   also disables networking; the experimental Apple backend on macOS 15 does not.
 
 > Installing packages happens at **image build time**, which needs network access.
-> The container that runs the filter still has networking disabled.
+> The default Docker container that runs the filter has networking disabled. With
+> `--sandbox apple` on macOS 15, raw IP network access may still be possible.
 
 ## Controlling approval
 

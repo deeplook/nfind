@@ -15,10 +15,10 @@ live** over the target directory in a sandbox.
 | | Spotlight / `mdfind` | nfind |
 |---|---|---|
 | Mechanism | Background **index** of metadata + content, kept fresh continuously | **No index** — walks the target dir at query time, generates a filter, runs it |
-| A query becomes | A lookup against the index (constrained `kMDItem*` predicate grammar) | A natural-language prompt → generated Python/JS, run in a Docker sandbox |
+| A query becomes | A lookup against the index (constrained `kMDItem*` predicate grammar) | A natural-language prompt → generated Python/JS, run in a container sandbox |
 | Speed / scale | Near-instant, whole-disk, ranked | Seconds per query; aimed at a specific directory |
 | Freshness | Current via filesystem events | Current — reads the real files now, nothing to go stale |
-| Platform | macOS only, built-in, offline | macOS/Linux; needs Docker + an OpenAI key |
+| Platform | macOS only, built-in, offline | macOS/Linux; needs Docker (default) or experimental Apple Containers on macOS + an OpenAI key |
 
 ## What each is good at
 
@@ -48,10 +48,12 @@ dates) — with zero setup and a system-wide UI.
   a directory and a structural question.
 - **Non-deterministic** — the model picks the implementation, so results can vary; this
   is why [`--show-code` / `--confirm`](cli.md#reviewing-the-generated-code) exist.
-- **Dependencies** — needs Docker and an API key, and the host reaches the OpenAI API
+- **Dependencies** — needs a container backend and an API key, and the host reaches the OpenAI API
   to generate code. Your **prompt** is sent to the model; your **file list and contents
-  are not** — the actual file access happens locally in a no-network sandbox. Spotlight
-  indexes locally and never leaves the machine.
+  are not** — the actual file access happens locally in a read-only sandbox. With the
+  default Docker backend, that sandbox has no network; Apple Containers on macOS 15 has
+  a weaker networking guarantee. Spotlight indexes locally and never leaves the
+  machine.
 
 ## Other tools in the space
 

@@ -29,8 +29,12 @@ class FakeSandbox:
         self._derived = derived
         self._derive_error = derive_error
         self.ensure_calls: list[bool] = []
+        self.check_calls = 0
         self.derive_calls: list[str] = []
         self.runs: list[tuple[bytes, list[Mount], Limits]] = []
+
+    def check_available(self) -> None:
+        self.check_calls += 1
 
     def ensure_image(self, *, rebuild: bool = False) -> None:
         self.ensure_calls.append(rebuild)

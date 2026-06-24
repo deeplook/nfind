@@ -25,11 +25,13 @@ only on the host, and extended attributes (tags, quarantine, where-from) do not
 reliably survive Docker's file-sharing layer into the container. So a filter simply
 *can't read* these attributes by itself.
 
-`--macos-meta` closes that gap **without weakening the sandbox**: nfind reads the
-attributes on the host (a read-only operation, where the data actually lives) during
-the path walk, then passes them into the container alongside the paths. The untrusted
-generated code still runs sandboxed — no network, read-only mount, dropped
-capabilities — and never calls back to the host.
+`--macos-meta` closes that gap without giving the generated filter direct host access:
+nfind reads the attributes on the host (a read-only operation, where the data actually
+lives) during the path walk, then passes them into the container alongside the paths.
+The untrusted generated code still runs sandboxed with a read-only mount and dropped
+capabilities; the default Docker backend also disables networking. With
+`--sandbox apple` on macOS 15, Apple Containers cannot disable networking; see
+[Safety model](safety.md).
 
 ## What it buys you
 

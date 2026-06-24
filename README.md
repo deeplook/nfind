@@ -16,12 +16,14 @@ a small filter function for it — in Python (`filter_paths`) or Node.js (`filte
 and runs that function against your file tree to print the matching paths — a
 natural-language cousin of `find`.
 
-The generated code is never executed on your machine directly. It runs inside a
-**disposable, hardened Docker container** with the search directory bind-mounted
-**read-only**, networking disabled, all Linux capabilities dropped, and CPU, memory,
-and process limits applied. The container can therefore inspect file contents and
-metadata to answer richer questions, but it cannot modify your files or reach the
-network.
+The generated code is never executed on your machine directly. By default it runs
+inside a **disposable, hardened Docker container** with the search directory
+bind-mounted **read-only**, networking disabled, all Linux capabilities dropped, and
+CPU, memory, and process limits applied. On macOS, `--sandbox apple` can opt into
+Apple Containers instead; this is experimental on macOS 15 because Apple does not
+support Docker-style no-network isolation there. On macOS 26+, nfind is prepared to
+use Apple Containers' `--network none` support. In both cases nfind prints an explicit
+warning because Apple Containers still differs from Docker's hardening surface.
 
 ## Why nfind?
 
@@ -34,9 +36,9 @@ nfind sits in a gap no other file-search tool fills. It combines three things at
    questions (e.g. "directories that contain *only* audio files", "Python files and
    their line counts") that a glob or a single `find` predicate can't.
 3. **Local, sandboxed execution that reads file contents** — the program runs over
-   your real tree in a read-only, no-network container, so it can open and inspect
-   files — yet your file list and contents never leave the machine (only your prompt
-   is sent to the model).
+   your real tree in a read-only container, so it can open and inspect files — yet your
+   file list and contents never leave the machine (only your prompt is sent to the
+   model). The default Docker backend also disables networking.
 
 Each neighbouring category has only part of this:
 
@@ -55,7 +57,8 @@ a folder — safely, and without your files leaving your machine. See
 ## Requirements
 
 - Python 3.11+
-- [Docker](https://docs.docker.com/get-docker/) installed and running
+- [Docker](https://docs.docker.com/get-docker/) installed and running, or Apple
+  Containers on macOS via `--sandbox apple` (experimental; see [Safety model](#safety-model))
 - An API key for your provider — `OPENAI_API_KEY` by default, or the matching key for
   another [provider](#providers)
 
@@ -145,8 +148,8 @@ The Python defaults include `tree-sitter` and per-language grammar wheels
 (`tree-sitter-python`, `-go`, `-rust`, …), so a filter can parse source *structure* —
 functions, imports, classes — without a dedicated runtime (the Node.js runtime is
 reserved for type-aware TS/JS analysis). Packages are installed at image-build time
-(which needs network); the container that runs the filter still has no network. See
-[docs/dependencies.md](docs/dependencies.md).
+(which needs network); the default Docker container that runs the filter has no
+network. See [docs/dependencies.md](docs/dependencies.md).
 
 ### macOS metadata
 
@@ -176,7 +179,7 @@ nfind "files with no extension" --show-code
 # Save the generated filter to a file
 nfind "files with no extension" --save filter.py
 
-# Replay a saved filter through the sandbox (no LLM call, no network)
+# Replay a saved filter through the sandbox (no LLM call; Docker also has no network)
 nfind --run filter.py
 nfind --run filter.py ./other-directory   # different search root
 
@@ -205,6 +208,7 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | `--memory` | `256m` | Worker container memory limit |
 | `--cpus` | `1.0` | Worker container CPU limit |
 | `--pids-limit` | `64` | Max processes inside the worker |
+| `--sandbox` | `docker` | Sandbox backend: `docker`, or experimental `apple` on macOS |
 | `--rebuild` | off | Rebuild the worker image first |
 | `--exclude GLOB` | — | Skip matching names/paths during enumeration (repeatable) |
 | `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
@@ -264,8 +268,13 @@ paths = [record["path"] for record in records]
 
 - Search roots are mounted **read-only** under `/data`; results are mapped back to host
   paths afterward.
-- The worker container runs with `--network none`, `--cap-drop ALL`,
+- The default Docker backend runs with `--network none`, `--cap-drop ALL`,
   `--security-opt no-new-privileges`, a read-only root filesystem, and a small
   `tmpfs` for scratch space.
+- `--sandbox apple` uses Apple Containers. It keeps read-only mounts/root, dropped
+  capabilities, CPU/memory limits, and a tmpfs. On macOS 26+ nfind uses
+  `--network none`; on macOS 15 Apple does **not** support that flag, so nfind falls
+  back to `--no-dns` and raw IP network access may still be possible. Apple `--cpus`
+  values must be whole numbers, so fractional CPU limits are rejected.
 - The host validates that the filter returns only paths it was given, so generated
   code cannot inject arbitrary paths into the output.

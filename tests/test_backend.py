@@ -120,11 +120,11 @@ def test_worker_rejects_non_object_meta():
         MODULE._worker_response(payload)
 
 
-def test_search_checks_docker_before_generating_code(tmp_path):
+def test_search_checks_sandbox_before_generating_code(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
         patch.object(
-            MODULE, "check_docker_available", side_effect=MODULE.DockerUnavailableError("offline")
+            MODULE, "check_sandbox_available", side_effect=MODULE.DockerUnavailableError("offline")
         ),
         patch.object(MODULE, "generate_filter") as generate,
         pytest.raises(MODULE.DockerUnavailableError),
@@ -132,6 +132,23 @@ def test_search_checks_docker_before_generating_code(tmp_path):
         MODULE.search(str(tmp_path), "files")
 
     generate.assert_not_called()
+
+
+def test_search_checks_custom_sandbox_before_generating_code(tmp_path):
+    (tmp_path / "file.txt").write_text("content")
+    fake = FakeSandbox()
+    with (
+        patch.object(
+            MODULE,
+            "generate_filter",
+            return_value=_gen("def filter_paths(paths): return []"),
+        ),
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
+    ):
+        MODULE.search(str(tmp_path), "files", sandbox=fake)
+
+    assert fake.check_calls == 1
 
 
 def test_normalize_results_accepts_paths_and_records():
@@ -290,7 +307,7 @@ def test_run_filter_rejects_oversized_output(tmp_path):
 
 def test_run_filter_reports_nonzero_worker_exit(tmp_path):
     fake = FakeSandbox(stderr=b"boom", returncode=1)
-    with pytest.raises(RuntimeError, match="Docker worker failed: boom"):
+    with pytest.raises(RuntimeError, match="Sandbox worker failed: boom"):
         EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 
@@ -335,7 +352,7 @@ def test_build_worker_image_surfaces_package_names_on_build_failure():
 def test_search_maps_host_paths_in_records(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return paths")
@@ -355,7 +372,7 @@ def test_search_invokes_on_generated_before_running(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     seen: list[str] = []
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
@@ -375,7 +392,7 @@ def test_search_aborts_when_on_generated_raises(tmp_path):
         raise RuntimeError("declined")
 
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
@@ -391,7 +408,7 @@ def test_search_aborts_when_on_generated_raises(tmp_path):
 def test_search_rejects_unapproved_dependencies(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image") as build,
         patch.object(
             MODULE,
@@ -410,7 +427,7 @@ def test_search_rejects_unapproved_dependencies(tmp_path):
 def test_search_uses_whitelisted_dependency_without_prompt(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value="img:deps") as build,
         patch.object(
             MODULE,
@@ -433,7 +450,7 @@ def test_search_approves_new_dependency_and_persists(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     asked: list[list[str]] = []
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value="img:deps") as build,
         patch.object(
             MODULE,
@@ -560,13 +577,23 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
     (tmp_path / "a.ts").write_text("export const x = 1;")
     captured = {}
 
-    def fake_build(image, dependencies, *, runtime, rebuild, build_timeout, sandbox=None):
+    def fake_build(
+        image,
+        dependencies,
+        *,
+        runtime,
+        rebuild,
+        build_timeout,
+        sandbox=None,
+        sandbox_backend="docker",
+    ):
         captured["image"] = image
         captured["runtime"] = runtime.name
+        captured["sandbox_backend"] = sandbox_backend
         return "nfind-search-node:deps-x"
 
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(
             MODULE,
             "generate_filter",
@@ -577,8 +604,31 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
     ):
         MODULE.search(str(tmp_path), "typescript files")
 
-    assert captured == {"image": MODULE.DEFAULT_NODE_IMAGE, "runtime": "node"}
+    assert captured == {
+        "image": MODULE.DEFAULT_NODE_IMAGE,
+        "runtime": "node",
+        "sandbox_backend": "docker",
+    }
     assert run_filter.call_args.kwargs["image"] == "nfind-search-node:deps-x"
+
+
+def test_search_threads_sandbox_backend_to_execution(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1")
+    with (
+        patch.object(MODULE, "check_sandbox_available") as check,
+        patch.object(
+            MODULE,
+            "generate_filter",
+            return_value=_gen("def filter_paths(paths): return paths"),
+        ),
+        patch.object(EXECUTION, "build_worker_image", return_value="img:latest") as build,
+        patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
+    ):
+        MODULE.search(str(tmp_path), "python files", sandbox_backend="apple")
+
+    check.assert_called_once_with("apple")
+    assert build.call_args.kwargs["sandbox_backend"] == "apple"
+    assert run_filter.call_args.kwargs["sandbox_backend"] == "apple"
 
 
 def test_derived_dockerfile_uses_pip_or_npm():
@@ -1323,7 +1373,7 @@ def test_search_formats_generated_code_before_running(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     messy = "def filter_paths(paths):\n    import os\n    return paths\n"
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
         patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
@@ -1338,7 +1388,7 @@ def test_search_skips_formatting_when_disabled(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     messy = "def filter_paths(paths):\n    import os\n    return paths\n"
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(MODULE, "generate_filter", return_value=_gen(messy)),
         patch.object(EXECUTION, "run_filter", return_value=[]) as run_filter,
@@ -1585,7 +1635,7 @@ def test_run_saved_replays_without_generating(tmp_path):
 
     container = "/data/a.mp3"
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value="img:deps"),
         patch.object(MODULE, "generate_filter") as generate,
         patch.object(EXECUTION, "run_filter", return_value=[{"path": container}]) as run_filter,
@@ -1609,7 +1659,7 @@ def test_run_saved_gates_unapproved_dependencies(tmp_path):
 
     container = "/data/a"
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image") as build,
         patch.object(EXECUTION, "run_filter") as run_filter,
         patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
@@ -1628,7 +1678,7 @@ def test_run_saved_gates_unapproved_node_dependencies(tmp_path):
 
     container = "/data/a"
     with (
-        patch.object(MODULE, "check_docker_available"),
+        patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image") as build,
         patch.object(EXECUTION, "run_filter") as run_filter,
         patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),

@@ -85,8 +85,10 @@ nfind "JSON files that are not valid JSON"
 nfind "Markdown files that contain a TODO but no closing checkbox"
 ```
 
-The generated code can read bytes, parse structure, and compute — but it cannot write to
-your files or reach the network. See the [Safety model](safety.md).
+The generated code can read bytes, parse structure, and compute — but it cannot write
+to your files. The default Docker backend also prevents it from reaching the network;
+Apple Containers on macOS 15 has a weaker networking guarantee. See the
+[Safety model](safety.md).
 
 ---
 
