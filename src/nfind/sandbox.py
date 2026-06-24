@@ -221,6 +221,31 @@ def check_docker_available() -> None:
         )
 
 
+def _docker_build_supports_load() -> bool:
+    """Return whether ``docker build`` accepts ``--load`` in this environment."""
+    try:
+        completed = _run_docker(
+            ["docker", "build", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=DOCKER_CHECK_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and "--load" in completed.stdout
+
+
+def _docker_build_command(*, dockerfile: str | None, tag: str, context: str) -> list[str]:
+    """Build a portable Docker image-build command for this host."""
+    command = ["docker", "build"]
+    if _docker_build_supports_load():
+        command.append("--load")
+    if dockerfile is not None:
+        command.extend(["--file", dockerfile])
+    command.extend(["--tag", tag, context])
+    return command
+
+
 def build_image(
     image: str = DEFAULT_IMAGE,
     *,
@@ -250,16 +275,11 @@ def build_image(
     dockerfile_path = _dockerfile_path(dockerfile)
     try:
         completed = _run_docker(
-            [
-                "docker",
-                "build",
-                "--load",
-                "--file",
-                str(dockerfile_path),
-                "--tag",
-                image,
-                str(dockerfile_path.parent),
-            ],
+            _docker_build_command(
+                dockerfile=str(dockerfile_path),
+                tag=image,
+                context=str(dockerfile_path.parent),
+            ),
             timeout=build_timeout,
         )
     except subprocess.TimeoutExpired as exc:
@@ -510,7 +530,7 @@ class DockerSandbox:
             (Path(context) / "Dockerfile").write_text(dockerfile_text)
             try:
                 completed = _run_docker(
-                    ["docker", "build", "--load", "--tag", derived, context],
+                    _docker_build_command(dockerfile=None, tag=derived, context=context),
                     timeout=self.build_timeout,
                 )
             except subprocess.TimeoutExpired as exc:

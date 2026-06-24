@@ -73,10 +73,26 @@ def test_build_image_loads_locally_runnable_image():
     available = subprocess.CompletedProcess(args=[], returncode=0, stdout="29.0", stderr="")
     missing = subprocess.CompletedProcess(args=[], returncode=1)
     built = subprocess.CompletedProcess(args=[], returncode=0)
-    with patch.object(sandbox, "_run_docker", side_effect=[available, missing, built]) as run:
+    with (
+        patch.object(sandbox, "_run_docker", side_effect=[available, missing, built]) as run,
+        patch.object(sandbox, "_docker_build_supports_load", return_value=True),
+    ):
         sandbox.build_image("test-image")
 
     assert "--load" in run.call_args_list[2].args[0]
+
+
+def test_build_image_omits_load_when_docker_build_rejects_it():
+    available = subprocess.CompletedProcess(args=[], returncode=0, stdout="29.0", stderr="")
+    missing = subprocess.CompletedProcess(args=[], returncode=1)
+    built = subprocess.CompletedProcess(args=[], returncode=0)
+    with (
+        patch.object(sandbox, "_run_docker", side_effect=[available, missing, built]) as run,
+        patch.object(sandbox, "_docker_build_supports_load", return_value=False),
+    ):
+        sandbox.build_image("test-image")
+
+    assert "--load" not in run.call_args_list[2].args[0]
 
 
 def test_build_image_reports_timeout():
@@ -112,11 +128,28 @@ def test_derive_image_builds_and_returns_tag():
     with (
         patch.object(sandbox, "_image_exists", return_value=False),
         patch.object(sandbox, "_run_docker", return_value=built) as run,
+        patch.object(sandbox, "_docker_build_supports_load", return_value=True),
     ):
         tag = box.derive_image("FROM base:latest\nRUN pip install mutagen\n")
 
     assert tag.startswith("base:deps-")
     assert run.call_args.args[0][0:2] == ["docker", "build"]
+    assert "--load" in run.call_args.args[0]
+
+
+def test_derive_image_omits_load_when_docker_build_rejects_it():
+    built = subprocess.CompletedProcess(args=[], returncode=0)
+    box = DockerSandbox("base:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(sandbox, "_image_exists", return_value=False),
+        patch.object(sandbox, "_run_docker", return_value=built) as run,
+        patch.object(sandbox, "_docker_build_supports_load", return_value=False),
+    ):
+        tag = box.derive_image("FROM base:latest\nRUN pip install mutagen\n")
+
+    assert tag.startswith("base:deps-")
+    assert run.call_args.args[0][0:2] == ["docker", "build"]
+    assert "--load" not in run.call_args.args[0]
 
 
 def test_ensure_image_delegates_to_build_image():
