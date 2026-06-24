@@ -6,16 +6,19 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import typer
 
 from . import backend
+from . import sandbox as sandbox_module
 from .backend import (
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_MODEL,
+    DEFAULT_SANDBOX_BACKEND,
     DockerError,
     GeneratedFilter,
+    SandboxBackend,
 )
 from .command_plan import (
     GeneratedSearchRequest,
@@ -30,6 +33,36 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     help="Find files by describing them in natural language.",
 )
+
+_APPLE_SANDBOX_MACOS15_WARNING = (
+    "warning: Apple Containers sandbox is experimental and does not disable networking "
+    "on macOS 15; nfind uses --no-dns, but raw IP network access may still be possible. "
+    "Apple Containers also lacks Docker-equivalent pids-limit and no-new-privileges "
+    "flags in the current CLI. Use Docker for the strongest sandbox."
+)
+
+_APPLE_SANDBOX_MACOS26_WARNING = (
+    "warning: Apple Containers sandbox is experimental; on macOS 26+ nfind uses "
+    "--network none for network isolation, but Apple Containers still lacks "
+    "Docker-equivalent pids-limit and no-new-privileges flags in the current CLI. "
+    "Use Docker for the strongest sandbox."
+)
+
+
+def _validate_sandbox_backend(value: str) -> SandboxBackend:
+    if value == "docker" or value == "apple":
+        return cast(SandboxBackend, value)
+    raise ValueError("--sandbox must be one of: docker, apple")
+
+
+def _warn_if_experimental_sandbox(sandbox_backend: SandboxBackend) -> None:
+    if sandbox_backend == "apple":
+        warning = (
+            _APPLE_SANDBOX_MACOS26_WARNING
+            if sandbox_module.apple_supports_no_network_flag()
+            else _APPLE_SANDBOX_MACOS15_WARNING
+        )
+        typer.echo(warning, err=True)
 
 
 def _highlight(code: str, runtime: str = "python") -> str:
@@ -152,6 +185,13 @@ def main(
         str | None,
         typer.Option(help="Override the base image tag for the chosen runtime."),
     ] = None,
+    sandbox_backend: Annotated[
+        str,
+        typer.Option(
+            "--sandbox",
+            help="Sandbox backend: docker (default) or apple (Apple Containers, experimental).",
+        ),
+    ] = DEFAULT_SANDBOX_BACKEND,
     timeout: Annotated[
         float,
         typer.Option(help="Seconds the generated filter may run before it is killed."),
@@ -298,6 +338,13 @@ def main(
             raise typer.Exit(1) from exc
         raise typer.Exit(0)
 
+    try:
+        sandbox_backend_value = _validate_sandbox_backend(sandbox_backend)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    _warn_if_experimental_sandbox(sandbox_backend_value)
+
     if isinstance(request, GeneratedSearchRequest) and macos_meta and sys.platform != "darwin":
         typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
 
@@ -341,6 +388,7 @@ def main(
                 request.filter_path,
                 request.paths,
                 image=image,
+                sandbox_backend=sandbox_backend_value,
                 timeout=timeout,
                 memory=memory,
                 cpus=cpus,
@@ -359,6 +407,7 @@ def main(
                 request.paths,
                 request.prompt,
                 image=image,
+                sandbox_backend=sandbox_backend_value,
                 model=model,
                 timeout=timeout,
                 memory=memory,

@@ -239,3 +239,43 @@ def test_cli_run_threads_enumeration_flags_to_run_saved(tmp_path):
     kwargs = run_saved.call_args.kwargs
     assert kwargs["exclude"] == ("tmp",)
     assert kwargs["max_depth"] == 2
+
+
+def test_cli_threads_sandbox_backend_to_search():
+    result, search = _run(["--sandbox", "apple"])
+
+    assert result.exit_code == 0
+    assert search.call_args.kwargs["sandbox_backend"] == "apple"
+    assert "Apple Containers sandbox is experimental" in result.output
+    assert "does not disable networking on macOS 15" in result.output
+
+
+def test_cli_apple_warning_mentions_network_none_on_macos_26():
+    with patch.object(cli.sandbox_module, "apple_supports_no_network_flag", return_value=True):
+        result, search = _run(["--sandbox", "apple"])
+
+    assert result.exit_code == 0
+    assert search.call_args.kwargs["sandbox_backend"] == "apple"
+    assert "Apple Containers sandbox is experimental" in result.output
+    assert "--network none" in result.output
+    assert "does not disable networking on macOS 15" not in result.output
+
+
+def test_cli_threads_sandbox_backend_to_run_saved(tmp_path):
+    script = tmp_path / "f.py"
+    script.write_text("def filter_paths(paths): return paths")
+    runner = CliRunner()
+    with patch.object(cli.backend, "run_saved", return_value=[]) as run_saved:
+        result = runner.invoke(cli.app, ["--run", str(script), str(tmp_path), "--sandbox", "apple"])
+
+    assert result.exit_code == 0
+    assert run_saved.call_args.kwargs["sandbox_backend"] == "apple"
+    assert "Apple Containers sandbox is experimental" in result.output
+
+
+def test_cli_rejects_unknown_sandbox_backend():
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["prompt", "/tmp", "--sandbox", "podman"])
+
+    assert result.exit_code == 2
+    assert "--sandbox must be one of" in result.output

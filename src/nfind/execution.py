@@ -16,14 +16,16 @@ from .constants import DEFAULT_BUILD_TIMEOUT, DEFAULT_IMAGE
 from .errors import DependencyError, DockerError
 from .runtimes import PYTHON_RUNTIME, RUNTIMES, GeneratedFilter, Runtime
 from .sandbox import (
-    DockerSandbox,
+    DEFAULT_SANDBOX_BACKEND,
     Limits,
     Mount,
     Sandbox,
+    SandboxBackend,
     SandboxError,
     SandboxOutputTooLarge,
     SandboxTimeout,
     _dockerfile_path,
+    create_sandbox,
 )
 from .whitelist import approve_packages, load_whitelist
 from .worker import MAX_RESULT_BYTES, _normalize_results
@@ -37,6 +39,7 @@ def build_worker_image(
     rebuild: bool = False,
     build_timeout: float = DEFAULT_BUILD_TIMEOUT,
     sandbox: Sandbox | None = None,
+    sandbox_backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND,
 ) -> str:
     """Ensure a runnable worker image and return the tag to run.
 
@@ -47,8 +50,11 @@ def build_worker_image(
     ``Runtime``/dependency logic.
     """
     if sandbox is None:
-        sandbox = DockerSandbox(
-            image, dockerfile=_dockerfile_path(runtime.dockerfile), build_timeout=build_timeout
+        sandbox = create_sandbox(
+            sandbox_backend,
+            image,
+            dockerfile=_dockerfile_path(runtime.dockerfile),
+            build_timeout=build_timeout,
         )
     sandbox.ensure_image(rebuild=rebuild)
     if not dependencies:
@@ -69,7 +75,7 @@ def _parse_worker_response(stdout: bytes) -> dict[str, Any]:
     try:
         response = json.loads(stdout)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("Docker worker returned an invalid response.") from exc
+        raise RuntimeError("Sandbox worker returned an invalid response.") from exc
     if not isinstance(response, dict) or response.get("ok") is not True:
         message = (
             response.get("error", "unknown worker error")
@@ -86,6 +92,7 @@ def run_filter(
     container_paths: list[str],
     *,
     sandbox: Sandbox | None = None,
+    sandbox_backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND,
     image: str = DEFAULT_IMAGE,
     timeout: float = 10.0,
     memory: str = "256m",
@@ -111,7 +118,7 @@ def run_filter(
     if mounts is None:
         mounts = [Mount(root, "/data", read_only=True)]
     if sandbox is None:
-        sandbox = DockerSandbox(image, dockerfile=_dockerfile_path())
+        sandbox = create_sandbox(sandbox_backend, image, dockerfile=_dockerfile_path())
     request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
 
     try:
@@ -124,7 +131,7 @@ def run_filter(
     if run.returncode != 0:
         error = run.stderr.decode(errors="replace").strip()
         detail = error or f"exit status {run.returncode}"
-        raise RuntimeError(f"Docker worker failed: {detail}")
+        raise RuntimeError(f"Sandbox worker failed: {detail}")
 
     response = _parse_worker_response(run.stdout)
     try:
@@ -150,6 +157,7 @@ def run_generated(
     approve_dependencies: Callable[[list[str]], bool] | None,
     whitelist: set[str] | None,
     sandbox: Sandbox | None = None,
+    sandbox_backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND,
 ) -> list[dict[str, Any]]:
     """Build the sandbox image for a filter and run it, returning host-path records."""
     runtime = RUNTIMES[generated.runtime]
@@ -169,12 +177,14 @@ def run_generated(
         rebuild=rebuild,
         build_timeout=build_timeout,
         sandbox=sandbox,
+        sandbox_backend=sandbox_backend,
     )
     records = run_filter(
         generated.code,
         mounts[0].source,
         container_paths,
         sandbox=sandbox,
+        sandbox_backend=sandbox_backend,
         image=run_image,
         timeout=timeout,
         memory=memory,

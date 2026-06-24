@@ -21,6 +21,9 @@ htmlcov/
 # MkDocs build output
 site/
 
+# Work files
+work/
+
 # macOS metadata and editor backup files
 .DS_Store
 *~

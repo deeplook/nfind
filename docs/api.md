@@ -19,8 +19,10 @@ for record in records:
     print(record["path"])
 ```
 
-Requirements are the same as the CLI: Docker running, and `OPENAI_API_KEY` set in the
-environment. The first call builds the worker image; later calls reuse it.
+Requirements are the same as the CLI: Docker running by default (or Apple Containers
+on macOS via `sandbox_backend="apple"`), and `OPENAI_API_KEY` set in the environment.
+The first call builds the worker image; later calls reuse it. The Apple backend is
+experimental on macOS 15 because it cannot disable networking the way Docker does.
 
 ## `search`
 
@@ -44,6 +46,7 @@ def search(
     macos_meta: bool = False,            # macOS: expose tags/quarantine to the filter
     format_code: bool = True,            # tidy generated Python with ruff before running
     sandbox: Sandbox | None = None,      # override the execution backend (see below)
+    sandbox_backend: Literal["docker", "apple"] = "docker",
     exclude: Sequence[str] = (),         # glob patterns to prune before filtering
     max_depth: int | None = None,
     use_default_ignores: bool = True,
@@ -58,7 +61,12 @@ paths. The model picks the
 [runtime](runtimes.md) (Python or Node.js) and the matching base image is used unless
 `image` overrides it. The keyword arguments mirror the [CLI options](cli.md#options):
 `exclude`, `max_depth`, and `use_default_ignores` shape host-side enumeration before
-the generated filter runs, and `format_code=False` matches `--no-format`.
+the generated filter runs, `format_code=False` matches `--no-format`, and
+`sandbox_backend="apple"` matches `--sandbox apple`.
+
+When using `sandbox_backend="apple"` on macOS 15, apply the same caveat as the CLI:
+Apple's `container` does not support Docker's `--network none` there. nfind uses
+`--no-dns`, but raw IP network access may still be possible.
 
 `model` accepts a bare name (OpenAI) or a `provider/model` selector for any
 OpenAI-compatible provider in `backend.PROVIDERS` (`anthropic/…`, `gemini/…`,
@@ -128,8 +136,8 @@ The model is asked for the filter in a **single** call. If its reply fails valid
 runtime), nfind feeds the error back and retries — up to 3 attempts in total. The
 first attempt runs at temperature 0; retries nudge the temperature up so the model
 diverges from the reply that just failed. Only validation errors are retried; API,
-Docker, and dependency-approval failures are not. If every attempt fails, the last
-validation error is raised.
+sandbox backend, and dependency-approval failures are not. If every attempt fails, the
+last validation error is raised.
 
 `on_retry`, if given, is called with the 1-based retry number and the `ValueError`
 before each retry — handy for logging. The CLI uses it to print a notice under
@@ -175,14 +183,15 @@ from nfind import DependencyError, DockerError, DockerUnavailableError
 try:
     records = search(".", "files with no extension")
 except DockerUnavailableError as exc:
-    ...   # Docker CLI or daemon could not be reached
+    ...   # selected sandbox CLI/daemon/services could not be reached
 except DockerError as exc:
-    ...   # other Docker lifecycle failures (build/run)
+    ...   # other sandbox lifecycle failures (build/run)
 except DependencyError as exc:
     ...   # filter needed packages that were not approved
 ```
 
-`DockerUnavailableError` is a subclass of `DockerError`. `DependencyError` is raised
+`DockerUnavailableError` is a backwards-compatible alias for the generic sandbox
+unavailable error, and remains a subclass of `DockerError`. `DependencyError` is raised
 when a filter needs unapproved packages. Filter execution problems (timeouts, invalid
 results) surface as `TimeoutError` and `RuntimeError`.
 
@@ -226,19 +235,21 @@ records = execution.run_filter(
 | `execution.run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. Pass `limits=Limits(…)` to set the resource/output caps directly, or a `sandbox=` to override the backend. Also re-exported from `nfind.backend` for compatibility. |
 | `load_whitelist(runtime="python")` / `approve_packages(pkgs, runtime="python")` | Read the approved-package set / persist new approvals for one runtime (`"python"` or `"node"`). |
 | `check_docker_available()` | Raise `DockerUnavailableError` if Docker can't be reached. |
+| `check_sandbox_available("docker" | "apple")` | Raise `DockerUnavailableError` if the selected sandbox backend can't be reached. |
 
 These lower-level helpers return container paths (`/data/...`, or `/data/0/...` for
 multi-root runs); `search` and `run_saved` map them back to host paths.
 
 ## The sandbox component
 
-The hardened Docker execution lives behind a small, domain-agnostic `Sandbox` protocol
-in `nfind.sandbox`. The default backend, `DockerSandbox`, owns the security-relevant
+The hardened execution lives behind a small, domain-agnostic `Sandbox` protocol in
+`nfind.sandbox`. The default backend, `DockerSandbox`, owns the security-relevant
 `docker run` flag set (no network, read-only root, dropped capabilities,
 `no-new-privileges`, and process/memory/CPU/file-descriptor/tmpfs limits) in one
-auditable place, plus the image build/derive mechanics. `execution.build_worker_image`
-and `execution.run_filter` are nfind-specific adapters over it; `build_image` and
-`check_docker_available` are lower-level sandbox helpers re-exported by `backend`.
+auditable place, plus the image build/derive mechanics. `AppleContainerSandbox` is an
+experimental macOS backend selected with `sandbox_backend="apple"`; on macOS 15 it
+does not provide Docker-equivalent no-network isolation. `execution.build_worker_image`
+and `execution.run_filter` are nfind-specific adapters over the selected backend.
 
 `search` and `run_saved` accept an optional `sandbox` to override the backend — pass a
 fake implementing the protocol to drive the nfind logic without Docker, or an alternate
@@ -249,6 +260,7 @@ from nfind import search
 from nfind.sandbox import CompletedRun, Limits, Mount
 
 class DryRunSandbox:                 # structural match for the Sandbox protocol
+    def check_available(self) -> None: ...
     def ensure_image(self, *, rebuild: bool = False) -> None: ...
     def derive_image(self, dockerfile_text: str, *, rebuild: bool = False) -> str:
         return "dry-run:latest"

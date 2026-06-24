@@ -57,6 +57,7 @@ nfind "files larger than 1 MB, with their size" --verbose
 | `--model` | `gpt-4o-mini` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
 | `--list-models` | off | List the model ids available for the provider in `--model` and exit. Needs that provider's API key. See [Providers](#providers). |
 | `--image` | per-runtime | Override the base image tag for the chosen [runtime](runtimes.md). |
+| `--sandbox` | `docker` | Sandbox backend: `docker`, or experimental `apple` on macOS. |
 | `--timeout` | `10.0` | Seconds the generated filter may run before it is killed. |
 | `--memory` | `256m` | Memory limit for the worker container. |
 | `--cpus` | `1.0` | CPU limit for the worker container. |
@@ -75,6 +76,16 @@ nfind "files larger than 1 MB, with their size" --verbose
 | `--no-format` | off | Skip the ruff cleanup (remove unused imports, sort imports, format) applied to the generated filter. |
 | `--macos-meta` | off | macOS only: expose Finder tags and download metadata to the filter (see [macOS metadata](macos-metadata.md)). |
 | `-h`, `--help` | — | Show help and exit. |
+
+`--sandbox apple` uses Apple Containers instead of Docker. It is currently an explicit
+opt-in and prints a warning before running. On macOS 26+ nfind uses Apple Containers'
+`--network none` support. On macOS 15, Apple's official docs say
+`container run --network ...` is unsupported, so nfind falls back to `--no-dns`; raw IP
+network access may still be possible there. Apple Containers also lacks
+Docker-equivalent `--pids-limit` and `--security-opt no-new-privileges` flags in the
+current CLI. Its `--cpus` option accepts whole-number CPU counts only, so values like
+`--cpus 1` work but fractional Docker-style limits like `--cpus 0.5` are rejected
+before the container runs.
 
 ## Reviewing the generated code
 

@@ -4,7 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0]
+## [Unreleased]
+
+### Added
+
+- **Apple Containers sandbox backend.** `--sandbox apple` can run saved and generated
+  filters with Apple's `container` CLI as an opt-in alternative to Docker, including
+  CLI/config support, resource limits, read-only mounts, and integration coverage.
+- **macOS-aware Apple networking.** On macOS 26+ nfind uses Apple Containers'
+  `--network none`; on macOS 15 it falls back to `--no-dns` and prints an explicit
+  warning about the weaker network isolation.
+
+## [0.1.0] - 2026-06-23
 
 ### Added
 

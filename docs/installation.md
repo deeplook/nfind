@@ -32,7 +32,8 @@ nfind needs two things at runtime in addition to Python:
 
 | Requirement | Used for | macOS | Debian/Ubuntu | Check |
 |---|---|---|---|---|
-| [Docker](https://docs.docker.com/get-docker/) | Sandboxed execution of the generated filter | [Docker Desktop](https://docs.docker.com/desktop/mac/install/) or `brew install docker` | `sudo apt install docker.io` | `docker info` |
+| [Docker](https://docs.docker.com/get-docker/) | Default sandboxed execution of the generated filter | [Docker Desktop](https://docs.docker.com/desktop/mac/install/) or `brew install docker` | `sudo apt install docker.io` | `docker info` |
+| [Apple Containers](https://github.com/apple/container) | Experimental alternate sandbox via `--sandbox apple` | Install Apple `container`, then `container system start` | — | `container system status` |
 | OpenAI API key | Generating the filter from your prompt | — | — | `echo $OPENAI_API_KEY` |
 
 Set your API key before running:
@@ -41,10 +42,12 @@ Set your API key before running:
 export OPENAI_API_KEY=sk-...
 ```
 
-The host needs network access to reach the OpenAI API, but the **worker container
-never does** — code generation happens on the host, where your credentials stay; the
-sandbox that runs the generated code has networking disabled. See the
-[Safety model](safety.md) for the full picture.
+The host needs network access to reach the OpenAI API, but code generation happens on
+the host, where your credentials stay. With the default Docker backend, the worker
+container has networking disabled. With `--sandbox apple` on macOS 15, Apple
+Containers does not support Docker-style `--network none`; nfind prints a warning and
+uses the weaker `--no-dns` flag instead. See the [Safety model](safety.md) for the full
+picture.
 
 ## The worker image
 
@@ -62,6 +65,7 @@ When a prompt needs a third-party library, nfind builds a **derived** image
 (`…:deps-<hash>`) that layers the approved packages (pip or npm) on top of the base,
 and caches it for reuse. See [Dependencies & the whitelist](dependencies.md).
 
-Building images requires Docker to pull `python:3.11-slim` once (and, for derived
-images, to reach PyPI). After that, searches work offline apart from the OpenAI API
-call — the container that runs the filter never has network access.
+Building images requires the selected container backend to pull `python:3.11-slim`
+once (and, for derived images, to reach PyPI). After that, Docker searches work offline
+apart from the OpenAI API call; Apple Containers on macOS 15 may still have raw IP
+network access at run time because Apple does not support `--network none` there.

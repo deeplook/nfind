@@ -50,9 +50,9 @@ jobs:
         run: uv run pytest --cov=src --cov-report=xml
 
   test-windows:
-    # Verify host-side path handling and subprocess/config logic on Windows. The Docker
-    # integration tests self-skip where no Linux daemon is reachable, so the focus here
-    # is the non-Docker code paths.
+    # Verify host-side path handling and subprocess/config logic on Windows. When Docker
+    # is available on the runner, the real sandbox container integration tests run here
+    # too; otherwise they self-skip and this job still covers the non-container paths.
     runs-on: windows-latest
 
     steps:

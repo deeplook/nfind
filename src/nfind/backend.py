@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Search paths with an LLM-generated Python filter executed inside Docker.
+"""Search paths with an LLM-generated filter executed inside a sandbox backend.
 
-The host enumerates the search tree and asks the model for code.  The generated
+The host enumerates the search tree and asks the model for code. The generated
 code runs in a disposable container with the search root mounted at /data as
-read-only.  Only paths supplied by the host may be returned.
+read-only. Only paths supplied by the host may be returned.
 
 The in-container worker that runs the generated code lives in :mod:`nfind.worker`,
-a self-contained, standard-library-only module the Docker image ships and runs as
+a self-contained, standard-library-only module the worker image ships and runs as
 ``python worker.py --worker``.
 """
 
@@ -71,10 +71,12 @@ from .runtimes import GeneratedFilter as GeneratedFilter
 from .runtimes import _imply_packages as _imply_packages
 from .runtimes import _validate_code_shape as _validate_code_shape
 from .runtimes import _validate_dependencies as _validate_dependencies
+from .sandbox import DEFAULT_SANDBOX_BACKEND as DEFAULT_SANDBOX_BACKEND
 from .sandbox import DockerSandbox as DockerSandbox
 from .sandbox import Limits as Limits
 from .sandbox import Mount as Mount
 from .sandbox import Sandbox as Sandbox
+from .sandbox import SandboxBackend as SandboxBackend
 from .sandbox import SandboxError as SandboxError
 from .sandbox import SandboxOutputTooLarge as SandboxOutputTooLarge
 from .sandbox import SandboxTimeout as SandboxTimeout
@@ -85,6 +87,7 @@ from .sandbox import _remove_container as _remove_container
 from .sandbox import _run_docker as _run_docker
 from .sandbox import build_image as build_image
 from .sandbox import check_docker_available as check_docker_available
+from .sandbox import check_sandbox_available as check_sandbox_available
 from .serialization import _SCRIPT_METADATA_RE as _SCRIPT_METADATA_RE
 from .serialization import deserialize_filter as deserialize_filter
 from .serialization import serialize_filter as serialize_filter
@@ -118,6 +121,7 @@ def search(
     macos_meta: bool = False,
     format_code: bool = True,
     sandbox: Sandbox | None = None,
+    sandbox_backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND,
     exclude: Sequence[str] = (),
     max_depth: int | None = None,
     use_default_ignores: bool = True,
@@ -167,8 +171,11 @@ def search(
     )
     if not container_paths:
         return []
-    # Verify Docker up front so a missing daemon fails before any API call.
-    check_docker_available()
+    # Verify the selected sandbox up front so a missing backend fails before any API call.
+    if sandbox is not None:
+        sandbox.check_available()
+    else:
+        check_sandbox_available(sandbox_backend)
     meta = collect_macos_metadata(host_by_container) if macos_meta else {}
     generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
     generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
@@ -193,6 +200,7 @@ def search(
         approve_dependencies=approve_dependencies,
         whitelist=whitelist,
         sandbox=sandbox,
+        sandbox_backend=sandbox_backend,
     )
 
 
@@ -211,6 +219,7 @@ def run_saved(
     whitelist: set[str] | None = None,
     on_generated: Callable[[GeneratedFilter], None] | None = None,
     sandbox: Sandbox | None = None,
+    sandbox_backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND,
     exclude: Sequence[str] = (),
     max_depth: int | None = None,
     use_default_ignores: bool = True,
@@ -236,7 +245,10 @@ def run_saved(
     )
     if not container_paths:
         return []
-    check_docker_available()
+    if sandbox is not None:
+        sandbox.check_available()
+    else:
+        check_sandbox_available(sandbox_backend)
     return _run_generated(
         generated,
         mounts,
@@ -253,4 +265,5 @@ def run_saved(
         approve_dependencies=approve_dependencies,
         whitelist=whitelist,
         sandbox=sandbox,
+        sandbox_backend=sandbox_backend,
     )

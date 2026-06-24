@@ -49,9 +49,11 @@ describe in a sentence. See the [Examples gallery](examples.md).
    If the reply doesn't validate, nfind feeds the error back and retries a few times.
    The generated Python filter is then tidied with ruff (unused imports removed, imports
    sorted, reformatted) before it is shown, saved, or run.
-3. **Run safely** — the generated code executes in a throwaway Docker container with
-   the search root bind-mounted **read-only**, networking disabled, all Linux
-   capabilities dropped, and CPU/memory/process limits applied.
+3. **Run safely** — by default, the generated code executes in a throwaway Docker
+   container with the search root bind-mounted **read-only**, networking disabled, all
+   Linux capabilities dropped, and CPU/memory/process limits applied. On macOS,
+   `--sandbox apple` opts into experimental Apple Containers support with an explicit
+   macOS 15 networking warning.
 4. **Map back** — the container returns matching container paths; nfind maps them to
    host paths and prints them.
 
@@ -75,8 +77,8 @@ attribute index can't express. See [How nfind compares](comparison.md).
 ## Features
 
 - **Natural-language search** over any directory tree.
-- **[Sandboxed execution](safety.md)** — read-only mount, no network, dropped caps,
-  resource limits; the generated code cannot modify your files or reach the network.
+- **[Sandboxed execution](safety.md)** — read-only mount, dropped caps, resource
+  limits; the default Docker backend also disables networking.
 - **[Review before running](cli.md#reviewing-the-generated-code)** —
   [`--show-code`](cli.md#options), [`--save`](cli.md#options), and
   [`--confirm`](cli.md#options) let you inspect, keep, or approve the generated filter.

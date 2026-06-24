@@ -17,6 +17,7 @@ def test_load_config_reads_known_keys(tmp_path):
         'memory = "512m"\n'
         "pids-limit = 128\n"
         "no-format = true\n"
+        'sandbox = "apple"\n'
     )
     assert config.load_config(path) == {
         "model": "anthropic/claude-3-5-sonnet-latest",
@@ -24,7 +25,15 @@ def test_load_config_reads_known_keys(tmp_path):
         "memory": "512m",
         "pids_limit": 128,
         "no_format": True,
+        "sandbox_backend": "apple",
     }
+
+
+def test_load_config_rejects_unknown_sandbox_backend(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('sandbox = "podman"\n')
+    with pytest.raises(config.ConfigError, match="expected one of"):
+        config.load_config(path)
 
 
 def test_load_config_accepts_underscore_key_spelling(tmp_path):
