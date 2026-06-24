@@ -24,7 +24,7 @@ def _backend_available(name: sandbox.SandboxBackend) -> bool:
         sandbox.check_sandbox_available(name)
     except sandbox.SandboxError:
         return False
-    return True
+    return name != "docker" or sandbox.docker_supports_linux_containers()
 
 
 @pytest.fixture(params=["docker", "apple"])

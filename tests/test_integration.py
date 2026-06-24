@@ -23,7 +23,7 @@ def _docker_available() -> bool:
         sandbox.check_docker_available()
     except sandbox.SandboxError:
         return False
-    return True
+    return sandbox.docker_supports_linux_containers()
 
 
 # Build the base image once for the module; also gates the whole module on Docker.

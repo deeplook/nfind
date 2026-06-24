@@ -104,6 +104,7 @@ def test_build_image_reports_timeout():
             "_run_docker",
             side_effect=[available, missing, subprocess.TimeoutExpired("docker", 7)],
         ),
+        patch.object(sandbox, "_docker_build_supports_load", return_value=False),
         pytest.raises(sandbox.SandboxError, match="build exceeded the 7s timeout"),
     ):
         sandbox.build_image("test-image", build_timeout=7)
@@ -463,9 +464,20 @@ def test_build_image_reports_inspect_timeout():
 def test_build_image_reports_build_failure():
     with (
         patch.object(sandbox, "_run_docker", side_effect=[_cp(0), _cp(1), _cp(1)]),
+        patch.object(sandbox, "_docker_build_supports_load", return_value=False),
         pytest.raises(sandbox.SandboxError, match="build failed with exit status 1"),
     ):
         sandbox.build_image("img")
+
+
+def test_docker_supports_linux_containers_true_for_linux_ostype():
+    with patch.object(sandbox, "_run_docker", return_value=_cp(0, stdout="linux\n")):
+        assert sandbox.docker_supports_linux_containers() is True
+
+
+def test_docker_supports_linux_containers_false_for_windows_ostype():
+    with patch.object(sandbox, "_run_docker", return_value=_cp(0, stdout="windows\n")):
+        assert sandbox.docker_supports_linux_containers() is False
 
 
 # --- _image_exists / _remove_container / derive_image ---------------------------

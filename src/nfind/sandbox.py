@@ -246,6 +246,20 @@ def _docker_build_command(*, dockerfile: str | None, tag: str, context: str) -> 
     return command
 
 
+def docker_supports_linux_containers() -> bool:
+    """Return whether the reachable Docker daemon is configured for Linux containers."""
+    try:
+        completed = _run_docker(
+            ["docker", "info", "--format", "{{.OSType}}"],
+            capture_output=True,
+            text=True,
+            timeout=DOCKER_CHECK_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and completed.stdout.strip().lower() == "linux"
+
+
 def build_image(
     image: str = DEFAULT_IMAGE,
     *,
