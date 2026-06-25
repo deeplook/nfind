@@ -195,7 +195,7 @@ def main(
     timeout: Annotated[
         float,
         typer.Option(help="Seconds the generated filter may run before it is killed."),
-    ] = 10.0,
+    ] = 180.0,
     memory: Annotated[
         str,
         typer.Option(help="Memory limit for the worker container (e.g. 256m)."),

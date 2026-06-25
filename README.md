@@ -203,8 +203,8 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `--model` | `gpt-4o-mini` | Model used to generate the filter; `provider/model` for non-OpenAI (see [Providers](#providers)) |
-| `--timeout` | `10.0` | Seconds the filter may run before it is killed |
+| `--model` | `openai/gpt-5.4` | Model used to generate the filter; `provider/model` for non-OpenAI (see [Providers](#providers)) |
+| `--timeout` | `180.0` | Seconds the filter may run before it is killed |
 | `--memory` | `256m` | Worker container memory limit |
 | `--cpus` | `1.0` | Worker container CPU limit |
 | `--pids-limit` | `64` | Max processes inside the worker |

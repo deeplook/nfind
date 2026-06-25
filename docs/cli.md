@@ -54,11 +54,11 @@ nfind "files larger than 1 MB, with their size" --verbose
 | `--exclude GLOB` | — | Glob of names/paths to skip during enumeration; matching directories are pruned. Repeatable. See [Filtering what's searched](#filtering-whats-searched). |
 | `--no-ignore` | off | Don't skip the default ignored directories (`.git`, `node_modules`, `__pycache__`, `.venv`, caches, …). |
 | `--max-depth N` | unlimited | Descend at most `N` directory levels below `PATH` (a direct child is `1`). |
-| `--model` | `gpt-4o-mini` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
+| `--model` | `openai/gpt-5.4` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
 | `--list-models` | off | List the model ids available for the provider in `--model` and exit. Needs that provider's API key. See [Providers](#providers). |
 | `--image` | per-runtime | Override the base image tag for the chosen [runtime](runtimes.md). |
 | `--sandbox` | `docker` | Sandbox backend: `docker`, or experimental `apple` on macOS. |
-| `--timeout` | `10.0` | Seconds the generated filter may run before it is killed. |
+| `--timeout` | `180.0` | Seconds the generated filter may run before it is killed. |
 | `--memory` | `256m` | Memory limit for the worker container. |
 | `--cpus` | `1.0` | CPU limit for the worker container. |
 | `--pids-limit` | `64` | Maximum number of processes inside the worker container. |

@@ -60,7 +60,7 @@ max-depth = 6
 
 ## Selecting a model and provider
 
-The model is chosen with [`--model`](cli.md#options) (default `gpt-4o-mini`). A bare
+The model is chosen with [`--model`](cli.md#options) (default `openai/gpt-5.4`). A bare
 name uses OpenAI; a `provider/model` selector targets any OpenAI-compatible
 [provider](cli.md#providers), for example:
 

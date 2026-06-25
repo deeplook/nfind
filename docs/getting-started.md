@@ -406,10 +406,10 @@ from Python instead of the shell, see the [Python API](api.md).
 | `--exclude GLOB` | Skip names/paths during enumeration (repeatable; prunes dirs). |
 | `--no-ignore` | Don't skip the default ignored dirs (`.git`, `node_modules`, …). |
 | `--max-depth N` | Descend at most `N` levels below `PATH` (direct child = `1`). |
-| `--model NAME` | Model, bare or `provider/model` (default: `gpt-4o-mini`). |
+| `--model NAME` | Model, bare or `provider/model` (default: `openai/gpt-5.4`). |
 | `--list-models` | List the selected provider's model ids and exit. |
 | `--image TAG` | Override the base image for the chosen runtime. |
-| `--timeout SECS` | Max filter runtime before it's killed (default: `10`). |
+| `--timeout SECS` | Max filter runtime before it's killed (default: `180`). |
 | `--memory SIZE` | Container memory limit (default: `256m`). |
 | `--cpus N` | CPU limit (default: `1.0`). |
 | `--pids-limit N` | Max processes in the container (default: `64`). |

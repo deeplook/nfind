@@ -32,8 +32,8 @@ def search(
     prompt: str,
     *,
     image: str | None = None,         # override the chosen runtime's base tag
-    model: str = "gpt-4o-mini",
-    timeout: float = 10.0,
+    model: str = "openai/gpt-5.4",
+    timeout: float = 180.0,
     memory: str = "256m",
     cpus: float = 1.0,
     pids_limit: int = 64,
@@ -119,7 +119,7 @@ from nfind.backend import GeneratedFilter
 saved: list[GeneratedFilter] = []
 search(".", "Python files that import os", on_generated=saved.append)
 Path("os-imports.py").write_text(
-    serialize_filter(saved[0], "Python files that import os", "gpt-4o-mini")
+    serialize_filter(saved[0], "Python files that import os", "openai/gpt-5.4")
 )
 
 # Later, replay it sandboxed with no model call:
