@@ -1168,7 +1168,7 @@ def test_cli_no_deps_rejects_packages(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     runner = CliRunner()
     with (
-        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "check_sandbox_available"),
         patch.object(
             cli.backend,
             "generate_filter",
@@ -1190,7 +1190,7 @@ def test_cli_yes_approves_packages(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     runner = CliRunner()
     with (
-        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "check_sandbox_available"),
         patch.object(
             cli.backend,
             "generate_filter",
@@ -1234,7 +1234,7 @@ def test_cli_save_writes_generated_code(tmp_path):
     out = tmp_path / "filter.py"
     runner = CliRunner()
     with (
-        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
@@ -1697,7 +1697,7 @@ def test_cli_save_writes_replayable_script(tmp_path):
     out = tmp_path / "saved.py"
     runner = CliRunner()
     with (
-        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
@@ -1718,7 +1718,7 @@ def test_cli_show_code_renders_filter_function(tmp_path):
     (tmp_path / "file.txt").write_text("content")
     runner = CliRunner()
     with (
-        patch.object(cli.backend, "check_docker_available"),
+        patch.object(cli.backend, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
         patch.object(
             cli.backend,
