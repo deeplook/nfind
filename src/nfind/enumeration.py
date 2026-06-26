@@ -192,12 +192,15 @@ def _can_identity_mount(roots: Sequence[Path]) -> bool:
 
     Identity mounting lets generated filters reason about real paths -- and makes
     natural "files under /some/dir" phrasing work -- while collapsing the container/host
-    translation to identity. It is unsafe when a root is the filesystem root, would shadow
-    a reserved container directory, or overlaps another root; any such case forces the
-    whole set back to neutral ``/data`` mountpoints.
+    translation to identity. It applies only on POSIX hosts: the Linux container needs a
+    POSIX mount target, so a Windows path like ``C:\\Users\\me`` can never be an identity
+    mount point. It is also unsafe when a root is the filesystem root, would shadow a
+    reserved container directory, or overlaps another root. Any such case forces the whole
+    set back to neutral ``/data`` mountpoints.
     """
     return (
         bool(roots)
+        and os.name == "posix"
         and not any(_is_filesystem_root(root) for root in roots)
         and not any(_shadows_container_dir(root) for root in roots)
         and not _roots_overlap(roots)

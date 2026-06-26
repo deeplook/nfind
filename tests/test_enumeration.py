@@ -1,5 +1,6 @@
 """Tests for find-style enumeration filters: --exclude/ignore, --max-depth, --print0."""
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -7,6 +8,10 @@ from typer.testing import CliRunner
 
 from nfind import cli
 from nfind import enumeration as MODULE
+
+# Identity mounting (container path == host path) is POSIX-only: a Linux container needs a
+# POSIX mount target, so Windows falls back to /data and these expectations don't hold there.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="identity mounting is POSIX-only")
 
 
 @pytest.fixture
@@ -91,6 +96,7 @@ def test_excluded_dirs_are_not_descended(tree):
 # --- enumerate_roots: identity mounting (container path == host path) ------------
 
 
+@posix_only
 def test_enumerate_roots_single_dir_mounts_at_host_path(tmp_path):
     # A single safe root is mounted at its own host path; the mapping is the identity.
     (tmp_path / "a.txt").write_text("x")
@@ -103,6 +109,7 @@ def test_enumerate_roots_single_dir_mounts_at_host_path(tmp_path):
     assert mounts[0].source == root and mounts[0].target == str(root)
 
 
+@posix_only
 def test_enumerate_roots_disjoint_roots_use_identity_paths(tmp_path):
     first = tmp_path / "one"
     second = tmp_path / "two"
@@ -125,6 +132,7 @@ def test_enumerate_roots_disjoint_roots_use_identity_paths(tmp_path):
     assert not any(p.startswith("/data") for p in paths)
 
 
+@posix_only
 def test_enumerate_roots_single_file_root_mounts_at_host_path(tmp_path):
     # A file root is a single entry mounted at its own host path under identity mounting.
     file_path = tmp_path / "worker.py"
@@ -139,6 +147,7 @@ def test_enumerate_roots_single_file_root_mounts_at_host_path(tmp_path):
     assert mounts[0].read_only is True
 
 
+@posix_only
 def test_enumerate_roots_mixed_file_and_directory_identity(tmp_path):
     file_root = tmp_path / "solo.py"
     file_root.write_text("x")
@@ -208,6 +217,7 @@ def test_container_root_for_identity_uses_host_path_else_data(tmp_path):
     assert MODULE._container_root_for(root, identity=False, index=1, count=3) == "/data/1"
 
 
+@posix_only
 def test_enumerate_roots_single_root_under_reserved_name_still_identity(tmp_path):
     # The reserved-name check only fires for a *direct child of /* (e.g. /usr); a deep
     # path that merely contains such a component is safe and stays identity-mounted.
@@ -222,6 +232,7 @@ def test_enumerate_roots_single_root_under_reserved_name_still_identity(tmp_path
 # --- identity-mount safety predicates -------------------------------------------
 
 
+@posix_only
 def test_can_identity_mount_accepts_disjoint_nonreserved_roots():
     from pathlib import Path
 

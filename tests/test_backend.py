@@ -350,7 +350,11 @@ def test_build_worker_image_surfaces_package_names_on_build_failure():
 
 
 def test_search_maps_host_paths_in_records(tmp_path):
+    # Mock enumeration so the test pins the container->host mapping and stays independent of
+    # whether the platform identity-mounts or falls back to /data.
     (tmp_path / "file.txt").write_text("content")
+    host = str((tmp_path / "file.txt").resolve())
+    container = "/data/file.txt"
     with (
         patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
@@ -358,15 +362,19 @@ def test_search_maps_host_paths_in_records(tmp_path):
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return paths")
         ),
         patch.object(
+            MODULE,
+            "enumerate_roots",
+            return_value=([container], {container: host}, [EXECUTION.Mount(tmp_path, "/data")]),
+        ),
+        patch.object(
             EXECUTION,
             "run_filter",
-            # Identity mounting: the container path the worker returns is the host path.
-            return_value=[{"path": str((tmp_path / "file.txt").resolve()), "lines": 1}],
+            return_value=[{"path": container, "lines": 1}],
         ),
     ):
         results = MODULE.search(str(tmp_path), "files")
 
-    assert results == [{"path": str((tmp_path / "file.txt").resolve()), "lines": 1}]
+    assert results == [{"path": host, "lines": 1}]
 
 
 def test_search_invokes_on_generated_before_running(tmp_path):
@@ -1634,20 +1642,26 @@ def test_run_saved_replays_without_generating(tmp_path):
     script = tmp_path / "mp3.py"
     script.write_text(MODULE.serialize_filter(_gen(code, ["mutagen"]), "mp3", "gpt-4o-mini"))
 
-    # Identity mounting: the real enumeration runs (unmocked) and yields the host path as
-    # the container path, so the fake worker echoes that exact path back.
-    container = str((tmp_path / "a.mp3").resolve())
+    # Mock enumeration so the container->host mapping is pinned and the test is independent
+    # of identity vs. /data mounting on the host platform.
+    host = str((tmp_path / "a.mp3").resolve())
+    container = "/data/a.mp3"
     with (
         patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value="img:deps"),
         patch.object(MODULE, "generate_filter") as generate,
         patch.object(EXECUTION, "run_filter", return_value=[{"path": container}]) as run_filter,
+        patch.object(
+            MODULE,
+            "enumerate_roots",
+            return_value=([container], {container: host}, [EXECUTION.Mount(tmp_path, "/data")]),
+        ),
     ):
         records = MODULE.run_saved(script, str(tmp_path))
 
     generate.assert_not_called()
     run_filter.assert_called_once()
-    assert records == [{"path": container}]
+    assert records == [{"path": host}]
 
 
 def test_run_saved_gates_unapproved_dependencies(tmp_path):
