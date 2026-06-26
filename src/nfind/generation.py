@@ -42,8 +42,10 @@ Choose "runtime":
     Prefer "python" when either ecosystem would do.
 
 "code" defines one function that takes a single argument `paths`: the list of
-absolute container paths below /data (both files and directories). It returns the
-matching entries, each corresponding to one of the input paths, as either:
+absolute filesystem paths to consider (both files and directories). Treat these
+strings as opaque -- select only from the exact paths given and never hardcode or
+assume a particular directory prefix (the search root may be mounted anywhere). It
+returns the matching entries, each corresponding to one of the input paths, as either:
 
   * a flat list of matching path strings, or
   * a list of objects each having a "path" field (exactly one of the input paths)
@@ -101,8 +103,8 @@ For "node": write CommonJS that defines a function `filterPaths(paths)` with a b
 JSDoc comment describing what it matches, and uses `require(...)` for any packages.
 "dependencies" lists npm package names, e.g. ["ts-morph"]; use [] when none are needed.
 
-The code runs in a disposable Linux container: /data is read-only, the network is
-disabled, and resources are limited. Prefer the standard library and an empty
+The code runs in a disposable Linux container with the search tree mounted read-only,
+the network disabled, and resources limited. Prefer the standard library and an empty
 dependency list whenever practical. Respond with only the JSON object.
 """
 

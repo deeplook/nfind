@@ -88,50 +88,58 @@ def test_excluded_dirs_are_not_descended(tree):
     assert not any(name.startswith("/src") for name in names)
 
 
-# --- enumerate_roots (multiple search roots) ------------------------------------
+# --- enumerate_roots: identity mounting (container path == host path) ------------
 
 
-def test_enumerate_roots_single_root_keeps_data_prefix(tmp_path):
+def test_enumerate_roots_single_dir_mounts_at_host_path(tmp_path):
+    # A single safe root is mounted at its own host path; the mapping is the identity.
     (tmp_path / "a.txt").write_text("x")
+    root = tmp_path.resolve()
+    host = str(root / "a.txt")
     paths, mapping, mounts = MODULE.enumerate_roots([tmp_path])
-    assert "/data/a.txt" in paths
-    assert mapping["/data/a.txt"] == str(tmp_path / "a.txt")
+    assert host in paths
+    assert mapping[host] == host  # identity
     assert len(mounts) == 1
-    assert mounts[0].source == tmp_path and mounts[0].target == "/data"
+    assert mounts[0].source == root and mounts[0].target == str(root)
 
 
-def test_enumerate_roots_namespaces_each_root(tmp_path):
+def test_enumerate_roots_disjoint_roots_use_identity_paths(tmp_path):
     first = tmp_path / "one"
     second = tmp_path / "two"
     first.mkdir()
     second.mkdir()
-    # Identically named files in different roots must not collide.
+    # Identically named files in disjoint roots keep distinct host paths -- no collision,
+    # so no /data namespacing is needed.
     (first / "dup.txt").write_text("x")
     (second / "dup.txt").write_text("y")
 
     paths, mapping, mounts = MODULE.enumerate_roots([first, second])
 
-    assert "/data/0/dup.txt" in paths and "/data/1/dup.txt" in paths
-    assert mapping["/data/0/dup.txt"] == str(first / "dup.txt")
-    assert mapping["/data/1/dup.txt"] == str(second / "dup.txt")
-    assert [mount.target for mount in mounts] == ["/data/0", "/data/1"]
-    assert [mount.source for mount in mounts] == [first, second]
+    rfirst, rsecond = first.resolve(), second.resolve()
+    first_dup = str(rfirst / "dup.txt")
+    second_dup = str(rsecond / "dup.txt")
+    assert first_dup in paths and second_dup in paths
+    assert mapping[first_dup] == first_dup and mapping[second_dup] == second_dup
+    assert [mount.target for mount in mounts] == [str(rfirst), str(rsecond)]
+    assert [mount.source for mount in mounts] == [rfirst, rsecond]
+    assert not any(p.startswith("/data") for p in paths)
 
 
-def test_enumerate_roots_single_file_root(tmp_path):
-    # A file root is a degenerate enumeration: one entry, mounted as a file at /data/<name>.
+def test_enumerate_roots_single_file_root_mounts_at_host_path(tmp_path):
+    # A file root is a single entry mounted at its own host path under identity mounting.
     file_path = tmp_path / "worker.py"
     file_path.write_text("x")
+    host = str(file_path.resolve())
     paths, mapping, mounts = MODULE.enumerate_roots([file_path])
-    assert paths == ["/data/worker.py"]
-    assert mapping["/data/worker.py"] == str(file_path)
+    assert paths == [host]
+    assert mapping[host] == host
     assert len(mounts) == 1
-    assert mounts[0].source == file_path
-    assert mounts[0].target == "/data/worker.py"  # the file itself, not a directory
+    assert mounts[0].source == file_path.resolve()
+    assert mounts[0].target == host  # the file itself, not a directory
     assert mounts[0].read_only is True
 
 
-def test_enumerate_roots_mixed_file_and_directory(tmp_path):
+def test_enumerate_roots_mixed_file_and_directory_identity(tmp_path):
     file_root = tmp_path / "solo.py"
     file_root.write_text("x")
     dir_root = tmp_path / "pkg"
@@ -140,12 +148,109 @@ def test_enumerate_roots_mixed_file_and_directory(tmp_path):
 
     paths, mapping, mounts = MODULE.enumerate_roots([file_root, dir_root])
 
-    # Namespaced under /data/0 (file) and /data/1 (directory tree).
-    assert "/data/0/solo.py" in paths
-    assert "/data/1/a.py" in paths
-    assert mapping["/data/0/solo.py"] == str(file_root)
-    assert mapping["/data/1/a.py"] == str(dir_root / "a.py")
+    solo = str(file_root.resolve())
+    nested = str(dir_root.resolve() / "a.py")
+    assert solo in paths and nested in paths
+    assert mapping[solo] == solo and mapping[nested] == nested
+    assert [m.target for m in mounts] == [solo, str(dir_root.resolve())]
+
+
+# --- enumerate_roots: fallback to /data namespacing ------------------------------
+
+
+def test_enumerate_roots_overlapping_roots_fall_back_to_namespacing(tmp_path):
+    # A root and a descendant of it would collide under identity mounting (their trees and
+    # mapping keys overlap), so the whole set falls back to namespaced /data mountpoints.
+    parent = tmp_path / "parent"
+    child = parent / "child"
+    child.mkdir(parents=True)
+    (parent / "p.txt").write_text("x")
+    (child / "c.txt").write_text("y")
+
+    paths, mapping, mounts = MODULE.enumerate_roots([parent, child])
+
+    assert "/data/0/p.txt" in paths and "/data/1/c.txt" in paths
+    assert mapping["/data/1/c.txt"] == str(child.resolve() / "c.txt")
+    assert [m.target for m in mounts] == ["/data/0", "/data/1"]
+    assert [m.source for m in mounts] == [parent.resolve(), child.resolve()]
+
+
+def test_enumerate_roots_single_unsafe_root_uses_plain_data(tmp_path):
+    # When identity mounting is unsafe, a single root falls back to plain /data. Forcing
+    # the decision keeps the test from having to enumerate a real "/" or "/usr".
+    (tmp_path / "a.txt").write_text("x")
+    with patch.object(MODULE, "_can_identity_mount", return_value=False):
+        paths, mapping, mounts = MODULE.enumerate_roots([tmp_path])
+    assert "/data/a.txt" in paths
+    assert mapping["/data/a.txt"] == str(tmp_path.resolve() / "a.txt")
+    assert mounts[0].target == "/data"
+
+
+def test_enumerate_roots_fallback_namespaces_file_root(tmp_path):
+    # The namespaced fallback mounts a file root at /data/<index>/<name> (not at /data/N).
+    file_root = tmp_path / "solo.py"
+    file_root.write_text("x")
+    dir_root = tmp_path / "pkg"
+    dir_root.mkdir()
+    (dir_root / "a.py").write_text("x")
+    with patch.object(MODULE, "_can_identity_mount", return_value=False):
+        paths, mapping, mounts = MODULE.enumerate_roots([file_root, dir_root])
+    assert "/data/0/solo.py" in paths and "/data/1/a.py" in paths
+    assert mapping["/data/0/solo.py"] == str(file_root.resolve())
     assert [m.target for m in mounts] == ["/data/0/solo.py", "/data/1"]
+
+
+def test_container_root_for_identity_uses_host_path_else_data(tmp_path):
+    root = tmp_path.resolve()
+    assert MODULE._container_root_for(root, identity=True, index=0, count=1) == str(root)
+    assert MODULE._container_root_for(root, identity=True, index=1, count=2) == str(root)
+    assert MODULE._container_root_for(root, identity=False, index=0, count=1) == "/data"
+    assert MODULE._container_root_for(root, identity=False, index=1, count=3) == "/data/1"
+
+
+def test_enumerate_roots_single_root_under_reserved_name_still_identity(tmp_path):
+    # The reserved-name check only fires for a *direct child of /* (e.g. /usr); a deep
+    # path that merely contains such a component is safe and stays identity-mounted.
+    reserved_deep = tmp_path / "usr"
+    reserved_deep.mkdir()
+    (reserved_deep / "a.txt").write_text("x")
+    paths, _, mounts = MODULE.enumerate_roots([reserved_deep])
+    assert str(reserved_deep.resolve() / "a.txt") in paths
+    assert mounts[0].target == str(reserved_deep.resolve())
+
+
+# --- identity-mount safety predicates -------------------------------------------
+
+
+def test_can_identity_mount_accepts_disjoint_nonreserved_roots():
+    from pathlib import Path
+
+    assert MODULE._can_identity_mount([Path("/Users/me/proj"), Path("/var/tmp/other")])
+
+
+def test_can_identity_mount_rejects_filesystem_root():
+    from pathlib import Path
+
+    assert not MODULE._can_identity_mount([Path("/")])
+
+
+def test_can_identity_mount_rejects_reserved_top_level_dirs():
+    from pathlib import Path
+
+    # Mounting at /usr or /etc would shadow the worker image's own system dirs.
+    assert not MODULE._can_identity_mount([Path("/usr")])
+    assert not MODULE._can_identity_mount([Path("/home"), Path("/srv/data")])
+
+
+def test_can_identity_mount_rejects_overlapping_roots():
+    from pathlib import Path
+
+    assert not MODULE._can_identity_mount([Path("/a/b"), Path("/a/b/c")])
+    assert not MODULE._can_identity_mount([Path("/a/b/c"), Path("/a/b")])
+
+
+def test_can_identity_mount_rejects_empty():
+    assert not MODULE._can_identity_mount([])
 
 
 def test_normalize_roots_dedupes_and_requires_existing(tmp_path):
