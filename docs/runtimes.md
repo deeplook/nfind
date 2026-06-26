@@ -22,7 +22,7 @@ stays with Python. You can nudge it in the prompt ("…using ts-morph", "use the
 runtime").
 
 Everything else is identical across runtimes within a given sandbox backend: the same
-read-only `/data` mount, dropped capabilities, resource limits, result shapes (a list
+read-only mount of the search tree, dropped capabilities, resource limits, result shapes (a list
 of paths, or objects with a `path` field plus extra data), and the same
 [output modes](output-modes.md). The default Docker backend also disables networking.
 The experimental Apple Containers backend on macOS 15 cannot disable networking; see

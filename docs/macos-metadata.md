@@ -20,7 +20,7 @@ nfind "files tagged Red whose contents contain a TODO" ~/Projects --macos-meta
 ## Why this needs special support
 
 nfind's filter runs inside a **Linux** container, against your files bind-mounted
-read-only at `/data`. macOS metadata is *not* visible there: Spotlight's index lives
+read-only. macOS metadata is *not* visible there: Spotlight's index lives
 only on the host, and extended attributes (tags, quarantine, where-from) do not
 reliably survive Docker's file-sharing layer into the container. So a filter simply
 *can't read* these attributes by itself.

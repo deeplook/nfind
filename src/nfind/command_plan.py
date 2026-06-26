@@ -27,7 +27,7 @@ CommandRequest = GeneratedSearchRequest | SavedReplayRequest | ListModelsRequest
 
 
 def normalize_search_paths(paths: list[str] | None) -> list[str]:
-    return paths if paths else ["."]
+    return paths or []
 
 
 def validate_output_modes(*, as_json: bool, verbose: bool, print0: bool) -> None:

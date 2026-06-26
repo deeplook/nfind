@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Generate-only mode.** Omitting `PATH` generates the filter (LLM call) without
+  running the sandbox or enumerating any paths — useful with `--save` to capture a
+  filter for later replay, or with `--show-code` to inspect it inline. nfind warns
+  when no path and none of `--save`, `--show-code`, or `--confirm` is given, since
+  the filter would otherwise be silently discarded. `backend.generate_only()` exposes
+  the same behaviour programmatically.
 - **Apple Containers sandbox backend.** `--sandbox apple` can run saved and generated
   filters with Apple's `container` CLI as an opt-in alternative to Docker, including
   CLI/config support, resource limits, read-only mounts, and integration coverage.

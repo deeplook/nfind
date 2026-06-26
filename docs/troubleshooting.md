@@ -11,6 +11,7 @@
 - [Results look wrong or inconsistent](#results-look-wrong-or-inconsistent)
 - [Worker image build is slow or fails](#worker-image-build-is-slow-or-fails)
 - [Searches are slow on large trees](#searches-are-slow-on-large-trees)
+- [Worker runs out of memory on very large trees](#worker-runs-out-of-memory-on-very-large-trees)
 
 ---
 
@@ -124,3 +125,17 @@ resource-bound:
 ```bash
 nfind "…" ./subdir --memory 512m --cpus 2
 ```
+
+### Worker runs out of memory on very large trees
+
+The paths are serialized to JSON and piped into the container, then deserialized back
+into a Python list — so the worker holds both the JSON bytes and the list in memory at
+once. At the default 256 MB limit this can OOM around 500K–1M paths (depending on
+average path length). Raise the limit:
+
+```bash
+nfind "…" . --memory 1g
+```
+
+If the search root is large, also consider narrowing it or using `--exclude` to prune
+subtrees you don't need before the paths reach the container.

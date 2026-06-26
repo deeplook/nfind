@@ -350,7 +350,11 @@ def test_build_worker_image_surfaces_package_names_on_build_failure():
 
 
 def test_search_maps_host_paths_in_records(tmp_path):
+    # Mock enumeration so the test pins the container->host mapping and stays independent of
+    # whether the platform identity-mounts or falls back to /data.
     (tmp_path / "file.txt").write_text("content")
+    host = str((tmp_path / "file.txt").resolve())
+    container = "/data/file.txt"
     with (
         patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
@@ -358,14 +362,19 @@ def test_search_maps_host_paths_in_records(tmp_path):
             MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return paths")
         ),
         patch.object(
+            MODULE,
+            "enumerate_roots",
+            return_value=([container], {container: host}, [EXECUTION.Mount(tmp_path, "/data")]),
+        ),
+        patch.object(
             EXECUTION,
             "run_filter",
-            return_value=[{"path": "/data/file.txt", "lines": 1}],
+            return_value=[{"path": container, "lines": 1}],
         ),
     ):
         results = MODULE.search(str(tmp_path), "files")
 
-    assert results == [{"path": str((tmp_path / "file.txt").resolve()), "lines": 1}]
+    assert results == [{"path": host, "lines": 1}]
 
 
 def test_search_invokes_on_generated_before_running(tmp_path):
@@ -1633,6 +1642,9 @@ def test_run_saved_replays_without_generating(tmp_path):
     script = tmp_path / "mp3.py"
     script.write_text(MODULE.serialize_filter(_gen(code, ["mutagen"]), "mp3", "gpt-4o-mini"))
 
+    # Mock enumeration so the container->host mapping is pinned and the test is independent
+    # of identity vs. /data mounting on the host platform.
+    host = str((tmp_path / "a.mp3").resolve())
     container = "/data/a.mp3"
     with (
         patch.object(MODULE, "check_sandbox_available"),
@@ -1641,15 +1653,15 @@ def test_run_saved_replays_without_generating(tmp_path):
         patch.object(EXECUTION, "run_filter", return_value=[{"path": container}]) as run_filter,
         patch.object(
             MODULE,
-            "enumerate_paths",
-            return_value=([container], {container: str(tmp_path / "a.mp3")}),
+            "enumerate_roots",
+            return_value=([container], {container: host}, [EXECUTION.Mount(tmp_path, "/data")]),
         ),
     ):
         records = MODULE.run_saved(script, str(tmp_path))
 
     generate.assert_not_called()
     run_filter.assert_called_once()
-    assert records == [{"path": str(tmp_path / "a.mp3")}]
+    assert records == [{"path": host}]
 
 
 def test_run_saved_gates_unapproved_dependencies(tmp_path):
@@ -1798,3 +1810,69 @@ def test_cli_requires_prompt_without_run():
     result = CliRunner().invoke(cli.app, ["--json"])
     assert result.exit_code == 2
     assert "PROMPT is required" in result.output
+
+
+# ---------------------------------------------------------------------------
+# generate-only mode (no PATH given) tests
+# ---------------------------------------------------------------------------
+
+_SIMPLE_FILTER = "def filter_paths(paths):\n    return paths"
+
+
+def _fake_generate_only(fake_generated):
+    """Return a side_effect for patching backend.generate_only."""
+
+    def _impl(prompt, *, model, on_generated, on_retry, macos_meta, format_code):
+        if on_generated is not None:
+            on_generated(fake_generated)
+
+    return _impl
+
+
+def test_no_paths_calls_generate_only_and_exits_zero():
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)) as mock:
+        result = CliRunner().invoke(cli.app, ["files with no extension", "--show-code"])
+
+    assert result.exit_code == 0
+    assert mock.called
+
+
+def test_no_paths_save_writes_filter_file(tmp_path):
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    save_path = tmp_path / "filter.py"
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)):
+        result = CliRunner().invoke(
+            cli.app,
+            ["files with no extension", "--save", str(save_path)],
+        )
+
+    assert result.exit_code == 0
+    assert save_path.exists()
+    assert "filter_paths" in save_path.read_text()
+
+
+def test_no_paths_warns_without_useful_flag():
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)):
+        result = CliRunner().invoke(cli.app, ["files with no extension"])
+
+    assert result.exit_code == 0
+    assert "will be discarded" in result.output
+
+
+def test_no_paths_no_warning_with_show_code():
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)):
+        result = CliRunner().invoke(cli.app, ["files with no extension", "--show-code"])
+
+    assert result.exit_code == 0
+    assert "will be discarded" not in result.output

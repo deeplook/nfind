@@ -2,8 +2,9 @@
 """Search paths with an LLM-generated filter executed inside a sandbox backend.
 
 The host enumerates the search tree and asks the model for code. The generated
-code runs in a disposable container with the search root mounted at /data as
-read-only. Only paths supplied by the host may be returned.
+code runs in a disposable container with the search root bind-mounted read-only
+(at its own host path when safe, else a neutral mountpoint). Only paths supplied
+by the host may be returned.
 
 The in-container worker that runs the generated code lives in :mod:`nfind.worker`,
 a self-contained, standard-library-only module the worker image ships and runs as
@@ -159,8 +160,10 @@ def search(
     built from the chosen runtime by default); pass a fake to run without Docker.
 
     ``path`` is a single root or a sequence of roots; each root may be a directory (walked)
-    or a single file. With several roots each is mounted separately and its entries are
-    namespaced so identically named files don't collide. ``exclude`` (glob patterns),
+    or a single file. Each root is bind-mounted at its own host path when that is safe;
+    otherwise (a root is ``/``, would shadow a container system directory, or roots overlap)
+    entries fall back to neutral ``/data`` mountpoints, namespaced so identically named
+    files don't collide. ``exclude`` (glob patterns),
     ``use_default_ignores`` (skip common
     VCS/dependency/cache directories), and ``max_depth`` (limit traversal depth) shape
     which paths are enumerated and handed to the filter; see :func:`enumerate_roots`.
@@ -202,6 +205,32 @@ def search(
         sandbox=sandbox,
         sandbox_backend=sandbox_backend,
     )
+
+
+def generate_only(
+    prompt: str,
+    *,
+    model: str = DEFAULT_MODEL,
+    on_generated: Callable[[GeneratedFilter], None] | None = None,
+    on_retry: Callable[[int, ValueError], None] | None = None,
+    macos_meta: bool = False,
+    format_code: bool = True,
+) -> GeneratedFilter:
+    """Generate a filter without running the sandbox.
+
+    Makes the LLM call, applies ruff formatting when ``format_code`` is true,
+    and calls ``on_generated`` if provided. Returns the ``GeneratedFilter``.
+
+    Use this (or ``--no-exec`` on the CLI) when you want to inspect or save a
+    filter without executing it — no path enumeration, no sandbox startup.
+    """
+    generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
+    generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
+    if format_code:
+        generated.code = _format_generated_code(generated.code, generated.runtime)
+    if on_generated is not None:
+        on_generated(generated)
+    return generated
 
 
 def run_saved(

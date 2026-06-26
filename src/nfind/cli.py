@@ -148,8 +148,9 @@ def main(
         list[str] | None,
         typer.Argument(
             metavar="[PATH]...",
-            help="One or more directories or files to search (default: current "
-            "directory). With several, each is searched and results are merged.",
+            help="One or more directories or files to search. With several, each is "
+            "searched and results are merged. If omitted, the filter is generated "
+            "but not run (useful with --save or --show-code).",
         ),
     ] = None,
     config_file: Annotated[
@@ -195,7 +196,7 @@ def main(
     timeout: Annotated[
         float,
         typer.Option(help="Seconds the generated filter may run before it is killed."),
-    ] = 10.0,
+    ] = 180.0,
     memory: Annotated[
         str,
         typer.Option(help="Memory limit for the worker container (e.g. 256m)."),
@@ -348,6 +349,14 @@ def main(
     if isinstance(request, GeneratedSearchRequest) and macos_meta and sys.platform != "darwin":
         typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
 
+    generate_only_mode = isinstance(request, GeneratedSearchRequest) and not request.paths
+    if generate_only_mode and not (show_code or save is not None or confirm):
+        typer.echo(
+            "warning: no PATH given and no --save, --show-code, or --confirm — "
+            "the generated filter will be discarded.",
+            err=True,
+        )
+
     def on_generated(generated: GeneratedFilter) -> None:
         if save is not None:
             plan_prompt = request.prompt if isinstance(request, GeneratedSearchRequest) else ""
@@ -378,7 +387,8 @@ def main(
         if verbose:
             typer.echo(f"generation attempt failed, retrying (retry {retry}): {error}", err=True)
 
-    hook = on_generated if (show_code or save is not None or confirm) else None
+    needs_hook = show_code or save is not None or confirm or generate_only_mode
+    hook = on_generated if needs_hook else None
     exclude_globs = tuple(exclude or ())
     use_default_ignores = not no_ignore
 
@@ -401,6 +411,17 @@ def main(
                 max_depth=max_depth,
                 use_default_ignores=use_default_ignores,
             )
+        elif generate_only_mode:
+            assert isinstance(request, GeneratedSearchRequest)
+            backend.generate_only(
+                request.prompt,
+                model=model,
+                on_generated=hook,
+                on_retry=on_retry,
+                macos_meta=macos_meta,
+                format_code=not no_format,
+            )
+            raise typer.Exit(0)
         else:
             assert isinstance(request, GeneratedSearchRequest)
             results = backend.search(

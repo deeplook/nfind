@@ -32,8 +32,8 @@ def search(
     prompt: str,
     *,
     image: str | None = None,         # override the chosen runtime's base tag
-    model: str = "gpt-4o-mini",
-    timeout: float = 10.0,
+    model: str = "openai/gpt-5.4",
+    timeout: float = 180.0,
     memory: str = "256m",
     cpus: float = 1.0,
     pids_limit: int = 64,
@@ -119,7 +119,7 @@ from nfind.backend import GeneratedFilter
 saved: list[GeneratedFilter] = []
 search(".", "Python files that import os", on_generated=saved.append)
 Path("os-imports.py").write_text(
-    serialize_filter(saved[0], "Python files that import os", "gpt-4o-mini")
+    serialize_filter(saved[0], "Python files that import os", "openai/gpt-5.4")
 )
 
 # Later, replay it sandboxed with no model call:
@@ -237,8 +237,10 @@ records = execution.run_filter(
 | `check_docker_available()` | Raise `DockerUnavailableError` if Docker can't be reached. |
 | `check_sandbox_available("docker" | "apple")` | Raise `DockerUnavailableError` if the selected sandbox backend can't be reached. |
 
-These lower-level helpers return container paths (`/data/...`, or `/data/0/...` for
-multi-root runs); `search` and `run_saved` map them back to host paths.
+These lower-level helpers return the in-container paths the filter will see — each root's
+own host path when it can be safely mounted there, or neutral `/data` / `/data/0` … mount
+points otherwise — alongside the container→host map that `search` and `run_saved` use to
+translate results back.
 
 ## The sandbox component
 

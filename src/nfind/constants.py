@@ -4,7 +4,7 @@ from __future__ import annotations
 
 DEFAULT_IMAGE = "nfind-search-paths:latest"
 DEFAULT_NODE_IMAGE = "nfind-search-node:latest"
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "openai/gpt-5.4"
 DEFAULT_RUNTIME = "python"
 DEFAULT_PROVIDER = "openai"
 
