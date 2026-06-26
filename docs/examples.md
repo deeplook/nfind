@@ -119,3 +119,12 @@ nfind "files with no extension" | wc -l
 nfind "shell scripts that use 'rm -rf'" | xargs -I{} shellcheck {}
 nfind "audio files (mp3, flac, wav)" ~/Music > audio.txt
 ```
+
+nfind can also read its roots *from* stdin with `-` (newline- or NUL-delimited,
+auto-detected), so it works as a filter mid-pipeline — let a cheap tool narrow the tree
+first, then nfind parse only the survivors:
+
+```bash
+find . -name '*.sh' -print0 | nfind "shell scripts that use 'rm -rf'" -
+git ls-files '*.py' | nfind "Python files that call eval()" -
+```

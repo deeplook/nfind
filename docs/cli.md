@@ -26,10 +26,10 @@ and print one path per line. Both `-h` and `--help` show usage. With `--run`, a
 previously saved filter is replayed instead and `PROMPT` is omitted (see
 [Saving & replaying filters](#saving--replaying-filters)).
 
-Pass several roots to search them in one run; each is mounted separately and its
-entries are namespaced internally, so identically named files in different roots never
-collide. Results are merged into a single list of host paths. A root may be a directory
-(walked) or a single file, so you can target specific files directly.
+Pass several roots to search them in one run; each is searched separately, so identically
+named files in different roots never collide, and the results are merged into a single
+list of host paths. A root may be a directory (walked) or a single file, so you can target
+specific files directly.
 
 ```bash
 nfind "directories that contain only audio files"
@@ -39,12 +39,33 @@ nfind "TODO comments left in the code" ./src ./tests ~/scratch
 nfind "files larger than 1 MB, with their size" --verbose
 ```
 
+### Reading the path list from stdin
+
+Pass `-` as a path to read the roots from standard input — one per line, or NUL-separated
+(auto-detected, so it consumes `find -print0` and `nfind --print0` directly, safely
+handling spaces and newlines in filenames). The whole list is searched in a single run
+(one LLM call), and `-` can be mixed with explicit paths. This lets a cheap mechanical
+prefilter narrow the tree before nfind does the expensive content analysis:
+
+```bash
+# Only parse the large TIFFs, not every image
+find /imagery -size +50M -name '*.tif' -print0 | nfind "GeoTIFFs with no embedded CRS, using rasterio" -
+
+# Newline-delimited input works too
+fd -e pdf . ~/Documents | nfind "PDFs that contain embedded JavaScript, using pypdf" -
+```
+
+If stdin yields no paths, nfind prints nothing and exits 0 (it does **not** fall back to
+searching the current directory). For repeated multi-stage pipelines, prefer chaining
+saved filters (`--run`) so no stage pays an LLM call — see
+[Saving & replaying filters](#saving--replaying-filters).
+
 ## Arguments
 
 | Argument | Default | Description |
 |---|---|---|
 | `PROMPT` | — (required) | Natural-language description of the paths to find. |
-| `PATH`... | — | One or more directories or files to search. With several, results are merged. If omitted, the filter is generated but not run (useful with `--save` or `--show-code`). |
+| `PATH`... | — | One or more directories or files to search. With several, results are merged. Use `-` to read a NUL- or newline-delimited path list from stdin. If omitted, the filter is generated but not run (useful with `--save` or `--show-code`). |
 
 ## Options
 
