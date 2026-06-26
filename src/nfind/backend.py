@@ -204,6 +204,32 @@ def search(
     )
 
 
+def generate_only(
+    prompt: str,
+    *,
+    model: str = DEFAULT_MODEL,
+    on_generated: Callable[[GeneratedFilter], None] | None = None,
+    on_retry: Callable[[int, ValueError], None] | None = None,
+    macos_meta: bool = False,
+    format_code: bool = True,
+) -> GeneratedFilter:
+    """Generate a filter without running the sandbox.
+
+    Makes the LLM call, applies ruff formatting when ``format_code`` is true,
+    and calls ``on_generated`` if provided. Returns the ``GeneratedFilter``.
+
+    Use this (or ``--no-exec`` on the CLI) when you want to inspect or save a
+    filter without executing it — no path enumeration, no sandbox startup.
+    """
+    generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
+    generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
+    if format_code:
+        generated.code = _format_generated_code(generated.code, generated.runtime)
+    if on_generated is not None:
+        on_generated(generated)
+    return generated
+
+
 def run_saved(
     filter_path: str | Path,
     path: str | Path | Sequence[str | Path] = ".",

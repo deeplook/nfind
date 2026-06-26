@@ -1798,3 +1798,69 @@ def test_cli_requires_prompt_without_run():
     result = CliRunner().invoke(cli.app, ["--json"])
     assert result.exit_code == 2
     assert "PROMPT is required" in result.output
+
+
+# ---------------------------------------------------------------------------
+# generate-only mode (no PATH given) tests
+# ---------------------------------------------------------------------------
+
+_SIMPLE_FILTER = "def filter_paths(paths):\n    return paths"
+
+
+def _fake_generate_only(fake_generated):
+    """Return a side_effect for patching backend.generate_only."""
+
+    def _impl(prompt, *, model, on_generated, on_retry, macos_meta, format_code):
+        if on_generated is not None:
+            on_generated(fake_generated)
+
+    return _impl
+
+
+def test_no_paths_calls_generate_only_and_exits_zero():
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)) as mock:
+        result = CliRunner().invoke(cli.app, ["files with no extension", "--show-code"])
+
+    assert result.exit_code == 0
+    assert mock.called
+
+
+def test_no_paths_save_writes_filter_file(tmp_path):
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    save_path = tmp_path / "filter.py"
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)):
+        result = CliRunner().invoke(
+            cli.app,
+            ["files with no extension", "--save", str(save_path)],
+        )
+
+    assert result.exit_code == 0
+    assert save_path.exists()
+    assert "filter_paths" in save_path.read_text()
+
+
+def test_no_paths_warns_without_useful_flag():
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)):
+        result = CliRunner().invoke(cli.app, ["files with no extension"])
+
+    assert result.exit_code == 0
+    assert "will be discarded" in result.output
+
+
+def test_no_paths_no_warning_with_show_code():
+    from typer.testing import CliRunner
+
+    fake = _gen(_SIMPLE_FILTER)
+    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)):
+        result = CliRunner().invoke(cli.app, ["files with no extension", "--show-code"])
+
+    assert result.exit_code == 0
+    assert "will be discarded" not in result.output

@@ -37,10 +37,10 @@ def test_plans_generated_search_request():
     assert request == GeneratedSearchRequest(prompt="audio", paths=["/music", "/archive"])
 
 
-def test_generated_search_defaults_to_current_directory():
+def test_generated_search_with_no_paths_has_empty_paths():
     request = _plan(paths=None)
 
-    assert request == GeneratedSearchRequest(prompt="files", paths=["."])
+    assert request == GeneratedSearchRequest(prompt="files", paths=[])
 
 
 def test_plans_list_models_request_without_prompt():
@@ -56,11 +56,11 @@ def test_run_folds_prompt_positionals_into_paths(tmp_path):
     assert request == SavedReplayRequest(filter_path=script, paths=["/first", "/second"])
 
 
-def test_run_defaults_to_current_directory(tmp_path):
+def test_run_defaults_to_empty_paths(tmp_path):
     script = tmp_path / "filter.py"
     request = _plan(prompt=None, paths=None, run=script)
 
-    assert request == SavedReplayRequest(filter_path=script, paths=["."])
+    assert request == SavedReplayRequest(filter_path=script, paths=[])
 
 
 @pytest.mark.parametrize(

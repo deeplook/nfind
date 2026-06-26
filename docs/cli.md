@@ -44,7 +44,7 @@ nfind "files larger than 1 MB, with their size" --verbose
 | Argument | Default | Description |
 |---|---|---|
 | `PROMPT` | — (required) | Natural-language description of the paths to find. |
-| `PATH`... | `.` | One or more directories or files to search. With several, results are merged. |
+| `PATH`... | — | One or more directories or files to search. With several, results are merged. If omitted, the filter is generated but not run (useful with `--save` or `--show-code`). |
 
 ## Options
 
@@ -101,6 +101,19 @@ nfind "files with no extension" --save filter.py
 # Show the code and ask for confirmation before running (aborts on "no")
 nfind "files with no extension" -i        # or --confirm
 ```
+
+Omitting `PATH` entirely generates the filter without running it — useful when you want to capture or inspect a filter before deciding where to run it:
+
+```bash
+# Generate and save without searching anything
+nfind "MP3 files whose bitrate is below 128 kbps, using mutagen" --save filter.py
+
+# Generate and inspect inline, then replay later
+nfind "MP3 files whose bitrate is below 128 kbps, using mutagen" --show-code
+nfind --run filter.py ~/Music
+```
+
+nfind warns when no `PATH` is given and none of `--save`, `--show-code`, or `--confirm` is set, since the generated filter would be silently discarded.
 
 `--show-code` and `--confirm` print the **full artifact as
 [`--save`](#saving--replaying-filters) would write it** — a Python PEP 723 script or a

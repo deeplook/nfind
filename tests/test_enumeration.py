@@ -185,10 +185,10 @@ def test_cli_passes_multiple_paths_to_search():
     assert search.call_args.args[0] == ["/tmp", "/var"]
 
 
-def test_cli_defaults_to_current_directory():
+def test_cli_searches_given_directory():
     runner = CliRunner()
     with patch.object(cli.backend, "search", return_value=[]) as search:
-        result = runner.invoke(cli.app, ["prompt"])
+        result = runner.invoke(cli.app, ["prompt", "."])
     assert result.exit_code == 0
     assert search.call_args.args[0] == ["."]
 
