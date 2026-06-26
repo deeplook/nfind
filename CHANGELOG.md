@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Read the path list from stdin.** Passing `-` as a path makes nfind read its search
+  roots from standard input — newline-delimited, or NUL-delimited (auto-detected, so it
+  consumes `find -print0` and `nfind --print0` safely). The whole list is searched in a
+  single run, `-` can be mixed with explicit paths, and an empty stdin prints nothing and
+  exits 0 rather than falling back to the current directory. This makes nfind a first-class
+  citizen in Unix pipes (`find … | nfind "…" -`).
 - **Generate-only mode.** Omitting `PATH` generates the filter (LLM call) without
   running the sandbox or enumerating any paths — useful with `--save` to capture a
   filter for later replay, or with `--show-code` to inspect it inline. nfind warns

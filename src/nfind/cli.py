@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -21,6 +22,7 @@ from .backend import (
     SandboxBackend,
 )
 from .command_plan import (
+    CommandRequest,
     GeneratedSearchRequest,
     ListModelsRequest,
     SavedReplayRequest,
@@ -135,6 +137,49 @@ def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool, print0
             typer.echo(path)
 
 
+def _read_stdin_paths() -> list[str]:
+    """Read a path list from stdin, splitting on NUL when present, else on newlines.
+
+    NUL auto-detection lets ``-`` consume both ``find -print0`` / ``nfind --print0``
+    (NUL-delimited, safe for odd filenames) and plain newline-delimited lists without a
+    separate flag. Empty entries (e.g. a trailing separator) are dropped.
+    """
+    buffer = getattr(sys.stdin, "buffer", None)
+    if buffer is not None:
+        data = buffer.read()
+        parts = data.split(b"\0") if b"\0" in data else data.splitlines()
+        return [part.decode("utf-8", "surrogateescape") for part in parts if part]
+    text = sys.stdin.read()
+    text_parts = text.split("\0") if "\0" in text else text.splitlines()
+    return [part for part in text_parts if part]
+
+
+def _resolve_stdin_paths(request: CommandRequest) -> tuple[CommandRequest, bool]:
+    """Expand a ``-`` path argument by reading the root list from stdin.
+
+    Returns the (possibly rewritten) request and a flag that is true when stdin was
+    requested but yielded no paths -- the caller should then emit nothing and exit rather
+    than let an empty root list fall back to searching the current directory.
+    """
+    if not isinstance(request, (GeneratedSearchRequest, SavedReplayRequest)):
+        return request, False
+    if "-" not in request.paths:
+        return request, False
+    if sys.stdin.isatty():
+        raise ValueError(
+            "reading paths from stdin ('-') but stdin is a terminal; pipe a path list "
+            'in, e.g. \'find . -name "*.py" | nfind "..." -\''
+        )
+    stdin_paths = _read_stdin_paths()
+    expanded: list[str] = []
+    for path in request.paths:
+        if path == "-":
+            expanded.extend(stdin_paths)
+        else:
+            expanded.append(path)
+    return replace(request, paths=expanded), not expanded
+
+
 @app.command(no_args_is_help=True)
 def main(
     prompt: Annotated[
@@ -149,8 +194,10 @@ def main(
         typer.Argument(
             metavar="[PATH]...",
             help="One or more directories or files to search. With several, each is "
-            "searched and results are merged. If omitted, the filter is generated "
-            "but not run (useful with --save or --show-code).",
+            "searched and results are merged. Use '-' to read a NUL- or newline-"
+            "delimited path list from stdin (e.g. 'find . | nfind \"...\" -'). If "
+            "omitted, the filter is generated but not run (useful with --save or "
+            "--show-code).",
         ),
     ] = None,
     config_file: Annotated[
@@ -329,6 +376,15 @@ def main(
     except ValueError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
+
+    try:
+        request, stdin_no_paths = _resolve_stdin_paths(request)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    if stdin_no_paths:
+        _emit([], as_json=as_json, verbose=verbose, print0=print0)
+        raise typer.Exit(0)
 
     if isinstance(request, ListModelsRequest):
         try:

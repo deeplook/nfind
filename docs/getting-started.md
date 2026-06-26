@@ -386,9 +386,17 @@ nfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir
 # Feed extra fields to jq
 nfind "the 20 largest files and their sizes" --json | jq '.results[] | .path'
 
+# nfind also *reads* a path list from stdin via '-': prefilter cheaply, then analyze
+find ~/data -name '*.pdf' -print0 | nfind "PDFs with embedded JavaScript, using pypdf" -
+
 # Disable color when capturing logs (or when piping; nfind auto-detects non-TTYs)
 NO_COLOR=1 nfind "TODO comments in Python files" --show-code 2> generated.py
 ```
+
+nfind sits on both ends of a pipe: it emits a clean path list, and with `-` it consumes
+one — newline- or NUL-delimited (auto-detected, so `find -print0` and `nfind --print0`
+both feed it safely). That lets a fast mechanical filter (`find`, `fd`, `git ls-files`)
+narrow the tree before nfind does the expensive content analysis.
 
 `--print0` is the right choice whenever the results feed a destructive command: a path
 with a space or newline would otherwise split into the wrong arguments. For scripting

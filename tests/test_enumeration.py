@@ -1,13 +1,14 @@
 """Tests for find-style enumeration filters: --exclude/ignore, --max-depth, --print0."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from nfind import cli
 from nfind import enumeration as MODULE
+from nfind.command_plan import GeneratedSearchRequest
 
 # Identity mounting (container path == host path) is POSIX-only: a Linux container needs a
 # POSIX mount target, so Windows falls back to /data and these expectations don't hold there.
@@ -395,3 +396,68 @@ def test_cli_rejects_unknown_sandbox_backend():
 
     assert result.exit_code == 2
     assert "--sandbox must be one of" in result.output
+
+
+# --- reading the root list from stdin ('-') -------------------------------------
+
+
+def test_cli_dash_reads_newline_paths_from_stdin():
+    runner = CliRunner()
+    with patch.object(cli.backend, "search", return_value=[]) as search:
+        result = runner.invoke(cli.app, ["prompt", "-"], input="a.txt\nb.txt\n")
+    assert result.exit_code == 0
+    assert search.call_args.args[0] == ["a.txt", "b.txt"]
+
+
+def test_cli_dash_reads_nul_delimited_paths_from_stdin():
+    # NUL delimiters are auto-detected so '-' consumes `find -print0` / `nfind --print0`.
+    runner = CliRunner()
+    with patch.object(cli.backend, "search", return_value=[]) as search:
+        result = runner.invoke(cli.app, ["prompt", "-"], input="a b.txt\0c.txt\0")
+    assert result.exit_code == 0
+    assert search.call_args.args[0] == ["a b.txt", "c.txt"]
+
+
+def test_cli_dash_merges_with_explicit_paths():
+    runner = CliRunner()
+    with patch.object(cli.backend, "search", return_value=[]) as search:
+        result = runner.invoke(cli.app, ["prompt", "explicit", "-"], input="from-stdin.txt\n")
+    assert result.exit_code == 0
+    assert search.call_args.args[0] == ["explicit", "from-stdin.txt"]
+
+
+def test_cli_dash_empty_stdin_emits_nothing_and_skips_search():
+    # Empty stdin must not fall back to searching '.'; it should run nothing.
+    runner = CliRunner()
+    with patch.object(cli.backend, "search", return_value=[]) as search:
+        result = runner.invoke(cli.app, ["prompt", "-"], input="")
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    search.assert_not_called()
+
+
+def test_cli_dash_with_run_reads_stdin(tmp_path):
+    script = tmp_path / "f.py"
+    script.write_text("def filter_paths(paths): return paths")
+    runner = CliRunner()
+    with patch.object(cli.backend, "run_saved", return_value=[]) as run_saved:
+        result = runner.invoke(cli.app, ["--run", str(script), "-"], input="a.txt\nb.txt\n")
+    assert result.exit_code == 0
+    assert run_saved.call_args.args[1] == ["a.txt", "b.txt"]
+
+
+def test_resolve_stdin_paths_passthrough_without_dash():
+    request = GeneratedSearchRequest(prompt="p", paths=["a", "b"])
+    resolved, no_paths = cli._resolve_stdin_paths(request)
+    assert resolved is request and no_paths is False
+
+
+def test_resolve_stdin_paths_errors_on_tty():
+    request = GeneratedSearchRequest(prompt="p", paths=["-"])
+    fake_stdin = Mock()
+    fake_stdin.isatty.return_value = True
+    with (
+        patch.object(cli.sys, "stdin", fake_stdin),
+        pytest.raises(ValueError, match="stdin is a terminal"),
+    ):
+        cli._resolve_stdin_paths(request)
