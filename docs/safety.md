@@ -27,7 +27,7 @@ network. With Apple Containers on macOS 15, see the network caveat below.
 
 ### 2. The search tree is mounted read-only
 
-The directory you search is bind-mounted at `/data` with the `readonly` flag. The
+The directory you search is bind-mounted into the container with the `readonly` flag. The
 filter can read names, metadata, and contents, but **cannot create, modify, or delete
 anything** in your files.
 
