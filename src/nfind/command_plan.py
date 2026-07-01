@@ -30,11 +30,18 @@ def normalize_search_paths(paths: list[str] | None) -> list[str]:
     return paths or []
 
 
-def validate_output_modes(*, as_json: bool, verbose: bool, print0: bool) -> None:
-    if as_json and verbose:
-        raise ValueError("--json and --verbose are mutually exclusive.")
-    if print0 and (as_json or verbose):
-        raise ValueError("--print0 cannot be combined with --json or --verbose.")
+def validate_output_modes(*, as_json: bool, fields: bool, print0: bool, extract: bool) -> None:
+    if as_json and fields:
+        raise ValueError("--json and --fields are mutually exclusive.")
+    if print0 and (as_json or fields):
+        raise ValueError("--print0 cannot be combined with --json or --fields.")
+    if extract and fields:
+        raise ValueError("--extract and --fields are mutually exclusive.")
+
+
+def validate_extract_modes(*, extract: bool, extract_field: str | None) -> None:
+    if extract_field is not None and not extract:
+        raise ValueError("--extract-field requires --extract.")
 
 
 def validate_dependency_modes(*, yes: bool, no_deps: bool) -> None:
@@ -85,13 +92,16 @@ def plan_command(
     confirm: bool,
     macos_meta: bool,
     as_json: bool,
-    verbose: bool,
+    fields: bool,
     print0: bool,
+    extract: bool,
+    extract_field: str | None,
     yes: bool,
     no_deps: bool,
     max_depth: int | None,
 ) -> CommandRequest:
-    validate_output_modes(as_json=as_json, verbose=verbose, print0=print0)
+    validate_output_modes(as_json=as_json, fields=fields, print0=print0, extract=extract)
+    validate_extract_modes(extract=extract, extract_field=extract_field)
     validate_dependency_modes(yes=yes, no_deps=no_deps)
     validate_max_depth(max_depth)
     return build_command_request(

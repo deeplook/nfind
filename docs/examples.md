@@ -61,11 +61,11 @@ nfind "Kotlin files that declare a data class, using tree-sitter-kotlin"
 
 ## With extra data
 
-When the prompt asks for per-file information, surface it with `--verbose` or
+When the prompt asks for per-file information, surface it with `--fields` or
 `--json`:
 
 ```bash
-nfind "Python files, and for each the number of lines" --verbose
+nfind "Python files, and for each the number of lines" --fields
 # /path/to/a.py	lines=42
 # /path/to/b.py	lines=7
 

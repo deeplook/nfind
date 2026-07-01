@@ -331,9 +331,9 @@ def test_cli_print0_conflicts_with_json():
     assert "--print0 cannot be combined" in result.output
 
 
-def test_cli_print0_conflicts_with_verbose():
+def test_cli_print0_conflicts_with_fields():
     runner = CliRunner()
-    result = runner.invoke(cli.app, ["prompt", "/tmp", "--print0", "--verbose"])
+    result = runner.invoke(cli.app, ["prompt", "/tmp", "--print0", "--fields"])
     assert result.exit_code == 2
 
 

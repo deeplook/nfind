@@ -23,10 +23,10 @@ nfind "Python files that import os"
 
 Clean and pipeable. Any extra fields the filter produced are ignored in this mode.
 
-## `--verbose` / `-v` — path plus fields
+## `--fields` / `-f` — path plus fields
 
 ```bash
-nfind "Python files, and for each the number of lines" --verbose
+nfind "Python files, and for each the number of lines" --fields
 ```
 
 ```
@@ -35,8 +35,13 @@ nfind "Python files, and for each the number of lines" --verbose
 ```
 
 Each path is followed by a tab and its extra fields as `key=value`, comma-separated.
-When a result has no extra fields, only the path is printed — so `--verbose` degrades
+When a result has no extra fields, only the path is printed — so `--fields` degrades
 gracefully to the default for prompts that don't ask for data.
+
+A **list-valued** field is summarised as its element **count** rather than dumped
+(`key=value` can't faithfully render a nested object), so a record carrying
+`todos: [{…}, {…}, {…}]` prints `todos=3`. Use [`--extract`](#--extract--items-inside-files)
+for one line per element, or `--json` for the full nested record.
 
 ## `--json` — machine-readable records
 
@@ -62,9 +67,54 @@ nfind "Python files, and for each the number of lines" --json \
   | jq '.results | sort_by(.lines) | reverse | .[0]'
 ```
 
+## `--extract` — items inside files
+
+The other modes render one line per **file**. `--extract` selects the things *inside*
+files: when a filter returns a record with a **list-valued** field — say
+`todos: [{line, text}, …]` — `--extract` explodes that field, streaming one match per
+line instead of one path per line. Passing `--extract` also steers the model to produce
+such a field.
+
+```bash
+nfind --extract "every TODO comment, with its file and line number" ./src
+```
+
+```
+/src/app.py:42	handle retry
+/src/app.py:91	drop after #312
+/src/worker.py:7	make timeout configurable
+```
+
+Each row is `path[:line]<TAB>payload`. The `line` (and optional `col`) anchor the path
+prefix and appear only when the item is line-anchored; a `text` field becomes the bare
+payload, and any other field renders as `key=value`. A scalar element (e.g. a bare URL)
+prints verbatim. Because each match is its own line, the stream feeds `wc -l`, `sort`,
+`awk`, and friends at **match grain**:
+
+```bash
+nfind --extract "every TODO with file and line" ./src | wc -l   # counts matches, not files
+nfind --extract "all hardcoded URLs in config files" ./config | sort -u
+```
+
+When a record has **more than one** list-valued field, `--extract` refuses to guess and
+exits naming the candidates — pick one with `--extract-field NAME`. A record with no list
+field degrades to a single path line, so mixed result sets still print. `--extract` works
+on the replay path too (`nfind --run filter.py --extract`), since it only *renders* what
+the filter returned.
+
+`--json` is unaffected by `--extract`: it always emits the canonical nested record, so
+machine consumers see one schema. Flatten to match grain with `jq` when you need it:
+
+```bash
+nfind --extract "every TODO, with file and line" ./src --json \
+  | jq '[.results[] as $r | $r.todos[] | {path:$r.path} + .]'
+```
+
 ## Notes
 
-- `--json` and `--verbose` are **mutually exclusive** (using both exits with code 2).
+- `--json` and `--fields` are **mutually exclusive** (using both exits with code 2).
+- `--extract` and `--fields` are **mutually exclusive**; `--extract` with `--json` keeps
+  the nested JSON (the explode applies only to text output).
 - Whether extra fields appear depends entirely on the prompt. "Python files" yields
   bare paths; "Python files **and their line count**" yields a `lines` field.
 - The field names are chosen by the model from your wording. Ask explicitly (e.g.

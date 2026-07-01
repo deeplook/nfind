@@ -32,7 +32,7 @@ dates) — with zero setup and a system-wide UI.
   "Python files larger than their `.pyc`", "Helm charts with both `Chart.yaml` and a
   `templates/`", "initialized Terraform modules".
 - **Computed output** — "…and for each, the line count / number of imports"
-  ([`--verbose` / `--json`](output-modes.md)). Spotlight returns files, not derived data.
+  ([`--fields` / `--json`](output-modes.md)). Spotlight returns files, not derived data.
 - **On-demand libraries** — pulls in real tooling per query (mutagen for ID3 tags,
   `ts-morph` for TypeScript) via its [runtimes](runtimes.md) and
   [dependencies](dependencies.md).

@@ -76,7 +76,7 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "pids-limit": ("pids_limit", _as_int),
     "build-timeout": ("build_timeout", _as_float),
     "json": ("as_json", _as_bool),
-    "verbose": ("verbose", _as_bool),
+    "fields": ("fields", _as_bool),
     "no-format": ("no_format", _as_bool),
     "exclude": ("exclude", _as_str_list),
     "no-ignore": ("no_ignore", _as_bool),

@@ -129,6 +129,23 @@ META exists only in the python runtime; prefer python when the description menti
 Finder tags, downloads / where-from, or other macOS metadata.
 """
 
+_EXTRACT_SYSTEM = """\
+This run renders results with --extract: the user wants the matching *items inside*
+files, not just the files. Return ordinary SELECT records (one object per matching
+file, each with a "path" that is one of the input paths) but attach ONE list-valued
+extra field whose elements are the items to extract -- for example
+  {"path": p, "todos": [{"line": 42, "text": "handle retry"},
+                        {"line": 91, "text": "drop after #312"}]}
+Conventions for each element object:
+  * give it a list field named for the items ("todos", "matches", "urls", ...);
+    return at most one such list field per record so --extract knows what to explode.
+  * include "line" (and "col" if useful) ONLY when the item is anchored at a source
+    line; omit them for items with no natural line. Never fabricate a line number.
+  * put the item's main payload in a "text" field; add other named fields as needed.
+A plain scalar extra field (e.g. "version": "2.3.1") is fine when the prompt asks for
+one value per file -- no list is needed then. Skip files with no matching items.
+"""
+
 _RETRY_TEMPLATE = """\
 Your previous response was rejected: {error}
 
@@ -442,13 +459,18 @@ def generate_filter(
     attempts: int = DEFAULT_GENERATION_ATTEMPTS,
     on_retry: Callable[[int, ValueError], None] | None = None,
     macos_meta: bool = False,
+    extract: bool = False,
 ) -> GeneratedFilter:
     """Generate a filter on the host, where the API credentials remain."""
     if attempts < 1:
         raise ValueError("attempts must be at least 1")
     provider, model_name = _split_model(model)
     client = _make_client(provider)
-    system = _SYSTEM + "\n" + _MACOS_META_SYSTEM if macos_meta else _SYSTEM
+    system = _SYSTEM
+    if macos_meta:
+        system = system + "\n" + _MACOS_META_SYSTEM
+    if extract:
+        system = system + "\n" + _EXTRACT_SYSTEM
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system},
         {"role": "user", "content": _USER_TEMPLATE.format(prompt=prompt)},

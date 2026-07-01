@@ -85,7 +85,7 @@ attribute index can't express. See [How nfind compares](comparison.md).
 - **[Save & replay](cli.md#saving--replaying-filters)** — `--save` writes the filter as
   a self-describing, dependency-declaring artifact; replay it sandboxed with `--run`
   or run trusted Python saves directly via `uv run`.
-- **[Output modes](output-modes.md)** — a clean path list by default, `--verbose` for
+- **[Output modes](output-modes.md)** — a clean path list by default, `--fields` for
   extra per-path fields, `--json` for machine-readable records.
 - **[Declared dependencies](dependencies.md)** — filters can request libraries (to read
   MP3 tags, image sizes, …); approved packages are installed into a derived sandbox
@@ -103,7 +103,7 @@ attribute index can't express. See [How nfind compares](comparison.md).
 ```bash
 nfind "files with no extension"                        # search the current directory
 nfind "directories with more than 50 files" ~/Projects # search a specific directory
-nfind "Python files, and for each the number of lines" --verbose
+nfind "Python files, and for each the number of lines" --fields
 nfind "audio files (mp3, flac, wav)" --json
 nfind "files that look like backups" --confirm         # review the code first
 ```

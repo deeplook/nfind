@@ -159,6 +159,13 @@ def test_normalize_results_accepts_paths_and_records():
     ]
 
 
+def test_emit_fields_summarises_list_fields_as_counts(capsys):
+    records = [{"path": "/data/app.py", "lines": 42, "todos": [{"line": 1}, {"line": 2}]}]
+    cli._emit(records, as_json=False, fields=True, print0=False)
+    out = capsys.readouterr().out
+    assert out == "/data/app.py\tlines=42, todos=2\n"
+
+
 @pytest.mark.parametrize(
     "results",
     [
@@ -1059,6 +1066,22 @@ def test_generate_filter_appends_macos_meta_guidance_only_when_enabled():
     assert "META" not in system
 
 
+def test_generate_filter_appends_extract_guidance_only_when_enabled():
+    good = json.dumps({"code": "def filter_paths(paths): return paths"})
+
+    patcher, client = _fake_openai(good)
+    with patcher:
+        GENERATION.generate_filter("anything", extract=True)
+    system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "--extract" in system and "list-valued" in system
+
+    patcher, client = _fake_openai(good)
+    with patcher:
+        GENERATION.generate_filter("anything")
+    system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "--extract" not in system
+
+
 def test_collect_macos_metadata_empty_off_darwin(monkeypatch):
     monkeypatch.setattr(metadata.sys, "platform", "linux")
     assert MODULE.collect_macos_metadata({"/data/a": "/host/a"}) == {}
@@ -1272,8 +1295,8 @@ def test_cli_default_prints_paths_only():
     assert result.output == "/a\n/b\n"
 
 
-def test_cli_verbose_shows_extra_fields():
-    result = _invoke_with_results(["--verbose"], [{"path": "/a", "lines": 5}, {"path": "/b"}])
+def test_cli_fields_shows_extra_fields():
+    result = _invoke_with_results(["--fields"], [{"path": "/a", "lines": 5}, {"path": "/b"}])
     assert result.exit_code == 0
     assert "/a\tlines=5" in result.output
     assert "/b" in result.output
@@ -1286,11 +1309,11 @@ def test_cli_json_outputs_records():
     assert payload == {"count": 1, "results": [{"path": "/a", "lines": 5}]}
 
 
-def test_cli_json_and_verbose_are_mutually_exclusive():
+def test_cli_json_and_fields_are_mutually_exclusive():
     from typer.testing import CliRunner
 
     runner = CliRunner()
-    result = runner.invoke(cli.app, ["prompt", "/tmp", "--json", "--verbose"])
+    result = runner.invoke(cli.app, ["prompt", "/tmp", "--json", "--fields"])
     assert result.exit_code == 2
     assert "mutually exclusive" in result.output
 
@@ -1511,7 +1534,7 @@ def test_harness_ignore_set_matches_default_ignores():
     assert set(DEFAULT_IGNORES) == filter_harness._IGNORE
 
 
-def test_saved_filter_standalone_harness_json_and_verbose(tmp_path):
+def test_saved_filter_standalone_harness_json_and_fields(tmp_path):
     # Keep the script out of the searched tree so it doesn't match itself.
     data = tmp_path / "data"
     data.mkdir()
@@ -1531,9 +1554,9 @@ def test_saved_filter_standalone_harness_json_and_verbose(tmp_path):
             check=True,
         ).stdout
 
-    # Default: bare path. --verbose: path + extras. --json: count + records with extras.
+    # Default: bare path. --fields: path + extras. --json: count + records with extras.
     assert _run().strip() == str(data / "a.py")
-    assert _run("--verbose").strip() == f"{data / 'a.py'}\tn=1"
+    assert _run("--fields").strip() == f"{data / 'a.py'}\tn=1"
     payload = json.loads(_run("--json"))
     assert payload == {"count": 1, "results": [{"path": str(data / "a.py"), "n": 1}]}
     assert _run("--print0") == f"{data / 'a.py'}\0"
@@ -1822,7 +1845,7 @@ _SIMPLE_FILTER = "def filter_paths(paths):\n    return paths"
 def _fake_generate_only(fake_generated):
     """Return a side_effect for patching backend.generate_only."""
 
-    def _impl(prompt, *, model, on_generated, on_retry, macos_meta, format_code):
+    def _impl(prompt, *, model, on_generated, on_retry, macos_meta, extract, format_code):
         if on_generated is not None:
             on_generated(fake_generated)
 

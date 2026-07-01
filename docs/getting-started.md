@@ -95,21 +95,21 @@ Apple Containers on macOS 15 has a weaker networking guarantee. See the
 ## 4. Richer output: extra fields and JSON
 
 By default you get plain paths. When your prompt asks for a per-file value, the model
-attaches it to each result. Use `--verbose` (`-v`) to see those extra fields, or `--json`
+attaches it to each result. Use `--fields` (`-f`) to see those extra fields, or `--json`
 for machine-readable records:
 
 ```bash
 # Default: paths only
 nfind "Python files and, for each, its line count"
 
-# --verbose / -v: append the extra fields after a tab
-nfind "Python files and, for each, its line count" --verbose
+# --fields / -f: append the extra fields after a tab
+nfind "Python files and, for each, its line count" --fields
 
 # --json: a {count, results} object, each result a dict with at least "path"
 nfind "the 10 largest log files and their sizes in bytes" --json
 ```
 
-`--json` and `--verbose` are mutually exclusive. More detail in
+`--json` and `--fields` are mutually exclusive. More detail in
 [Output modes](output-modes.md).
 
 ---
@@ -325,7 +325,7 @@ model = "anthropic/claude-3-5-sonnet-latest"
 timeout = 30
 memory = "512m"
 cpus = 2
-verbose = true
+fields = true
 ```
 
 ```bash
@@ -337,7 +337,7 @@ NFIND_CONFIG=./ci.toml nfind "Rust files that use unsafe"
 
 Precedence is **command-line > config file > built-in default**. Settable keys mirror the
 flag names (`model`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`, `build-timeout`,
-`json`, `verbose`, `no-format`); actions like `--save`/`--run` and approval shortcuts like
+`json`, `fields`, `no-format`); actions like `--save`/`--run` and approval shortcuts like
 `--yes`/`--no-deps` are intentionally not configurable. Full reference:
 [Configuration](configuration.md#config-file).
 
@@ -429,7 +429,7 @@ from Python instead of the shell, see the [Python API](api.md).
 | `--confirm`, `-i` | Show the code and ask before running. |
 | `--json` | Output a `{count, results}` JSON object. |
 | `--print0`, `-0` | Separate results with NUL bytes (for `xargs -0`). |
-| `--verbose`, `-v` | Show extra per-path fields. |
+| `--fields`, `-f` | Show extra per-path fields. |
 | `--yes`, `-y` | Approve requested packages without prompting. |
 | `--no-deps` | Reject all third-party packages (standard library only). |
 | `--no-format` | Skip the ruff cleanup of the generated filter. |

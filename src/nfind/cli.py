@@ -29,6 +29,7 @@ from .command_plan import (
     plan_command,
 )
 from .config import ConfigError, default_config_path, load_config
+from .extract import iter_extract_rows
 
 app = typer.Typer(
     add_completion=False,
@@ -111,16 +112,37 @@ def _load_config_defaults(ctx: typer.Context, value: Path | None) -> Path | None
     return value
 
 
-def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool, print0: bool) -> None:
+def _emit(
+    records: list[dict[str, Any]],
+    *,
+    as_json: bool,
+    fields: bool,
+    print0: bool,
+    extract: bool = False,
+    extract_field: str | None = None,
+) -> None:
     """Render result records in the requested output mode.
 
     Default: one path per line. ``--print0``: paths separated by NUL bytes (for
     ``xargs -0``). ``--json``: a JSON object with count and the full records (path plus
-    any extra fields). ``--verbose``: each path followed by its extra fields, when the
-    filter produced any.
+    any extra fields). ``--fields``: each path followed by its extra fields, when the
+    filter produced any; a list-valued field is summarised as its element count
+    (``todos=3``) rather than dumped, since ``key=value`` cannot faithfully render a
+    nested object -- use ``--extract`` or ``--json`` for the elements. ``--extract``:
+    explode each record's list-valued field into one
+    ``path[:line]<TAB><payload>`` line per element (NUL-separated under ``--print0``);
+    ``--json`` always wins and stays nested, so ``--extract`` only affects text output.
     """
     if as_json:
         typer.echo(json.dumps({"count": len(records), "results": records}, indent=2))
+        return
+    if extract:
+        rows = list(iter_extract_rows(records, extract_field))
+        if print0:
+            sys.stdout.write("".join(f"{row}\0" for row in rows))
+        else:
+            for row in rows:
+                typer.echo(row)
         return
     if print0:
         # NUL-terminate each path (the find -print0 / xargs -0 convention) so paths
@@ -130,8 +152,11 @@ def _emit(records: list[dict[str, Any]], *, as_json: bool, verbose: bool, print0
     for record in records:
         path = record["path"]
         extras = {key: value for key, value in record.items() if key != "path"}
-        if verbose and extras:
-            detail = ", ".join(f"{key}={value}" for key, value in extras.items())
+        if fields and extras:
+            detail = ", ".join(
+                f"{key}={len(value)}" if isinstance(value, list) else f"{key}={value}"
+                for key, value in extras.items()
+            )
             typer.echo(f"{path}\t{detail}")
         else:
             typer.echo(path)
@@ -208,7 +233,7 @@ def main(
             is_eager=True,
             callback=_load_config_defaults,
             help="TOML config file supplying defaults for options (model, timeout, "
-            "memory, cpus, pids-limit, build-timeout, image, json, verbose, no-format). "
+            "memory, cpus, pids-limit, build-timeout, image, json, fields, no-format). "
             "Defaults to config.toml in nfind's per-user config directory; "
             "command-line options win.",
         ),
@@ -292,10 +317,34 @@ def main(
         bool,
         typer.Option("--json", help="Output results as JSON (path plus any extra fields)."),
     ] = False,
-    verbose: Annotated[
+    fields: Annotated[
         bool,
-        typer.Option("--verbose", "-v", help="Show extra per-path fields alongside each path."),
+        typer.Option(
+            "--fields",
+            "-f",
+            help="Show each result's extra per-path fields as key=value (a list-valued "
+            "field renders as its count). Prints bare paths when the prompt asks for none.",
+        ),
     ] = False,
+    extract: Annotated[
+        bool,
+        typer.Option(
+            "--extract",
+            help="Explode each result's list-valued field into one match per line "
+            "(path[:line]<TAB>payload), and steer generation to produce such a field. "
+            "Selects items inside files rather than whole files. Mutually exclusive with "
+            "--fields; --json stays nested.",
+        ),
+    ] = False,
+    extract_field: Annotated[
+        str | None,
+        typer.Option(
+            "--extract-field",
+            metavar="NAME",
+            help="With --extract, name the list-valued field to explode when a record "
+            "has more than one. Requires --extract.",
+        ),
+    ] = None,
     yes: Annotated[
         bool,
         typer.Option("--yes", "-y", help="Approve any requested packages without prompting."),
@@ -367,8 +416,10 @@ def main(
             confirm=confirm,
             macos_meta=macos_meta,
             as_json=as_json,
-            verbose=verbose,
+            fields=fields,
             print0=print0,
+            extract=extract,
+            extract_field=extract_field,
             yes=yes,
             no_deps=no_deps,
             max_depth=max_depth,
@@ -383,7 +434,14 @@ def main(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
     if stdin_no_paths:
-        _emit([], as_json=as_json, verbose=verbose, print0=print0)
+        _emit(
+            [],
+            as_json=as_json,
+            fields=fields,
+            print0=print0,
+            extract=extract,
+            extract_field=extract_field,
+        )
         raise typer.Exit(0)
 
     if isinstance(request, ListModelsRequest):
@@ -440,7 +498,7 @@ def main(
         return typer.confirm("Install and remember them?", default=False, err=True)
 
     def on_retry(retry: int, error: ValueError) -> None:
-        if verbose:
+        if fields:
             typer.echo(f"generation attempt failed, retrying (retry {retry}): {error}", err=True)
 
     needs_hook = show_code or save is not None or confirm or generate_only_mode
@@ -475,6 +533,7 @@ def main(
                 on_generated=hook,
                 on_retry=on_retry,
                 macos_meta=macos_meta,
+                extract=extract,
                 format_code=not no_format,
             )
             raise typer.Exit(0)
@@ -496,6 +555,7 @@ def main(
                 on_retry=on_retry,
                 approve_dependencies=approve_dependencies,
                 macos_meta=macos_meta,
+                extract=extract,
                 format_code=not no_format,
                 exclude=exclude_globs,
                 max_depth=max_depth,
@@ -509,7 +569,18 @@ def main(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    _emit(results, as_json=as_json, verbose=verbose, print0=print0)
+    try:
+        _emit(
+            results,
+            as_json=as_json,
+            fields=fields,
+            print0=print0,
+            extract=extract,
+            extract_field=extract_field,
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
 
 if __name__ == "__main__":

@@ -40,13 +40,13 @@ memory = "512m"
 cpus = 2
 pids-limit = 128
 build-timeout = 180
-verbose = true
+fields = true
 no-format = false
 ```
 
 The settable keys mirror the option flag names (the underscore spelling, e.g.
 `pids_limit`, is also accepted): `model`, `image`, `timeout`, `memory`, `cpus`,
-`pids-limit`, `build-timeout`, `json`, `verbose`, `no-format`, `exclude` (a list of
+`pids-limit`, `build-timeout`, `json`, `fields`, `no-format`, `exclude` (a list of
 globs), `no-ignore`, `max-depth`, and `print0`. Per-invocation actions (`--save`,
 `--run`) and package-approval shortcuts (`--yes`, `--no-deps`) are intentionally **not**
 configurable, so each run stays explicit. An unknown key or a wrong value type is a hard

@@ -108,16 +108,23 @@ you can surface it:
 nfind "Python files that import os"
 
 # Verbose: path plus any extra fields the prompt produced
-nfind "Python files, and for each the number of lines" --verbose
+nfind "Python files, and for each the number of lines" --fields
 # /path/to/a.py	lines=42
 
 # JSON: machine-readable records (path plus extra fields) with a count
 nfind "Python files, and for each the number of lines" --json
 # { "count": 2, "results": [ { "path": "...", "lines": 42 }, ... ] }
+
+# Extract: items inside files — one match per line (path[:line]<TAB>payload)
+nfind --extract "every TODO comment, with its file and line number" ./src
+# /src/app.py:42	handle retry
+nfind --extract "every TODO with file and line" ./src | wc -l   # counts matches
 ```
 
-`--json` and `--verbose` are mutually exclusive. The richer output appears only
-when the prompt asks for it; otherwise every mode just lists paths.
+`--json` and `--fields` are mutually exclusive (as are `--extract` and `--fields`).
+The richer output appears only when the prompt asks for it; otherwise every mode just
+lists paths. `--extract` selects the things *inside* files (TODOs, URLs, fields) rather
+than whole files — see [docs/output-modes.md](docs/output-modes.md).
 
 ### Runtimes
 
@@ -193,7 +200,7 @@ highlighting is disabled when `NO_COLOR` is set or when stderr is redirected.
 
 If the model's reply doesn't validate (malformed JSON, wrong function shape, an invalid
 package name), nfind feeds the error back and retries a few times before giving up;
-`--verbose` reports when a retry happens.
+`--fields` reports when a retry happens.
 
 The first run builds the worker image for the chosen runtime
 (`nfind-search-paths:latest` for Python, `nfind-search-node:latest` for Node.js);
@@ -213,8 +220,10 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | `--exclude GLOB` | — | Skip matching names/paths during enumeration (repeatable) |
 | `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
 | `--max-depth N` | unlimited | Descend at most `N` levels below each search path |
-| `--verbose` / `-v` | off | Show extra per-path fields alongside each path |
+| `--fields` / `-f` | off | Show extra per-path fields alongside each path |
 | `--json` | off | Output records (path + extra fields) as JSON |
+| `--extract` | off | Explode a list-valued field into one match per line (items inside files) |
+| `--extract-field NAME` | — | With `--extract`, choose the list field to explode when several exist |
 | `--print0` / `-0` | off | Separate result paths with NUL bytes for `xargs -0` |
 | `--yes` / `-y` | off | Approve any requested packages without prompting |
 | `--no-deps` | off | Reject third-party packages (standard library only) |

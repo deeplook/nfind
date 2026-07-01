@@ -149,14 +149,14 @@ def test_cli_reads_default_config_path(tmp_path, monkeypatch):
     # With neither --config nor NFIND_CONFIG, the XDG default location is used if present.
     cfg_dir = tmp_path / "xdg" / "nfind"
     cfg_dir.mkdir(parents=True)
-    (cfg_dir / "config.toml").write_text("verbose = true\n")
+    (cfg_dir / "config.toml").write_text("fields = true\n")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     runner = CliRunner()
     with patch.object(cli.backend, "search", return_value=[{"path": "/a", "lines": 3}]):
         result = runner.invoke(cli.app, ["files", str(tmp_path)])
 
     assert result.exit_code == 0
-    assert "/a\tlines=3" in result.output  # verbose default came from the config file
+    assert "/a\tlines=3" in result.output  # fields default came from the config file
 
 
 def test_cli_missing_explicit_config_errors(tmp_path):

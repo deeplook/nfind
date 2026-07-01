@@ -45,6 +45,7 @@ from .execution import _run_generated as _run_generated
 from .execution import build_worker_image as build_worker_image
 from .execution import run_filter as run_filter
 from .execution import run_generated as run_generated
+from .generation import _EXTRACT_SYSTEM as _EXTRACT_SYSTEM
 from .generation import _MACOS_META_SYSTEM as _MACOS_META_SYSTEM
 from .generation import _RETRY_TEMPLATE as _RETRY_TEMPLATE
 from .generation import _SYSTEM as _SYSTEM
@@ -120,6 +121,7 @@ def search(
     approve_dependencies: Callable[[list[str]], bool] | None = None,
     whitelist: set[str] | None = None,
     macos_meta: bool = False,
+    extract: bool = False,
     format_code: bool = True,
     sandbox: Sandbox | None = None,
     sandbox_backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND,
@@ -180,7 +182,9 @@ def search(
     else:
         check_sandbox_available(sandbox_backend)
     meta = collect_macos_metadata(host_by_container) if macos_meta else {}
-    generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
+    generated = generate_filter(
+        prompt, model=model, on_retry=on_retry, macos_meta=macos_meta, extract=extract
+    )
     generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
     if format_code:
         generated.code = _format_generated_code(generated.code, generated.runtime)
@@ -214,6 +218,7 @@ def generate_only(
     on_generated: Callable[[GeneratedFilter], None] | None = None,
     on_retry: Callable[[int, ValueError], None] | None = None,
     macos_meta: bool = False,
+    extract: bool = False,
     format_code: bool = True,
 ) -> GeneratedFilter:
     """Generate a filter without running the sandbox.
@@ -224,7 +229,9 @@ def generate_only(
     Use this (or ``--no-exec`` on the CLI) when you want to inspect or save a
     filter without executing it — no path enumeration, no sandbox startup.
     """
-    generated = generate_filter(prompt, model=model, on_retry=on_retry, macos_meta=macos_meta)
+    generated = generate_filter(
+        prompt, model=model, on_retry=on_retry, macos_meta=macos_meta, extract=extract
+    )
     generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
     if format_code:
         generated.code = _format_generated_code(generated.code, generated.runtime)

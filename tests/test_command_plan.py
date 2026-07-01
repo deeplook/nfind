@@ -21,8 +21,10 @@ def _plan(**overrides):
         "confirm": False,
         "macos_meta": False,
         "as_json": False,
-        "verbose": False,
+        "fields": False,
         "print0": False,
+        "extract": False,
+        "extract_field": None,
         "yes": False,
         "no_deps": False,
         "max_depth": None,
@@ -67,9 +69,11 @@ def test_run_defaults_to_empty_paths(tmp_path):
     ("overrides", "message"),
     [
         ({"prompt": None}, "PROMPT is required"),
-        ({"as_json": True, "verbose": True}, "--json and --verbose"),
+        ({"as_json": True, "fields": True}, "--json and --fields"),
         ({"print0": True, "as_json": True}, "--print0 cannot be combined"),
-        ({"print0": True, "verbose": True}, "--print0 cannot be combined"),
+        ({"print0": True, "fields": True}, "--print0 cannot be combined"),
+        ({"extract": True, "fields": True}, "--extract and --fields"),
+        ({"extract_field": "todos"}, "--extract-field requires --extract"),
         ({"yes": True, "no_deps": True}, "--yes and --no-deps"),
         ({"max_depth": 0}, "--max-depth"),
     ],
@@ -77,6 +81,21 @@ def test_run_defaults_to_empty_paths(tmp_path):
 def test_rejects_invalid_command_options(overrides, message):
     with pytest.raises(ValueError, match=message):
         _plan(**overrides)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"extract": True},
+        {"extract": True, "print0": True},
+        {"extract": True, "as_json": True},
+        {"extract": True, "extract_field": "todos"},
+    ],
+)
+def test_accepts_extract_combinations(overrides):
+    request = _plan(**overrides)
+
+    assert isinstance(request, GeneratedSearchRequest)
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 # --- standalone runner (embedded verbatim into saved filters by nfind --save) --------
 # Reproduces nfind's DEFAULT output when a saved filter is run via `uv run FILE [PATH]...`
 # without nfind installed: each root is walked (a directory has the common ignored dirs
-# pruned; a file contributes just itself), then matches are printed. --json, --verbose, and
+# pruned; a file contributes just itself), then matches are printed. --json, --fields, and
 # --print0 work as in nfind. It does NOT reproduce --exclude/--max-depth/--no-ignore (those
 # are not saved). nfind itself never imports this module; it only reads the source. _IGNORE is kept
 # in sync with nfind.constants.DEFAULT_IGNORES by a test.
@@ -32,7 +32,7 @@ def _main(filter_paths: Callable[[list[str]], list[Any]]) -> None:
     args = sys.argv[1:]
     as_json = "--json" in args
     print0 = "--print0" in args or "-0" in args
-    verbose = not as_json and ("--verbose" in args or "-v" in args)
+    fields = not as_json and ("--fields" in args or "-f" in args)
     roots = [arg for arg in args if not arg.startswith("-")] or ["."]
 
     paths: list[str] = []
@@ -57,8 +57,11 @@ def _main(filter_paths: Callable[[list[str]], list[Any]]) -> None:
         return
     for record in records:
         extras = {key: value for key, value in record.items() if key != "path"}
-        if verbose and extras:
-            detail = ", ".join(f"{key}={value}" for key, value in extras.items())
+        if fields and extras:
+            detail = ", ".join(
+                f"{key}={len(value)}" if isinstance(value, list) else f"{key}={value}"
+                for key, value in extras.items()
+            )
             print(f"{record['path']}\t{detail}")
         else:
             print(record["path"])

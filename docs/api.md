@@ -141,7 +141,7 @@ last validation error is raised.
 
 `on_retry`, if given, is called with the 1-based retry number and the `ValueError`
 before each retry — handy for logging. The CLI uses it to print a notice under
-[`--verbose`](cli.md#options). `generate_filter` takes the same `on_retry`, plus an
+[`--fields`](cli.md#options). `generate_filter` takes the same `on_retry`, plus an
 `attempts` argument (default 3) to tune or disable retries.
 
 ### Approving dependencies

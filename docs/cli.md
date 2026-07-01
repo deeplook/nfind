@@ -36,7 +36,7 @@ nfind "directories that contain only audio files"
 nfind "Python files that import requests" ./src
 nfind "files that define a class" ./src/app.py ./src/models.py
 nfind "TODO comments left in the code" ./src ./tests ~/scratch
-nfind "files larger than 1 MB, with their size" --verbose
+nfind "files larger than 1 MB, with their size" --fields
 ```
 
 ### Reading the path list from stdin
@@ -89,8 +89,10 @@ saved filters (`--run`) so no stage pays an LLM call — see
 | `--save PATH` | — | Save the generated filter as a self-describing, replayable script (see [Saving & replaying filters](#saving--replaying-filters)). |
 | `--run PATH` | — | Replay a previously saved filter through the sandbox instead of generating one. No `PROMPT`, no LLM call. |
 | `--confirm`, `-i` | off | Show the generated code and ask for confirmation before running it. |
-| `--verbose`, `-v` | off | Show extra per-path fields alongside each path. |
+| `--fields`, `-f` | off | Show extra per-path fields alongside each path. |
 | `--json` | off | Output results as JSON (path plus any extra fields). |
+| `--extract` | off | Explode each result's list-valued field into one match per line (`path[:line]<TAB>payload`); selects items *inside* files. Mutually exclusive with `--fields`; `--json` stays nested. See [Output modes](output-modes.md). |
+| `--extract-field NAME` | — | With `--extract`, name the list-valued field to explode when a record has more than one. Requires `--extract`. |
 | `--print0`, `-0` | off | Separate results with NUL bytes instead of newlines (for `xargs -0`). |
 | `--yes`, `-y` | off | Approve any requested packages without prompting. |
 | `--no-deps` | off | Reject any third-party packages (standard library only). |
@@ -250,12 +252,12 @@ All three apply to `--run` replays as well, and can be set as
 
 ```bash
 nfind "Python files that import os"                          # default: paths only
-nfind "Python files, and for each the number of lines" -v   # path + extra fields
+nfind "Python files, and for each the number of lines" -f   # path + extra fields
 nfind "Python files, and for each the number of lines" --json
 nfind "empty directories" ~/Downloads --print0 | xargs -0 rmdir   # NUL-separated
 ```
 
-`--json` and `--verbose` are mutually exclusive, and `--print0` cannot be combined with
+`--json` and `--fields` are mutually exclusive, and `--print0` cannot be combined with
 either. `--print0` NUL-terminates each path (the `find -print0` / `xargs -0` convention)
 so paths with spaces or newlines survive a pipeline. See [Output modes](output-modes.md)
 for details and example output.
@@ -352,5 +354,5 @@ one or route through `openrouter/`.
 |---|---|
 | `0` | Search completed (zero or more matches). |
 | `1` | A runtime error occurred (e.g. Docker unavailable, filter failed). Message on stderr, prefixed `error:`. |
-| `2` | Invalid usage (e.g. `--json` and `--verbose` together). |
+| `2` | Invalid usage (e.g. `--json` and `--fields` together). |
 | `130` | A `--confirm` prompt was declined. |

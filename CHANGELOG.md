@@ -8,6 +8,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`--extract` — items inside files.** When a filter returns a record with a list-valued
+  field (e.g. `todos: [{line, text}, …]`), `--extract` explodes it into one match per line
+  (`path[:line]<TAB>payload`) instead of one path per line, so the stream feeds `wc -l`,
+  `sort`, and `awk` at match grain. It selects the things *inside* files (TODOs, URLs,
+  fields) rather than whole files, and steers generation to produce such a field; it is a
+  host-side renderer over the unchanged SELECT contract. `--extract-field NAME` picks the
+  field to explode when a record has several. `--json` stays nested (flatten with `jq`);
+  `--extract` is mutually exclusive with `--fields` and also works on the `--run` replay
+  path. Under `--fields`, a list-valued field is summarised as its element count
+  (`todos=3`) instead of being dumped as a raw Python list.
+
+### Changed
+
+- **Renamed `--verbose` / `-v` to `--fields` / `-f`** (and the config key `verbose` to
+  `fields`). The flag toggles an output *format* — one `path<TAB>key=value` line per
+  result — not a diagnostic verbosity level, so `--fields` names what it does. **Breaking:**
+  the old `--verbose` / `-v` spelling and `verbose` config key are no longer accepted.
 - **Read the path list from stdin.** Passing `-` as a path makes nfind read its search
   roots from standard input — newline-delimited, or NUL-delimited (auto-detected, so it
   consumes `find -print0` and `nfind --print0` safely). The whole list is searched in a
