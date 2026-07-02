@@ -10,6 +10,34 @@ Internally nfind always works with structured **records** — each result is an 
 with at least a `path` key, plus any extra fields the prompt produced. The output
 *mode* is just how those records are formatted for display.
 
+## One operation, several renderings
+
+nfind does essentially one thing: **select** a subset of your files and, optionally,
+annotate each with extra fields the prompt asked for. Everything on this page —
+`--fields`, `--json`, `--extract` — is a *rendering* of that same set of records, not a
+different kind of query. The generated filter returns files; the mode decides how they
+reach your terminal.
+
+`--extract` is the one addition that goes past whole files. A filter can attach a
+**list-valued** field (`todos: [{line, text}, …]`), and `--extract` explodes it into one
+row per element — nfind selecting the things *inside* files rather than the files
+themselves. It is still the same select-and-annotate contract: `--extract` only renders a
+field the filter already returned (see [`--extract`](#--extract--items-inside-files)).
+
+Some questions look adjacent but are deliberately **not** nfind's job — they fall out of a
+selection plus an ordinary Unix pipe:
+
+- **Counting or aggregating** ("how many Python files import `requests`", "total size of
+  all PDFs") — select with the field, then fold with `wc -l`, `awk`, or `jq`.
+- **Answering in prose** ("what test framework does this project use") — a question for a
+  chat/code-QA tool, not a file selector.
+- **Proposing edits** ("rename these to kebab-case") — select the targets, then act on
+  them with `sed`, `mv`, or `xargs`.
+
+nfind stays a *selector* and composes with the tools you already have, rather than growing
+a verb for each of these. The examples throughout the docs lean on exactly that: `nfind …
+--json | jq`, `nfind … | wc -l`, `nfind … | xargs`.
+
 ## Default — paths only
 
 ```bash
@@ -108,6 +136,96 @@ machine consumers see one schema. Flatten to match grain with `jq` when you need
 ```bash
 nfind --extract "every TODO, with file and line" ./src --json \
   | jq '[.results[] as $r | $r.todos[] | {path:$r.path} + .]'
+```
+
+## Side by side — one query, every mode
+
+Because the modes are just renderings of the same records, the difference is clearest with
+a single prompt shown every way. Take a filter that returns each Python file with a
+**list-valued** `todos` field — two files, three TODOs in total:
+
+```jsonc
+// the records the filter returns
+{ "path": "/src/app.py",    "todos": [ {"line": 42, "text": "handle retry"},
+                                        {"line": 91, "text": "drop after #312"} ] }
+{ "path": "/src/worker.py", "todos": [ {"line":  7, "text": "make timeout configurable"} ] }
+```
+
+Run the one prompt with different flags (the prompt is held in `$Q` so only the flag
+changes):
+
+```bash
+Q="Python files with TODO comments, each with a list of its TODOs (line and text)"
+```
+
+**No flags** — paths only; the `todos` field is ignored:
+
+```bash
+nfind "$Q" ./src
+```
+```
+/src/app.py
+/src/worker.py
+```
+
+**`--fields`** — scalars render as `key=value`; a list field collapses to a **count**:
+
+```bash
+nfind "$Q" ./src --fields
+```
+```
+/src/app.py	todos=2
+/src/worker.py	todos=1
+```
+
+**`--json`** — the full nested record, unchanged:
+
+```bash
+nfind "$Q" ./src --json
+```
+```json
+{
+  "count": 2,
+  "results": [
+    { "path": "/src/app.py",    "todos": [ { "line": 42, "text": "handle retry" },
+                                           { "line": 91, "text": "drop after #312" } ] },
+    { "path": "/src/worker.py", "todos": [ { "line": 7, "text": "make timeout configurable" } ] }
+  ]
+}
+```
+
+**`--extract`** — the `todos` list explodes to one row per element (match grain):
+
+```bash
+nfind "$Q" ./src --extract
+```
+```
+/src/app.py:42	handle retry
+/src/app.py:91	drop after #312
+/src/worker.py:7	make timeout configurable
+```
+
+**`--extract-field`** — needed only when a record carries **more than one** list field. If
+the filter also returns an `imports` list, plain `--extract` can't guess which to explode
+and exits:
+
+```bash
+nfind "Python files, each with its TODOs and its imported modules" ./src --extract
+# error: record for '/src/app.py' has multiple list-valued fields (imports, todos);
+#        use --extract-field NAME to choose which one to explode.
+```
+
+Name the field to resolve it — the output is then identical to the single-field
+`--extract` above:
+
+```bash
+nfind "Python files, each with its TODOs and its imported modules" ./src \
+  --extract --extract-field todos
+```
+```
+/src/app.py:42	handle retry
+/src/app.py:91	drop after #312
+/src/worker.py:7	make timeout configurable
 ```
 
 ## Notes

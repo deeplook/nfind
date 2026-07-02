@@ -121,10 +121,15 @@ nfind --extract "every TODO comment, with its file and line number" ./src
 nfind --extract "every TODO with file and line" ./src | wc -l   # counts matches
 ```
 
+Under the hood nfind does essentially one thing — **select** a subset of your files, each
+optionally annotated with the extra fields your prompt asked for — and every mode above
+just *renders* those records. `--extract` is the one step that reaches *inside* files
+(TODOs, URLs, fields) rather than listing whole ones; counting, answering, or editing is
+left to the pipe you already use (`| wc -l`, `| jq`, `| xargs`).
+
 `--json` and `--fields` are mutually exclusive (as are `--extract` and `--fields`).
 The richer output appears only when the prompt asks for it; otherwise every mode just
-lists paths. `--extract` selects the things *inside* files (TODOs, URLs, fields) rather
-than whole files — see [docs/output-modes.md](docs/output-modes.md).
+lists paths. See [docs/output-modes.md](docs/output-modes.md).
 
 ### Runtimes
 
