@@ -30,7 +30,9 @@ def _plan(**overrides):
         "max_depth": None,
     }
     options.update(overrides)
-    return plan_command(**options)
+    # The options dict is deliberately heterogeneous; a **splat of it can't be
+    # matched to plan_command's typed parameters statically.
+    return plan_command(**options)  # type: ignore[arg-type]
 
 
 def test_plans_generated_search_request():

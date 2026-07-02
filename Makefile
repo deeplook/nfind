@@ -14,7 +14,7 @@ format:  ## Auto-format and fix lint issues
 
 lint:  ## Run ruff and mypy
 	uv run ruff check src tests
-	uv run mypy src
+	uv run mypy src tests
 
 test:  ## Run the test suite
 	uv run pytest

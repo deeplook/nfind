@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Typed public API ([PEP 561](https://peps.python.org/pep-0561/)).** nfind now ships a
+  `py.typed` marker, so type checkers pick up the package's annotations when you `import
+  nfind` — `search()`, `run_saved()`, and the other exported names arrive fully typed
+  instead of `Any`.
 - **`--extract` — items inside files.** When a filter returns a record with a list-valued
   field (e.g. `todos: [{line, text}, …]`), `--extract` explodes it into one match per line
   (`path[:line]<TAB>payload`) instead of one path per line, so the stream feeds `wc -l`,
@@ -21,6 +25,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Narrowed `nfind.backend` re-exports.** `nfind.backend` now declares an explicit
+  `__all__` covering only its public surface — `search`, `run_saved`, `generate_only`,
+  and the handful of names the top-level `nfind` package and the CLI import through it.
+  Internal helpers it previously re-exported (to satisfy `import x as x` re-export rules)
+  are no longer reachable as `nfind.backend.<name>`; import them from their own modules
+  instead. The top-level `nfind` API is unchanged.
 - **Renamed `--verbose` / `-v` to `--fields` / `-f`** (and the config key `verbose` to
   `fields`). The flag toggles an output *format* — one `path<TAB>key=value` line per
   result — not a diagnostic verbosity level, so `--fields` names what it does. **Breaking:**

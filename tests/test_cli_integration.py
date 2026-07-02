@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from nfind import backend, cli, sandbox
+from nfind import cli, constants, sandbox
 
 pytestmark = pytest.mark.integration
 
@@ -88,7 +88,7 @@ def test_cli_run_exercises_real_backend_with_sandbox_resource_flags(
             "--sandbox",
             sandbox_backend,
             "--image",
-            backend.DEFAULT_IMAGE,
+            constants.DEFAULT_IMAGE,
             "--timeout",
             "10",
             "--memory",
@@ -120,7 +120,7 @@ def test_config_defaults_exercise_real_backend_sandbox_resource_flags(
     cfg = tmp_path / "config.toml"
     cfg.write_text(
         f'sandbox = "{sandbox_backend}"\n'
-        f'image = "{backend.DEFAULT_IMAGE}"\n'
+        f'image = "{constants.DEFAULT_IMAGE}"\n'
         "timeout = 10\n"
         'memory = "256m"\n'
         f"cpus = {cpus}\n"
@@ -155,7 +155,7 @@ def test_cli_timeout_overrides_config_for_real_backend(
     cfg = tmp_path / "config.toml"
     cfg.write_text(
         f'sandbox = "{sandbox_backend}"\n'
-        f'image = "{backend.DEFAULT_IMAGE}"\n'
+        f'image = "{constants.DEFAULT_IMAGE}"\n'
         "timeout = 1\n"
         'memory = "256m"\n'
         "cpus = 1\n"
@@ -203,7 +203,7 @@ def test_docker_cli_memory_limit_failure(sample_tree: Path, tmp_path: Path) -> N
             "--sandbox",
             "docker",
             "--image",
-            backend.DEFAULT_IMAGE,
+            constants.DEFAULT_IMAGE,
             "--timeout",
             "15",
             "--memory",

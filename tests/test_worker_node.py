@@ -9,6 +9,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -19,7 +20,7 @@ WORKER = Path(backend.__file__).parent / "worker_node.cjs"
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 
 
-def _run(request: object) -> dict:
+def _run(request: object) -> dict[str, Any]:
     """Send a request to the node worker and return its parsed JSON response.
 
     A ``str`` request is sent verbatim (to exercise malformed input); anything else is

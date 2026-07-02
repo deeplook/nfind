@@ -52,6 +52,7 @@ artifacts = [
     "src/nfind/Dockerfile.python",
     "src/nfind/Dockerfile.node",
     "src/nfind/worker_node.cjs",
+    "src/nfind/py.typed",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -92,6 +93,39 @@ strict = true
 [[tool.mypy.overrides]]
 module = ["pygments.*"]
 ignore_missing_imports = true
+
+# Tests are type-checked for real bugs (``check_untyped_defs`` stays on), but we
+# don't force ``-> None`` on every test function, and we let them import internals
+# freely (``implicit_reexport``) -- the annotation/re-export ceremony would be pure
+# noise for little signal. mypy only treats a whole path component ``*`` as a
+# wildcard, so the test modules are listed explicitly rather than as ``test_*``.
+[[tool.mypy.overrides]]
+module = [
+    "conftest",
+    "fakes",
+    "test_backend",
+    "test_cli_integration",
+    "test_command_plan",
+    "test_config",
+    "test_endpoint_cache",
+    "test_enumeration",
+    "test_extract",
+    "test_integration",
+    "test_sandbox",
+    "test_worker_node",
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+implicit_reexport = true
+warn_return_any = false
+# attr-defined: tests legitimately patch names on the module that uses them
+# (e.g. ``sandbox.subprocess``), which strict's no_implicit_reexport flags as noise;
+# a real attribute typo fails when the test runs anyway. var-annotated: empty
+# collections / un-parametrised ``CompletedProcess`` need annotations that add no
+# signal. Kept on: arg-type, call-arg, return-value, etc. -- the real bug catchers.
+disable_error_code = ["attr-defined", "var-annotated"]
 
 # ---------------------------------------------------------------------------
 # Pytest

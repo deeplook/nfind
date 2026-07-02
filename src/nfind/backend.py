@@ -13,95 +13,50 @@ a self-contained, standard-library-only module the worker image ships and runs a
 
 from __future__ import annotations
 
-import subprocess as subprocess
-import sys as sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .constants import _RETRY_TEMPERATURE as _RETRY_TEMPERATURE
-from .constants import DEFAULT_ALLOWED_PACKAGES as DEFAULT_ALLOWED_PACKAGES
-from .constants import DEFAULT_BUILD_TIMEOUT as DEFAULT_BUILD_TIMEOUT
-from .constants import DEFAULT_GENERATION_ATTEMPTS as DEFAULT_GENERATION_ATTEMPTS
-from .constants import DEFAULT_IMAGE as DEFAULT_IMAGE
-from .constants import DEFAULT_MODEL as DEFAULT_MODEL
-from .constants import DEFAULT_NODE_IMAGE as DEFAULT_NODE_IMAGE
-from .constants import DEFAULT_PROVIDER as DEFAULT_PROVIDER
-from .constants import DEFAULT_RUNTIME as DEFAULT_RUNTIME
-from .constants import DOCKER_CHECK_TIMEOUT as DOCKER_CHECK_TIMEOUT
-from .constants import FILTER_LINE_LENGTH as FILTER_LINE_LENGTH
-from .constants import PROVIDERS as PROVIDERS
-from .endpoint_cache import get_endpoint as get_endpoint
-from .endpoint_cache import set_endpoint as set_endpoint
-from .enumeration import _matches_any as _matches_any
-from .enumeration import _normalize_roots as _normalize_roots
-from .enumeration import enumerate_paths as enumerate_paths
-from .enumeration import enumerate_roots as enumerate_roots
-from .errors import DependencyError as DependencyError
-from .errors import DockerError as DockerError
-from .errors import DockerUnavailableError as DockerUnavailableError
-from .execution import _parse_worker_response as _parse_worker_response
-from .execution import _run_generated as _run_generated
-from .execution import build_worker_image as build_worker_image
-from .execution import run_filter as run_filter
-from .execution import run_generated as run_generated
-from .generation import _EXTRACT_SYSTEM as _EXTRACT_SYSTEM
-from .generation import _MACOS_META_SYSTEM as _MACOS_META_SYSTEM
-from .generation import _RETRY_TEMPLATE as _RETRY_TEMPLATE
-from .generation import _SYSTEM as _SYSTEM
-from .generation import _USER_TEMPLATE as _USER_TEMPLATE
-from .generation import _adapt_request as _adapt_request
-from .generation import _check_undefined_names as _check_undefined_names
-from .generation import _create_response as _create_response
-from .generation import _extract_json_object as _extract_json_object
-from .generation import _format_generated_code as _format_generated_code
-from .generation import _is_model_not_found as _is_model_not_found
-from .generation import _is_responses_only as _is_responses_only
-from .generation import _make_client as _make_client
-from .generation import _parse_generation as _parse_generation
-from .generation import _request_completion as _request_completion
-from .generation import _ruff_path as _ruff_path
-from .generation import _split_model as _split_model
-from .generation import _strip_code_fence as _strip_code_fence
-from .generation import generate_filter as generate_filter
-from .generation import list_models as list_models
-from .metadata import collect_macos_metadata as collect_macos_metadata
-from .runtimes import NODE_RUNTIME as NODE_RUNTIME
-from .runtimes import PYTHON_RUNTIME as PYTHON_RUNTIME
-from .runtimes import RUNTIMES as RUNTIMES
-from .runtimes import GeneratedFilter as GeneratedFilter
-from .runtimes import _imply_packages as _imply_packages
-from .runtimes import _validate_code_shape as _validate_code_shape
-from .runtimes import _validate_dependencies as _validate_dependencies
-from .sandbox import DEFAULT_SANDBOX_BACKEND as DEFAULT_SANDBOX_BACKEND
-from .sandbox import DockerSandbox as DockerSandbox
-from .sandbox import Limits as Limits
-from .sandbox import Mount as Mount
-from .sandbox import Sandbox as Sandbox
-from .sandbox import SandboxBackend as SandboxBackend
-from .sandbox import SandboxError as SandboxError
-from .sandbox import SandboxOutputTooLarge as SandboxOutputTooLarge
-from .sandbox import SandboxTimeout as SandboxTimeout
-from .sandbox import _derived_image_tag as _derived_image_tag
-from .sandbox import _dockerfile_path as _dockerfile_path
-from .sandbox import _image_exists as _image_exists
-from .sandbox import _remove_container as _remove_container
-from .sandbox import _run_docker as _run_docker
-from .sandbox import build_image as build_image
-from .sandbox import check_docker_available as check_docker_available
-from .sandbox import check_sandbox_available as check_sandbox_available
-from .serialization import _SCRIPT_METADATA_RE as _SCRIPT_METADATA_RE
-from .serialization import deserialize_filter as deserialize_filter
-from .serialization import serialize_filter as serialize_filter
-from .whitelist import _whitelist_path as _whitelist_path
-from .whitelist import approve_packages as approve_packages
-from .whitelist import load_whitelist as load_whitelist
-from .worker import MAX_RESULT_BYTES as MAX_RESULT_BYTES
-from .worker import _module_main as _module_main
-from .worker import _normalize_results as _normalize_results
-from .worker import _worker_response as _worker_response
-from .worker import execute_worker_main as execute_worker_main
-from .worker import worker_main as worker_main
+from .constants import DEFAULT_BUILD_TIMEOUT, DEFAULT_MODEL
+from .enumeration import _normalize_roots, enumerate_roots
+from .errors import DependencyError, DockerError, DockerUnavailableError
+from .execution import _run_generated
+from .generation import _format_generated_code, generate_filter, list_models
+from .metadata import collect_macos_metadata
+from .runtimes import GeneratedFilter, _imply_packages
+from .sandbox import (
+    DEFAULT_SANDBOX_BACKEND,
+    Sandbox,
+    SandboxBackend,
+    check_sandbox_available,
+)
+from .serialization import deserialize_filter, serialize_filter
+from .whitelist import load_whitelist
+
+# ``nfind.backend`` is the package's public entry point: it defines the top-level
+# operations (``search``, ``generate_only``, ``run_saved``) and re-exports the
+# handful of names that ``nfind`` and the CLI import through it. ``__all__`` lists
+# exactly that public surface, which satisfies mypy's strict ``no_implicit_reexport``
+# and ruff's unused-import check without per-import ``x as x`` aliases. Internal
+# helpers live in (and are imported/tested from) their own submodules.
+__all__ = [
+    # Entry points defined here.
+    "search",
+    "generate_only",
+    "run_saved",
+    # Names re-exported for callers of ``nfind`` / ``nfind.backend``.
+    "DEFAULT_BUILD_TIMEOUT",
+    "DEFAULT_MODEL",
+    "DEFAULT_SANDBOX_BACKEND",
+    "DependencyError",
+    "DockerError",
+    "DockerUnavailableError",
+    "GeneratedFilter",
+    "SandboxBackend",
+    "list_models",
+    "load_whitelist",
+    "serialize_filter",
+]
 
 
 def search(

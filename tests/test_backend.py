@@ -5,13 +5,14 @@ import json
 import plistlib
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
 from fakes import FakeSandbox
 from nfind import backend as MODULE
-from nfind import cli, metadata, worker
+from nfind import cli, constants, enumeration, metadata, runtimes, serialization, whitelist, worker
 from nfind import execution as EXECUTION
 from nfind import generation as GENERATION
 
@@ -25,11 +26,11 @@ def _gen_node(code, dependencies=()):
 
 
 def test_validate_code_shape_accepts_one_filter_function():
-    MODULE._validate_code_shape("def filter_paths(paths):\n    return paths")
+    runtimes._validate_code_shape("def filter_paths(paths):\n    return paths")
 
 
 def test_validate_code_shape_accepts_top_level_imports():
-    MODULE._validate_code_shape(
+    runtimes._validate_code_shape(
         "import os\n"
         "from pathlib import Path\n\n"
         "def filter_paths(paths):\n"
@@ -48,14 +49,14 @@ def test_validate_code_shape_accepts_top_level_imports():
 )
 def test_validate_code_shape_rejects_invalid_interface(code):
     with pytest.raises(ValueError):
-        MODULE._validate_code_shape(code)
+        runtimes._validate_code_shape(code)
 
 
 def test_enumerate_paths_maps_container_paths_to_host(tmp_path):
     (tmp_path / "folder").mkdir()
     (tmp_path / "folder" / "example.txt").write_text("example")
 
-    paths, mapping = MODULE.enumerate_paths(tmp_path)
+    paths, mapping = enumeration.enumerate_paths(tmp_path)
 
     assert "/data/folder" in paths
     assert "/data/folder/example.txt" in paths
@@ -69,7 +70,7 @@ def test_worker_rejects_results_not_supplied_by_host():
     }
 
     with pytest.raises(ValueError, match="outside its input set"):
-        MODULE._worker_response(payload)
+        worker._worker_response(payload)
 
 
 def test_worker_filter_can_read_file_content(tmp_path):
@@ -83,7 +84,7 @@ def test_worker_filter_can_read_file_content(tmp_path):
         "paths": [str(path)],
     }
 
-    assert MODULE._worker_response(payload) == {"ok": True, "results": [{"path": str(path)}]}
+    assert worker._worker_response(payload) == {"ok": True, "results": [{"path": str(path)}]}
 
 
 def test_worker_exposes_macos_meta_as_global():
@@ -96,7 +97,7 @@ def test_worker_exposes_macos_meta_as_global():
         "meta": {"/data/a": {"quarantined": True}},
     }
 
-    assert MODULE._worker_response(payload) == {"ok": True, "results": [{"path": "/data/a"}]}
+    assert worker._worker_response(payload) == {"ok": True, "results": [{"path": "/data/a"}]}
 
 
 def test_worker_meta_defaults_to_empty_dict():
@@ -106,7 +107,7 @@ def test_worker_meta_defaults_to_empty_dict():
         "paths": ["/data/a"],
     }
 
-    assert MODULE._worker_response(payload) == {"ok": True, "results": []}
+    assert worker._worker_response(payload) == {"ok": True, "results": []}
 
 
 def test_worker_rejects_non_object_meta():
@@ -117,7 +118,7 @@ def test_worker_rejects_non_object_meta():
     }
 
     with pytest.raises(ValueError, match="meta"):
-        MODULE._worker_response(payload)
+        worker._worker_response(payload)
 
 
 def test_search_checks_sandbox_before_generating_code(tmp_path):
@@ -153,8 +154,8 @@ def test_search_checks_custom_sandbox_before_generating_code(tmp_path):
 
 def test_normalize_results_accepts_paths_and_records():
     allowed = {"/data/a", "/data/b"}
-    assert MODULE._normalize_results(["/data/a"], allowed) == [{"path": "/data/a"}]
-    assert MODULE._normalize_results([{"path": "/data/b", "lines": 3}], allowed) == [
+    assert worker._normalize_results(["/data/a"], allowed) == [{"path": "/data/a"}]
+    assert worker._normalize_results([{"path": "/data/b", "lines": 3}], allowed) == [
         {"path": "/data/b", "lines": 3}
     ]
 
@@ -178,7 +179,7 @@ def test_emit_fields_summarises_list_fields_as_counts(capsys):
 )
 def test_normalize_results_rejects_bad_output(results):
     with pytest.raises(ValueError):
-        MODULE._normalize_results(results, {"/data/a"})
+        worker._normalize_results(results, {"/data/a"})
 
 
 def test_worker_returns_extra_fields(tmp_path):
@@ -192,7 +193,7 @@ def test_worker_returns_extra_fields(tmp_path):
         "paths": [str(path)],
     }
 
-    assert MODULE._worker_response(payload) == {
+    assert worker._worker_response(payload) == {
         "ok": True,
         "results": [{"path": str(path), "lines": 3}],
     }
@@ -201,17 +202,17 @@ def test_worker_returns_extra_fields(tmp_path):
 def test_execute_worker_main_writes_response_file(tmp_path, monkeypatch):
     response = tmp_path / "response.json"
     payload = {"code": "def filter_paths(paths): return paths", "paths": ["/data/a"]}
-    monkeypatch.setattr(MODULE.sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
 
-    assert MODULE.execute_worker_main(str(response)) == 0
+    assert worker.execute_worker_main(str(response)) == 0
     assert json.loads(response.read_text()) == {"ok": True, "results": [{"path": "/data/a"}]}
 
 
 def test_execute_worker_main_records_error_for_bad_request(tmp_path, monkeypatch):
     response = tmp_path / "response.json"
-    monkeypatch.setattr(MODULE.sys, "stdin", io.StringIO("not json"))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
 
-    assert MODULE.execute_worker_main(str(response)) == 0
+    assert worker.execute_worker_main(str(response)) == 0
     written = json.loads(response.read_text())
     assert written["ok"] is False
     assert "error" in written
@@ -223,10 +224,10 @@ def test_execute_worker_main_truncates_oversized_response(tmp_path, monkeypatch)
         "code": "def filter_paths(paths): return paths",
         "paths": [f"/data/{i}" for i in range(1000)],
     }
-    monkeypatch.setattr(MODULE.sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     monkeypatch.setattr(worker, "MAX_RESULT_BYTES", 10)
 
-    assert MODULE.execute_worker_main(str(response)) == 0
+    assert worker.execute_worker_main(str(response)) == 0
     assert json.loads(response.read_text()) == {
         "ok": False,
         "error": "filter response exceeded the allowed size",
@@ -234,51 +235,51 @@ def test_execute_worker_main_truncates_oversized_response(tmp_path, monkeypatch)
 
 
 def test_module_main_dispatches_worker(monkeypatch):
-    monkeypatch.setattr(MODULE.sys, "argv", ["worker.py", "--worker"])
+    monkeypatch.setattr(sys, "argv", ["worker.py", "--worker"])
     with patch.object(worker, "worker_main", return_value=0) as worker_main:
         assert worker._module_main() == 0
     worker_main.assert_called_once_with()
 
 
 def test_module_main_dispatches_execute_worker(monkeypatch):
-    monkeypatch.setattr(MODULE.sys, "argv", ["worker.py", "--execute-worker", "/tmp/resp"])
+    monkeypatch.setattr(sys, "argv", ["worker.py", "--execute-worker", "/tmp/resp"])
     with patch.object(worker, "execute_worker_main", return_value=0) as execute:
         assert worker._module_main() == 0
     execute.assert_called_once_with("/tmp/resp")
 
 
 def test_module_main_rejects_unknown_invocation(monkeypatch, capsys):
-    monkeypatch.setattr(MODULE.sys, "argv", ["worker.py"])
+    monkeypatch.setattr(sys, "argv", ["worker.py"])
     assert worker._module_main() == 2
     assert "in-container worker" in capsys.readouterr().err
 
 
 def test_worker_main_relays_child_response(monkeypatch):
-    monkeypatch.setattr(MODULE.sys, "stdin", Mock(buffer=Mock(read=lambda: b"{}")))
+    monkeypatch.setattr(sys, "stdin", Mock(buffer=Mock(read=lambda: b"{}")))
     out = io.StringIO()
-    monkeypatch.setattr(MODULE.sys, "stdout", out)
+    monkeypatch.setattr(sys, "stdout", out)
 
     def fake_run(args, **kwargs):
         # The child writes its response file; emulate that side effect.
-        MODULE.Path(args[args.index("--execute-worker") + 1]).write_text('{"ok":true,"results":[]}')
+        Path(args[args.index("--execute-worker") + 1]).write_text('{"ok":true,"results":[]}')
         return subprocess.CompletedProcess(args, 0)
 
-    monkeypatch.setattr(MODULE.subprocess, "run", fake_run)
-    assert MODULE.worker_main() == 0
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert worker.worker_main() == 0
     assert json.loads(out.getvalue()) == {"ok": True, "results": []}
 
 
 def test_worker_main_reports_nonzero_child_exit(monkeypatch):
-    monkeypatch.setattr(MODULE.sys, "stdin", Mock(buffer=Mock(read=lambda: b"{}")))
+    monkeypatch.setattr(sys, "stdin", Mock(buffer=Mock(read=lambda: b"{}")))
     out = io.StringIO()
-    monkeypatch.setattr(MODULE.sys, "stdout", out)
+    monkeypatch.setattr(sys, "stdout", out)
     monkeypatch.setattr(
-        MODULE.subprocess,
+        subprocess,
         "run",
         lambda args, **kwargs: subprocess.CompletedProcess(args, 137),
     )
 
-    assert MODULE.worker_main() == 0
+    assert worker.worker_main() == 0
     written = json.loads(out.getvalue())
     assert written["ok"] is False
     assert "137" in written["error"]
@@ -386,7 +387,7 @@ def test_search_maps_host_paths_in_records(tmp_path):
 
 def test_search_invokes_on_generated_before_running(tmp_path):
     (tmp_path / "file.txt").write_text("content")
-    seen: list[str] = []
+    seen: list[MODULE.GeneratedFilter] = []
     with (
         patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
@@ -404,7 +405,7 @@ def test_search_invokes_on_generated_before_running(tmp_path):
 def test_search_aborts_when_on_generated_raises(tmp_path):
     (tmp_path / "file.txt").write_text("content")
 
-    def decline(code: str) -> None:
+    def decline(generated: MODULE.GeneratedFilter) -> None:
         raise RuntimeError("declined")
 
     with (
@@ -516,24 +517,24 @@ def test_parse_generation_accepts_node_runtime():
             "code": "function filterPaths(paths){ return paths; }",
         }
     )
-    result = MODULE._parse_generation(content)
+    result = GENERATION._parse_generation(content)
     assert result.runtime == "node"
     assert result.dependencies == ["ts-morph"]
 
 
 def test_parse_generation_defaults_runtime_to_python():
     content = json.dumps({"code": "def filter_paths(paths): return paths"})
-    assert MODULE._parse_generation(content).runtime == "python"
+    assert GENERATION._parse_generation(content).runtime == "python"
 
 
 def test_parse_generation_rejects_unknown_runtime():
     content = json.dumps({"runtime": "ruby", "code": "def filter_paths(paths): return paths"})
     with pytest.raises(ValueError, match="Unknown runtime"):
-        MODULE._parse_generation(content)
+        GENERATION._parse_generation(content)
 
 
 def test_check_undefined_names_accepts_top_level_import():
-    MODULE._check_undefined_names(
+    GENERATION._check_undefined_names(
         "import os\n\ndef filter_paths(paths):\n    return [p for p in paths if os.path.isfile(p)]"
     )
 
@@ -541,7 +542,7 @@ def test_check_undefined_names_accepts_top_level_import():
 def test_check_undefined_names_rejects_missing_import():
     # `os` is used but never imported at the top level -- the bug this gate exists to catch.
     with pytest.raises(ValueError, match=r"undefined name.*'os'"):
-        MODULE._check_undefined_names(
+        GENERATION._check_undefined_names(
             "def filter_paths(paths):\n    return [p for p in paths if os.path.isfile(p)]"
         )
 
@@ -549,14 +550,14 @@ def test_check_undefined_names_rejects_missing_import():
 def test_check_undefined_names_allows_injected_meta_global():
     code = "def filter_paths(paths):\n    return [p for p in paths if META.get(p, {}).get('q')]"
     with pytest.raises(ValueError, match="META"):
-        MODULE._check_undefined_names(code)  # without the builtin declared, META is undefined
-    MODULE._check_undefined_names(code, extra_builtins=("META",))  # declared -> accepted
+        GENERATION._check_undefined_names(code)  # without the builtin declared, META is undefined
+    GENERATION._check_undefined_names(code, extra_builtins=("META",))  # declared -> accepted
 
 
 def test_check_undefined_names_fails_open_without_ruff():
     # No ruff -> the gate must not block generation on a tooling gap.
     with patch.object(GENERATION, "_ruff_path", return_value=None):
-        MODULE._check_undefined_names("def filter_paths(paths):\n    return os.listdir(paths)")
+        GENERATION._check_undefined_names("def filter_paths(paths):\n    return os.listdir(paths)")
 
 
 def test_parse_generation_rejects_filter_using_undefined_name():
@@ -564,7 +565,7 @@ def test_parse_generation_rejects_filter_using_undefined_name():
         {"code": "def filter_paths(paths):\n    return [p for p in paths if re.match('x', p)]"}
     )
     with pytest.raises(ValueError, match=r"undefined name.*'re'"):
-        MODULE._parse_generation(content)
+        GENERATION._parse_generation(content)
 
 
 def test_parse_generation_whitelists_meta_when_macos_meta_enabled():
@@ -572,21 +573,21 @@ def test_parse_generation_whitelists_meta_when_macos_meta_enabled():
         {"code": "def filter_paths(paths):\n    return [p for p in paths if META.get(p)]"}
     )
     with pytest.raises(ValueError, match="META"):
-        MODULE._parse_generation(content)  # META undefined without metadata in play
-    result = MODULE._parse_generation(content, macos_meta=True)
+        GENERATION._parse_generation(content)  # META undefined without metadata in play
+    result = GENERATION._parse_generation(content, macos_meta=True)
     assert result.runtime == "python"
 
 
 def test_node_runtime_validates_code_and_scoped_packages():
-    MODULE.NODE_RUNTIME.validate_code("const filterPaths = (paths) => paths;")
-    assert MODULE.NODE_RUNTIME.validate_packages(["@babel/parser", "ts-morph"]) == [
+    runtimes.NODE_RUNTIME.validate_code("const filterPaths = (paths) => paths;")
+    assert runtimes.NODE_RUNTIME.validate_packages(["@babel/parser", "ts-morph"]) == [
         "@babel/parser",
         "ts-morph",
     ]
     with pytest.raises(ValueError):
-        MODULE.NODE_RUNTIME.validate_code("const other = 1;")
+        runtimes.NODE_RUNTIME.validate_code("const other = 1;")
     with pytest.raises(ValueError):
-        MODULE.PYTHON_RUNTIME.validate_packages(["@babel/parser"])  # scoped invalid for pip
+        runtimes.PYTHON_RUNTIME.validate_packages(["@babel/parser"])  # scoped invalid for pip
 
 
 def test_search_uses_node_base_image_and_runtime(tmp_path):
@@ -621,7 +622,7 @@ def test_search_uses_node_base_image_and_runtime(tmp_path):
         MODULE.search(str(tmp_path), "typescript files")
 
     assert captured == {
-        "image": MODULE.DEFAULT_NODE_IMAGE,
+        "image": constants.DEFAULT_NODE_IMAGE,
         "runtime": "node",
         "sandbox_backend": "docker",
     }
@@ -648,16 +649,16 @@ def test_search_threads_sandbox_backend_to_execution(tmp_path):
 
 
 def test_derived_dockerfile_uses_pip_or_npm():
-    py = MODULE.PYTHON_RUNTIME.derived_dockerfile("base", ["mutagen"])
+    py = runtimes.PYTHON_RUNTIME.derived_dockerfile("base", ["mutagen"])
     assert "pip install" in py and "USER worker" in py
-    node = MODULE.NODE_RUNTIME.derived_dockerfile("base", ["ts-morph"])
+    node = runtimes.NODE_RUNTIME.derived_dockerfile("base", ["ts-morph"])
     assert "npm install" in node and "USER node" in node
 
 
 def test_whitelist_is_per_runtime(tmp_path, monkeypatch):
     monkeypatch.setenv("NFIND_WHITELIST", str(tmp_path / "wl.json"))
-    MODULE.approve_packages(["rarfile"], "python")
-    MODULE.approve_packages(["left-pad"], "node")
+    whitelist.approve_packages(["rarfile"], "python")
+    whitelist.approve_packages(["left-pad"], "node")
     assert "rarfile" in MODULE.load_whitelist("python")
     assert "rarfile" not in MODULE.load_whitelist("node")
     assert "left-pad" in MODULE.load_whitelist("node")
@@ -668,13 +669,13 @@ def test_whitelist_path_prefers_nfind_whitelist_override(tmp_path, monkeypatch):
     override = tmp_path / "custom" / "wl.json"
     monkeypatch.setenv("NFIND_WHITELIST", str(override))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    assert MODULE._whitelist_path() == override
+    assert whitelist._whitelist_path() == override
 
 
 def test_whitelist_path_uses_xdg_config_home(tmp_path, monkeypatch):
     monkeypatch.delenv("NFIND_WHITELIST", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    assert MODULE._whitelist_path() == tmp_path / "xdg" / "nfind" / "whitelist.json"
+    assert whitelist._whitelist_path() == tmp_path / "xdg" / "nfind" / "whitelist.json"
 
 
 @pytest.mark.skipif(
@@ -683,20 +684,20 @@ def test_whitelist_path_uses_xdg_config_home(tmp_path, monkeypatch):
 def test_whitelist_path_falls_back_to_home_config(tmp_path, monkeypatch):
     monkeypatch.delenv("NFIND_WHITELIST", raising=False)
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setattr(MODULE.Path, "home", classmethod(lambda cls: tmp_path))
-    assert MODULE._whitelist_path() == tmp_path / ".config" / "nfind" / "whitelist.json"
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    assert whitelist._whitelist_path() == tmp_path / ".config" / "nfind" / "whitelist.json"
 
 
 def test_pip_dependencies_are_pep503_normalized():
     # Underscores, dots, and case collapse to one canonical dash-lowercase form.
-    assert MODULE.PYTHON_RUNTIME.validate_packages(
+    assert runtimes.PYTHON_RUNTIME.validate_packages(
         ["Tree_Sitter_Python", "tree-sitter-python", "tree.sitter.python"]
     ) == ["tree-sitter-python"]
 
 
 def test_npm_dependencies_lowercase_but_keep_separators():
     # npm treats - and _ as distinct, so only case is normalized.
-    assert MODULE.NODE_RUNTIME.validate_packages(["Ts-Morph", "left_pad"]) == [
+    assert runtimes.NODE_RUNTIME.validate_packages(["Ts-Morph", "left_pad"]) == [
         "left_pad",
         "ts-morph",
     ]
@@ -718,7 +719,7 @@ def test_load_whitelist_self_heals_non_normalized_names(tmp_path, monkeypatch):
 def test_approve_packages_writes_canonical_names(tmp_path, monkeypatch):
     path = tmp_path / "wl.json"
     monkeypatch.setenv("NFIND_WHITELIST", str(path))
-    MODULE.approve_packages(["Tree_Sitter_Go"], "python")
+    whitelist.approve_packages(["Tree_Sitter_Go"], "python")
 
     saved = json.loads(path.read_text())
     assert saved["python"] == ["tree-sitter-go"]
@@ -728,14 +729,14 @@ def test_parse_generation_extracts_code_and_dependencies():
     content = json.dumps(
         {"dependencies": ["Mutagen", "mutagen"], "code": "def filter_paths(paths): return paths"}
     )
-    result = MODULE._parse_generation(content)
+    result = GENERATION._parse_generation(content)
     assert result.code == "def filter_paths(paths): return paths"
     assert result.dependencies == ["mutagen"]
 
 
 def test_parse_generation_defaults_dependencies_to_empty():
     content = json.dumps({"code": "def filter_paths(paths): return paths"})
-    assert MODULE._parse_generation(content).dependencies == []
+    assert GENERATION._parse_generation(content).dependencies == []
 
 
 @pytest.mark.parametrize(
@@ -750,7 +751,7 @@ def test_parse_generation_defaults_dependencies_to_empty():
 )
 def test_parse_generation_rejects_invalid(content):
     with pytest.raises(ValueError):
-        MODULE._parse_generation(content)
+        GENERATION._parse_generation(content)
 
 
 def _fake_openai(*contents):
@@ -1084,7 +1085,7 @@ def test_generate_filter_appends_extract_guidance_only_when_enabled():
 
 def test_collect_macos_metadata_empty_off_darwin(monkeypatch):
     monkeypatch.setattr(metadata.sys, "platform", "linux")
-    assert MODULE.collect_macos_metadata({"/data/a": "/host/a"}) == {}
+    assert metadata.collect_macos_metadata({"/data/a": "/host/a"}) == {}
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="reads macOS extended attributes")
@@ -1117,7 +1118,7 @@ def test_collect_macos_metadata_reads_tags_and_quarantine(tmp_path):
     plain = tmp_path / "plain.txt"
     plain.write_text("x")
 
-    meta = MODULE.collect_macos_metadata(
+    meta = metadata.collect_macos_metadata(
         {"/data/tagged.txt": str(tagged), "/data/plain.txt": str(plain)}
     )
 
@@ -1132,23 +1133,26 @@ def test_collect_macos_metadata_reads_tags_and_quarantine(tmp_path):
 
 def test_imply_packages_adds_tree_sitter_core_for_grammar_wheels():
     # A grammar wheel alone leaves `import tree_sitter` failing; core must be added.
-    assert MODULE._imply_packages("python", ["tree-sitter-go"]) == ["tree-sitter", "tree-sitter-go"]
+    assert runtimes._imply_packages("python", ["tree-sitter-go"]) == [
+        "tree-sitter",
+        "tree-sitter-go",
+    ]
     # Already present: unchanged (deduplicated/sorted).
-    assert MODULE._imply_packages("python", ["tree-sitter", "tree-sitter-go"]) == [
+    assert runtimes._imply_packages("python", ["tree-sitter", "tree-sitter-go"]) == [
         "tree-sitter",
         "tree-sitter-go",
     ]
     # No grammar wheel: untouched.
-    assert MODULE._imply_packages("python", ["mutagen"]) == ["mutagen"]
+    assert runtimes._imply_packages("python", ["mutagen"]) == ["mutagen"]
     # Node runtime: the Python implication does not apply.
-    assert MODULE._imply_packages("node", ["tree-sitter-go"]) == ["tree-sitter-go"]
+    assert runtimes._imply_packages("node", ["tree-sitter-go"]) == ["tree-sitter-go"]
 
 
 def test_validate_dependencies_rejects_specifiers():
     with pytest.raises(ValueError):
-        MODULE._validate_dependencies(["mutagen==1.0"])
+        runtimes._validate_dependencies(["mutagen==1.0"])
     with pytest.raises(ValueError):
-        MODULE._validate_dependencies(["evil; rm -rf /"])
+        runtimes._validate_dependencies(["evil; rm -rf /"])
 
 
 def test_build_worker_image_derived_dockerfile_is_order_independent():
@@ -1166,14 +1170,14 @@ def test_whitelist_round_trip(tmp_path, monkeypatch):
     assert "rarfile" not in MODULE.load_whitelist()
     assert "mutagen" in MODULE.load_whitelist()  # built-in default
     assert "tree-sitter-python" in MODULE.load_whitelist()  # multi-language parsing
-    MODULE.approve_packages(["rarfile"])
+    whitelist.approve_packages(["rarfile"])
     assert "rarfile" in MODULE.load_whitelist()
 
 
 def test_kotlin_swift_dart_grammars_are_pre_approved():
     # Standalone wheels that bundle their grammar offline, like the other languages.
     assert {"tree-sitter-kotlin", "tree-sitter-swift", "tree-sitter-dart"} <= (
-        MODULE.DEFAULT_ALLOWED_PACKAGES
+        constants.DEFAULT_ALLOWED_PACKAGES
     )
 
 
@@ -1373,32 +1377,32 @@ def test_format_generated_code_removes_unused_imports_and_formats():
         "    import sys\n"
         "    return [p for p in paths if p.endswith('.epub')]\n"
     )
-    cleaned = MODULE._format_generated_code(messy, "python")
+    cleaned = GENERATION._format_generated_code(messy, "python")
 
     assert "import os" not in cleaned
     assert "import sys" not in cleaned
     assert 'endswith(".epub")' in cleaned  # ruff format normalizes quotes
-    MODULE._validate_code_shape(cleaned)  # still a valid single-function filter
+    runtimes._validate_code_shape(cleaned)  # still a valid single-function filter
 
 
 def test_format_generated_code_wraps_at_configured_line_length():
     # A body line of 89-100 chars wraps at ruff's default (88) but stays whole at 100.
     body = '    return [p for p in paths if p.endswith(".epub") or p.endswith(".mobi") or p.endswith(".azw")]'  # noqa: E501
-    assert MODULE.FILTER_LINE_LENGTH == 100
-    assert 88 < len(body) <= MODULE.FILTER_LINE_LENGTH
-    cleaned = MODULE._format_generated_code(f"def filter_paths(paths):\n{body}\n", "python")
+    assert constants.FILTER_LINE_LENGTH == 100
+    assert 88 < len(body) <= constants.FILTER_LINE_LENGTH
+    cleaned = GENERATION._format_generated_code(f"def filter_paths(paths):\n{body}\n", "python")
     assert body in cleaned  # left on a single line, so line-length 100 took effect
 
 
 def test_format_generated_code_leaves_node_unchanged():
     code = "function filterPaths(paths){ return paths; }"
-    assert MODULE._format_generated_code(code, "node") == code
+    assert GENERATION._format_generated_code(code, "node") == code
 
 
 def test_format_generated_code_falls_back_when_ruff_missing():
     code = "def filter_paths(paths):\n    import os\n    return paths\n"
     with patch.object(GENERATION, "_ruff_path", return_value=None):
-        assert MODULE._format_generated_code(code, "python") == code
+        assert GENERATION._format_generated_code(code, "python") == code
 
 
 def test_search_formats_generated_code_before_running(tmp_path):
@@ -1439,7 +1443,7 @@ def test_serialize_filter_python_is_valid_pep723_script():
 
     # Valid Python and a parseable PEP 723 block declaring the dependency.
     compile(src, "saved.py", "exec")
-    match = MODULE._SCRIPT_METADATA_RE.search(src)
+    match = serialization._SCRIPT_METADATA_RE.search(src)
     assert match is not None
     assert '"mutagen"' in match.group("body")
     # Docstring carries the prompt and the safety warning; code is included verbatim.
@@ -1455,7 +1459,7 @@ def test_serialize_filter_wraps_header_within_line_length():
         gen = MODULE.GeneratedFilter(code=long_code, dependencies=[], runtime=runtime)
         src = MODULE.serialize_filter(gen, "epub archives", "gpt-4o-mini")
         longest = max(len(line) for line in src.splitlines())
-        assert longest <= MODULE.FILTER_LINE_LENGTH, (runtime, longest)
+        assert longest <= constants.FILTER_LINE_LENGTH, (runtime, longest)
         # The warning prose is wrapped across multiple lines, not left as one long line.
         assert sum("OUTSIDE the" in line or "trust." in line for line in src.splitlines()) >= 1
 
@@ -1585,7 +1589,7 @@ def test_deserialize_filter_round_trips_python_dependencies():
     src = MODULE.serialize_filter(
         _gen("def filter_paths(paths): return paths", ["mutagen"]), "mp3", "gpt-4o-mini"
     )
-    parsed = MODULE.deserialize_filter(src, filename="mp3.py")
+    parsed = serialization.deserialize_filter(src, filename="mp3.py")
     assert parsed.runtime == "python"
     assert parsed.dependencies == ["mutagen"]
 
@@ -1603,7 +1607,7 @@ def test_filter_and_harness_are_separate_in_serialized_and_deserialized_forms():
     assert 'if __name__ == "__main__"' in src
 
     # The deserialized code is only the filter: no harness, exact same source.
-    parsed = MODULE.deserialize_filter(src, filename="filter.py")
+    parsed = serialization.deserialize_filter(src, filename="filter.py")
     assert parsed.code == code
     assert "def _main(" not in parsed.code
     assert "__main__" not in parsed.code
@@ -1613,7 +1617,7 @@ def test_deserialize_filter_detects_node_by_extension():
     src = MODULE.serialize_filter(
         _gen_node("function filterPaths(paths){return paths;}"), "ts", "gpt-4o-mini"
     )
-    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
+    parsed = serialization.deserialize_filter(src, filename="filter.cjs")
     assert parsed.runtime == "node"
 
 
@@ -1623,14 +1627,14 @@ def test_deserialize_filter_round_trips_node_dependencies():
         "ts",
         "gpt-4o-mini",
     )
-    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
+    parsed = serialization.deserialize_filter(src, filename="filter.cjs")
     assert parsed.runtime == "node"
     assert parsed.dependencies == ["@babel/parser", "ts-morph"]
 
 
 def test_deserialize_filter_accepts_legacy_node_without_metadata():
     src = "// nfind filter\n// Runtime: node\n\nfunction filterPaths(paths){return paths;}\n"
-    parsed = MODULE.deserialize_filter(src, filename="filter.cjs")
+    parsed = serialization.deserialize_filter(src, filename="filter.cjs")
     assert parsed.runtime == "node"
     assert parsed.dependencies == []
 
@@ -1641,7 +1645,7 @@ def test_deserialize_filter_rejects_invalid_node_metadata():
         "function filterPaths(paths){return paths;}\n"
     )
     with pytest.raises(ValueError, match="Invalid package name"):
-        MODULE.deserialize_filter(src, filename="filter.cjs")
+        serialization.deserialize_filter(src, filename="filter.cjs")
 
 
 def test_deserialize_filter_rejects_invalid_python_dependencies():
@@ -1656,7 +1660,7 @@ def test_deserialize_filter_rejects_invalid_python_dependencies():
         "def filter_paths(paths):\n    return paths\n"
     )
     with pytest.raises(ValueError, match="Invalid package name"):
-        MODULE.deserialize_filter(src, filename="evil.py")
+        serialization.deserialize_filter(src, filename="evil.py")
 
 
 def test_run_saved_replays_without_generating(tmp_path):
@@ -1697,7 +1701,7 @@ def test_run_saved_gates_unapproved_dependencies(tmp_path):
         patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image") as build,
         patch.object(EXECUTION, "run_filter") as run_filter,
-        patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
+        patch.object(MODULE, "enumerate_roots", return_value=([container], {container: "a"}, [])),
         pytest.raises(MODULE.DependencyError, match="sketchy-pkg"),
     ):
         MODULE.run_saved(script, str(tmp_path), whitelist=set())
@@ -1716,7 +1720,7 @@ def test_run_saved_gates_unapproved_node_dependencies(tmp_path):
         patch.object(MODULE, "check_sandbox_available"),
         patch.object(EXECUTION, "build_worker_image") as build,
         patch.object(EXECUTION, "run_filter") as run_filter,
-        patch.object(MODULE, "enumerate_paths", return_value=([container], {container: "a"})),
+        patch.object(MODULE, "enumerate_roots", return_value=([container], {container: "a"}, [])),
         pytest.raises(MODULE.DependencyError, match="left-pad"),
     ):
         MODULE.run_saved(script, str(tmp_path), whitelist=set())
