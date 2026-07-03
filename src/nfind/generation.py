@@ -344,9 +344,15 @@ def list_models(model: str = DEFAULT_MODEL) -> list[str]:
     try:
         page = client.models.list()
     except Exception as exc:  # noqa: BLE001 - SDK/provider error types vary
+        if _is_auth_error(exc) and (hint := _auth_error_hint(provider)):
+            tail = f"Authentication failed -- {hint}."
+        else:
+            tail = (
+                "The provider may not support listing models; check its documentation "
+                "for valid model names."
+            )
         raise RuntimeError(
-            f"Could not list models for the {provider!r} provider: {exc}. The provider may "
-            "not support listing models; check its documentation for valid model names."
+            f"Could not list models for the {provider!r} provider: {exc}. {tail}"
         ) from exc
     ids = [model_id for item in page.data if (model_id := getattr(item, "id", None))]
     return sorted(ids)
@@ -367,6 +373,31 @@ def _is_model_not_found(exc: Exception) -> bool:
         status = getattr(getattr(exc, "response", None), "status_code", None)
     message = str(exc).lower()
     return status == 404 or "model_not_found" in message or "does not exist" in message
+
+
+def _is_auth_error(exc: Exception) -> bool:
+    """True when an SDK/provider error indicates a missing or invalid API key."""
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    message = str(exc).lower()
+    return (
+        status in (401, 403)
+        or "authentication" in message
+        or "invalid bearer token" in message
+        or "invalid api key" in message
+        or "unauthorized" in message
+    )
+
+
+def _auth_error_hint(provider: str) -> str | None:
+    """Suggest which env var to check for ``provider``, or None if it needs no key."""
+    if provider not in PROVIDERS:
+        return None
+    _, key_env = PROVIDERS[provider]
+    if key_env is None:
+        return None
+    return f"check that {key_env} is set to a valid {provider!r} API key"
 
 
 def _adapt_request(exc: Exception, policy: dict[str, Any]) -> bool:
@@ -446,6 +477,11 @@ def _request_completion(
                     f"Model {model!r} was not found for the {provider!r} provider -- it may be "
                     f"misspelled or not enabled for your API key. Run '{hint}' to see what's "
                     "available."
+                ) from exc
+            if _is_auth_error(exc) and (key_hint := _auth_error_hint(provider)):
+                raise RuntimeError(
+                    f"Model request to {provider!r} failed: {exc}. "
+                    f"Authentication failed -- {key_hint}."
                 ) from exc
             if not _adapt_request(exc, policy):
                 raise RuntimeError(f"Model request to {provider!r} failed: {exc}") from exc

@@ -999,6 +999,34 @@ def test_list_models_reports_unsupported_listing():
         GENERATION.list_models("groq/x")
 
 
+def test_list_models_names_key_env_var_on_auth_error():
+    client = Mock()
+    auth_error = Exception("Error code: 401 - Invalid bearer token")
+    auth_error.status_code = 401
+    client.models.list.side_effect = auth_error
+    with (
+        patch.object(GENERATION, "_make_client", return_value=client),
+        pytest.raises(
+            RuntimeError,
+            match="Authentication failed -- check that ANTHROPIC_API_KEY is set",
+        ),
+    ):
+        GENERATION.list_models("anthropic/xxx")
+
+
+def test_list_models_auth_error_keeps_generic_hint_for_keyless_provider():
+    # Local providers (ollama) need no key, so a 401 must not invent an env var to set.
+    client = Mock()
+    auth_error = Exception("401 unauthorized")
+    auth_error.status_code = 401
+    client.models.list.side_effect = auth_error
+    with (
+        patch.object(GENERATION, "_make_client", return_value=client),
+        pytest.raises(RuntimeError, match="may not support listing models"),
+    ):
+        GENERATION.list_models("ollama/llama3")
+
+
 def test_generate_filter_succeeds_on_first_attempt():
     good = json.dumps({"code": "def filter_paths(paths): return paths"})
     patcher, client = _fake_openai(good)
