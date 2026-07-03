@@ -27,7 +27,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..constants import DEFAULT_BUILD_TIMEOUT
+from ..constants import (
+    DEFAULT_BUILD_TIMEOUT,
+    DEFAULT_CPUS,
+    DEFAULT_MEMORY,
+    DEFAULT_PIDS_LIMIT,
+    DEFAULT_TIMEOUT,
+)
 
 
 @dataclass(frozen=True)
@@ -43,10 +49,10 @@ class Mount:
 class Limits:
     """Resource and output limits for a single sandboxed run."""
 
-    memory: str = "256m"
-    cpus: float = 1.0
-    pids: int = 64
-    timeout: float = 10.0
+    memory: str = DEFAULT_MEMORY
+    cpus: float = DEFAULT_CPUS
+    pids: int = DEFAULT_PIDS_LIMIT
+    timeout: float = DEFAULT_TIMEOUT
     max_output_bytes: int = 1_000_000
 
 
@@ -87,7 +93,7 @@ class Sandbox(Protocol):
     def run(self, stdin: bytes, *, mounts: list[Mount], limits: Limits) -> CompletedRun: ...
 
 
-def _dockerfile_path(name: str = "Dockerfile.python") -> Path:
+def dockerfile_path(name: str = "Dockerfile.python") -> Path:
     """Locate a Dockerfile packaged next to the sandbox package."""
     return Path(__file__).parent.parent / name
 
@@ -174,7 +180,7 @@ def _run_cli(
     return subprocess.CompletedProcess(command, process.returncode, output, errors)
 
 
-def _derived_image_tag(image: str, dockerfile_text: str) -> str:
+def derived_image_tag(image: str, dockerfile_text: str) -> str:
     """Stable, content-hashed tag for an image derived from ``dockerfile_text``."""
     repository = image.split(":", 1)[0]
     digest = hashlib.sha256(dockerfile_text.encode()).hexdigest()[:12]
@@ -244,7 +250,7 @@ class _CliSandbox(ABC):
         The tag is content-hashed from the Dockerfile text, so identical derived images
         are reused across runs.
         """
-        derived = _derived_image_tag(self.image, dockerfile_text)
+        derived = derived_image_tag(self.image, dockerfile_text)
         if not rebuild and self._image_present(derived):
             return derived
         with tempfile.TemporaryDirectory(prefix="nfind-deps-") as context:

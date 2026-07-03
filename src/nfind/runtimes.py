@@ -175,7 +175,7 @@ RUNTIMES: dict[str, Runtime] = {
 }
 
 
-def _imply_packages(runtime_name: str, dependencies: Sequence[str]) -> list[str]:
+def imply_packages(runtime_name: str, dependencies: Sequence[str]) -> list[str]:
     """Add packages implied by others that pip won't pull in automatically.
 
     The tree-sitter grammar wheels (``tree-sitter-<lang>``) declare the ``tree-sitter``

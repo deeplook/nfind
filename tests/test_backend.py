@@ -1161,19 +1161,19 @@ def test_collect_macos_metadata_reads_tags_and_quarantine(tmp_path):
 
 def test_imply_packages_adds_tree_sitter_core_for_grammar_wheels():
     # A grammar wheel alone leaves `import tree_sitter` failing; core must be added.
-    assert runtimes._imply_packages("python", ["tree-sitter-go"]) == [
+    assert runtimes.imply_packages("python", ["tree-sitter-go"]) == [
         "tree-sitter",
         "tree-sitter-go",
     ]
     # Already present: unchanged (deduplicated/sorted).
-    assert runtimes._imply_packages("python", ["tree-sitter", "tree-sitter-go"]) == [
+    assert runtimes.imply_packages("python", ["tree-sitter", "tree-sitter-go"]) == [
         "tree-sitter",
         "tree-sitter-go",
     ]
     # No grammar wheel: untouched.
-    assert runtimes._imply_packages("python", ["mutagen"]) == ["mutagen"]
+    assert runtimes.imply_packages("python", ["mutagen"]) == ["mutagen"]
     # Node runtime: the Python implication does not apply.
-    assert runtimes._imply_packages("node", ["tree-sitter-go"]) == ["tree-sitter-go"]
+    assert runtimes.imply_packages("node", ["tree-sitter-go"]) == ["tree-sitter-go"]
 
 
 def test_validate_dependencies_rejects_specifiers():
@@ -1405,7 +1405,7 @@ def test_format_generated_code_removes_unused_imports_and_formats():
         "    import sys\n"
         "    return [p for p in paths if p.endswith('.epub')]\n"
     )
-    cleaned = GENERATION._format_generated_code(messy, "python")
+    cleaned = GENERATION.format_generated_code(messy, "python")
 
     assert "import os" not in cleaned
     assert "import sys" not in cleaned
@@ -1418,19 +1418,19 @@ def test_format_generated_code_wraps_at_configured_line_length():
     body = '    return [p for p in paths if p.endswith(".epub") or p.endswith(".mobi") or p.endswith(".azw")]'  # noqa: E501
     assert constants.FILTER_LINE_LENGTH == 100
     assert 88 < len(body) <= constants.FILTER_LINE_LENGTH
-    cleaned = GENERATION._format_generated_code(f"def filter_paths(paths):\n{body}\n", "python")
+    cleaned = GENERATION.format_generated_code(f"def filter_paths(paths):\n{body}\n", "python")
     assert body in cleaned  # left on a single line, so line-length 100 took effect
 
 
 def test_format_generated_code_leaves_node_unchanged():
     code = "function filterPaths(paths){ return paths; }"
-    assert GENERATION._format_generated_code(code, "node") == code
+    assert GENERATION.format_generated_code(code, "node") == code
 
 
 def test_format_generated_code_falls_back_when_ruff_missing():
     code = "def filter_paths(paths):\n    import os\n    return paths\n"
     with patch.object(GENERATION, "_ruff_path", return_value=None):
-        assert GENERATION._format_generated_code(code, "python") == code
+        assert GENERATION.format_generated_code(code, "python") == code
 
 
 def test_search_formats_generated_code_before_running(tmp_path):

@@ -7,6 +7,10 @@ DEFAULT_NODE_IMAGE = "nfind-search-node:latest"
 DEFAULT_MODEL = "openai/gpt-5.4"
 DEFAULT_RUNTIME = "python"
 DEFAULT_PROVIDER = "openai"
+DEFAULT_TIMEOUT = 180.0
+DEFAULT_MEMORY = "256m"
+DEFAULT_CPUS = 1.0
+DEFAULT_PIDS_LIMIT = 64
 
 # Providers reachable through the OpenAI-compatible chat-completions API. A model is
 # selected as "provider/model" (e.g. "anthropic/claude-opus-4-8"); a bare name

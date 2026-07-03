@@ -267,10 +267,10 @@ def test_can_identity_mount_rejects_empty():
 
 def test_normalize_roots_dedupes_and_requires_existing(tmp_path):
     (tmp_path / "x").write_text("x")
-    roots = MODULE._normalize_roots([tmp_path, tmp_path])
+    roots = MODULE.normalize_roots([tmp_path, tmp_path])
     assert roots == [tmp_path.resolve()]
     with pytest.raises(FileNotFoundError):
-        MODULE._normalize_roots([tmp_path / "missing"])
+        MODULE.normalize_roots([tmp_path / "missing"])
 
 
 # --- CLI wiring -----------------------------------------------------------------

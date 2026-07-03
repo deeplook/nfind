@@ -173,7 +173,7 @@ def _ruff_path() -> str | None:
     return shutil.which("ruff")
 
 
-def _format_generated_code(code: str, runtime: str) -> str:
+def format_generated_code(code: str, runtime: str) -> str:
     """Tidy LLM-generated code before it is shown, saved, or run."""
     if runtime != DEFAULT_RUNTIME:
         return code

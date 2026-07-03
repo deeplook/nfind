@@ -150,8 +150,8 @@ nfind "Python files with unused imports" --show-code --no-format
 any OpenAI-compatible provider. Each provider reads its own `*_API_KEY`:
 
 ```bash
-nfind "TypeScript files using generics" --model gpt-4o            # OpenAI (default provider)
-nfind "large CSV files" --model anthropic/claude-3-5-sonnet-latest
+nfind "TypeScript files using generics" --model openai/gpt-5.4
+nfind "large CSV files" --model anthropic/claude-sonnet-4-6
 nfind "duplicate images" --model groq/llama-3.3-70b-versatile
 nfind "Go files with TODOs" --model openrouter/google/gemini-2.0-flash-001
 
@@ -243,13 +243,13 @@ It's a no-op on other platforms. Field schema and examples:
 
 ---
 
-## 10. Save a filter and replay it (for standalone auditing and reproducibility)
+## 10. Save a filter and replay it
 
 `--save` writes the generated filter as a **standalone, auditable filter program**
 — a self-describing, dependency-declaring artifact you can read, version, and re-run.
-This offers perfect **reproducibility** since you can run the exact same search
-logic later with zero LLM overhead (or cost) or non-deterministic variance. Python
-filters are saved as [PEP 723](https://peps.python.org/pep-0723/) scripts; Node
+This lets you run the exact same search logic later with zero LLM overhead (or cost)
+or generation variance. Python filters are saved as
+[PEP 723](https://peps.python.org/pep-0723/) scripts; Node
 filters are saved with a comment header and machine-readable dependency metadata.
 
 ```bash
@@ -262,6 +262,10 @@ are still gated by the whitelist):
 ```bash
 nfind --run no-art.py ~/Music          # with --run, the lone positional is the PATH
 ```
+
+Saved filters preserve the generated source and dependency names. Package versions are
+not pinned by default, so use a pinned custom image when dependency-version stability is
+part of what you need to audit.
 
 When the saved file is a Python PEP 723 script, you can also run it directly with `uv`
 once you trust it (this executes on the host, outside the sandbox):
@@ -289,7 +293,7 @@ nfind "source files with cyclomatic complexity over 20" ./src \
 nfind "directories that look like git repos" ~/code --pids-limit 32
 ```
 
-- `--timeout` — seconds the filter may run before it's killed (default `10`).
+- `--timeout` — seconds the filter may run before it's killed (default `180`).
 - `--memory` — container memory limit, e.g. `256m`, `1g` (default `256m`).
 - `--cpus` — CPU limit (default `1.0`).
 - `--pids-limit` — max processes inside the container (default `64`).
@@ -323,7 +327,7 @@ reads `--config PATH`, then `$NFIND_CONFIG`, then
 
 ```toml
 # ~/.config/nfind/config.toml
-model = "anthropic/claude-3-5-sonnet-latest"
+model = "anthropic/claude-sonnet-4-6"
 timeout = 30
 memory = "512m"
 cpus = 2
@@ -338,9 +342,10 @@ NFIND_CONFIG=./ci.toml nfind "Rust files that use unsafe"
 ```
 
 Precedence is **command-line > config file > built-in default**. Settable keys mirror the
-flag names (`model`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`, `build-timeout`,
-`json`, `fields`, `no-format`); actions like `--save`/`--run` and approval shortcuts like
-`--yes`/`--no-deps` are intentionally not configurable. Full reference:
+flag names (`model`, `sandbox`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`,
+`build-timeout`, `json`, `fields`, `no-format`, `exclude`, `no-ignore`, `max-depth`,
+`print0`); actions like `--save`/`--run` and approval shortcuts like `--yes`/`--no-deps`
+are intentionally not configurable. Full reference:
 [Configuration](configuration.md#config-file).
 
 ---
@@ -408,36 +413,9 @@ from Python instead of the shell, see the [Python API](api.md).
 
 ## Option cheat sheet
 
-| Option | Purpose |
-| --- | --- |
-| `PROMPT` | Natural-language description of the paths to find. |
-| `PATH` | Directory to search (default: current directory). |
-| `--config PATH` | TOML file of option defaults (env: `NFIND_CONFIG`). |
-| `--exclude GLOB` | Skip names/paths during enumeration (repeatable; prunes dirs). |
-| `--no-ignore` | Don't skip the default ignored dirs (`.git`, `node_modules`, …). |
-| `--max-depth N` | Descend at most `N` levels below `PATH` (direct child = `1`). |
-| `--model NAME` | Model, bare or `provider/model` (default: `openai/gpt-5.4`). |
-| `--list-models` | List the selected provider's model ids and exit. |
-| `--image TAG` | Override the base image for the chosen runtime. |
-| `--timeout SECS` | Max filter runtime before it's killed (default: `180`). |
-| `--memory SIZE` | Container memory limit (default: `256m`). |
-| `--cpus N` | CPU limit (default: `1.0`). |
-| `--pids-limit N` | Max processes in the container (default: `64`). |
-| `--rebuild` | Rebuild the worker image before searching. |
-| `--build-timeout SECS` | Seconds allowed for building the image (default: `120`). |
-| `--show-code` | Print the generated filter before running it. |
-| `--save PATH` | Save the filter as a replayable script with dependency metadata. |
-| `--run PATH` | Replay a saved filter (no LLM call); lone positional is the PATH. |
-| `--confirm`, `-i` | Show the code and ask before running. |
-| `--json` | Output a `{count, results}` JSON object. |
-| `--print0`, `-0` | Separate results with NUL bytes (for `xargs -0`). |
-| `--fields`, `-f` | Show extra per-path fields. |
-| `--yes`, `-y` | Approve requested packages without prompting. |
-| `--no-deps` | Reject all third-party packages (standard library only). |
-| `--no-format` | Skip the ruff cleanup of the generated filter. |
-| `--macos-meta` | Expose Finder tags / download provenance (macOS only). |
-
-Run `nfind -h` for the authoritative list, or see the full [CLI reference](cli.md).
+Run `nfind -h` for the authoritative option list, or see the full
+[CLI reference](cli.md#options). The rest of this tutorial groups the same options by
+workflow so the reference table only lives in one place.
 
 ## Where to next
 

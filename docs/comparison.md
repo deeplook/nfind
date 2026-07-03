@@ -49,10 +49,9 @@ dates) — with zero setup and a system-wide UI.
   a directory and a structural question.
 - **Non-deterministic** — the model picks the implementation, so results can vary; this
   is why [`--show-code` / `--confirm`](cli.md#reviewing-the-generated-code) exist.
-- **Reproducibility** — because nfind allows you to `--save` the generated code, you
-  get deterministic, reproducible search results later with zero LLM overhead or
-  non-deterministic variance (unlike chat-based AI assistants where the same prompt
-  can yield different logic each run).
+- **Saved logic** — because nfind allows you to `--save` the generated code, you can
+  rerun the same filter later with zero LLM overhead or generation variance (unlike
+  chat-based AI assistants where the same prompt can yield different logic each run).
 - **Dependencies** — needs a container backend and an API key, and the host reaches the OpenAI API
   to generate code. Your **prompt** is sent to the model; your **file list and contents
   are not** — the actual file access happens locally in a read-only sandbox. With the

@@ -24,7 +24,7 @@ runtime needed) or an alternate backend without touching the domain logic that d
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 from ..constants import DEFAULT_BUILD_TIMEOUT
 from .apple import (
@@ -42,8 +42,8 @@ from .base import (
     SandboxOutputTooLarge,
     SandboxTimeout,
     SandboxUnavailable,
-    _derived_image_tag,
-    _dockerfile_path,
+    derived_image_tag,
+    dockerfile_path,
 )
 from .docker import (
     DockerSandbox,
@@ -58,6 +58,7 @@ from .podman import (
 )
 
 SandboxBackend = Literal["docker", "apple", "podman"]
+SANDBOX_BACKENDS = get_args(SandboxBackend)
 DEFAULT_SANDBOX_BACKEND: SandboxBackend = "docker"
 
 
@@ -96,11 +97,11 @@ def create_sandbox(
 # errors, backend classes, and dispatch helpers that the rest of nfind imports through
 # ``from .sandbox import ...``. ``__all__`` names exactly that surface so mypy's strict
 # ``no_implicit_reexport`` and ruff's unused-import check pass without per-import aliases.
-# A few underscore-prefixed helpers are re-exported because sibling modules and tests
-# reach for them directly.
+# Image path/tag helpers are re-exported because sibling modules and tests use them.
 __all__ = [
     # Dispatch and backend selection.
     "SandboxBackend",
+    "SANDBOX_BACKENDS",
     "DEFAULT_SANDBOX_BACKEND",
     "check_sandbox_available",
     "create_sandbox",
@@ -129,6 +130,6 @@ __all__ = [
     "build_podman_image",
     "check_podman_available",
     # Helpers used by sibling modules.
-    "_dockerfile_path",
-    "_derived_image_tag",
+    "dockerfile_path",
+    "derived_image_tag",
 ]

@@ -17,13 +17,20 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .constants import DEFAULT_BUILD_TIMEOUT, DEFAULT_MODEL
-from .enumeration import _normalize_roots, enumerate_roots
+from .constants import (
+    DEFAULT_BUILD_TIMEOUT,
+    DEFAULT_CPUS,
+    DEFAULT_MEMORY,
+    DEFAULT_MODEL,
+    DEFAULT_PIDS_LIMIT,
+    DEFAULT_TIMEOUT,
+)
+from .enumeration import enumerate_roots, normalize_roots
 from .errors import DependencyError, DockerError, DockerUnavailableError
-from .execution import _run_generated
-from .generation import _format_generated_code, generate_filter, list_models
+from .execution import run_generated
+from .generation import format_generated_code, generate_filter, list_models
 from .metadata import collect_macos_metadata
-from .runtimes import GeneratedFilter, _imply_packages
+from .runtimes import GeneratedFilter, imply_packages
 from .sandbox import (
     DEFAULT_SANDBOX_BACKEND,
     Sandbox,
@@ -59,16 +66,35 @@ __all__ = [
 ]
 
 
+def _prepare_generated_filter(
+    prompt: str,
+    *,
+    model: str,
+    on_retry: Callable[[int, ValueError], None] | None,
+    macos_meta: bool,
+    extract: bool,
+    format_code: bool,
+) -> GeneratedFilter:
+    """Generate a filter and apply common post-processing before review or execution."""
+    generated = generate_filter(
+        prompt, model=model, on_retry=on_retry, macos_meta=macos_meta, extract=extract
+    )
+    generated.dependencies = imply_packages(generated.runtime, generated.dependencies)
+    if format_code:
+        generated.code = format_generated_code(generated.code, generated.runtime)
+    return generated
+
+
 def search(
     path: str | Path | Sequence[str | Path],
     prompt: str,
     *,
     image: str | None = None,
     model: str = DEFAULT_MODEL,
-    timeout: float = 10.0,
-    memory: str = "256m",
-    cpus: float = 1.0,
-    pids_limit: int = 64,
+    timeout: float = DEFAULT_TIMEOUT,
+    memory: str = DEFAULT_MEMORY,
+    cpus: float = DEFAULT_CPUS,
+    pids_limit: int = DEFAULT_PIDS_LIMIT,
     rebuild: bool = False,
     build_timeout: float = DEFAULT_BUILD_TIMEOUT,
     on_generated: Callable[[GeneratedFilter], None] | None = None,
@@ -125,7 +151,7 @@ def search(
     VCS/dependency/cache directories), and ``max_depth`` (limit traversal depth) shape
     which paths are enumerated and handed to the filter; see :func:`enumerate_roots`.
     """
-    roots = _normalize_roots(path)
+    roots = normalize_roots(path)
     container_paths, host_by_container, mounts = enumerate_roots(
         roots, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
     )
@@ -137,16 +163,18 @@ def search(
     else:
         check_sandbox_available(sandbox_backend)
     meta = collect_macos_metadata(host_by_container) if macos_meta else {}
-    generated = generate_filter(
-        prompt, model=model, on_retry=on_retry, macos_meta=macos_meta, extract=extract
+    generated = _prepare_generated_filter(
+        prompt,
+        model=model,
+        on_retry=on_retry,
+        macos_meta=macos_meta,
+        extract=extract,
+        format_code=format_code,
     )
-    generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
-    if format_code:
-        generated.code = _format_generated_code(generated.code, generated.runtime)
     if on_generated is not None:
         on_generated(generated)
 
-    return _run_generated(
+    return run_generated(
         generated,
         mounts,
         container_paths,
@@ -184,12 +212,14 @@ def generate_only(
     Use this (or ``--no-exec`` on the CLI) when you want to inspect or save a
     filter without executing it — no path enumeration, no sandbox startup.
     """
-    generated = generate_filter(
-        prompt, model=model, on_retry=on_retry, macos_meta=macos_meta, extract=extract
+    generated = _prepare_generated_filter(
+        prompt,
+        model=model,
+        on_retry=on_retry,
+        macos_meta=macos_meta,
+        extract=extract,
+        format_code=format_code,
     )
-    generated.dependencies = _imply_packages(generated.runtime, generated.dependencies)
-    if format_code:
-        generated.code = _format_generated_code(generated.code, generated.runtime)
     if on_generated is not None:
         on_generated(generated)
     return generated
@@ -200,10 +230,10 @@ def run_saved(
     path: str | Path | Sequence[str | Path] = ".",
     *,
     image: str | None = None,
-    timeout: float = 10.0,
-    memory: str = "256m",
-    cpus: float = 1.0,
-    pids_limit: int = 64,
+    timeout: float = DEFAULT_TIMEOUT,
+    memory: str = DEFAULT_MEMORY,
+    cpus: float = DEFAULT_CPUS,
+    pids_limit: int = DEFAULT_PIDS_LIMIT,
     rebuild: bool = False,
     build_timeout: float = DEFAULT_BUILD_TIMEOUT,
     approve_dependencies: Callable[[list[str]], bool] | None = None,
@@ -230,7 +260,7 @@ def run_saved(
     if on_generated is not None:
         on_generated(generated)
 
-    roots = _normalize_roots(path)
+    roots = normalize_roots(path)
     container_paths, host_by_container, mounts = enumerate_roots(
         roots, exclude=exclude, max_depth=max_depth, use_default_ignores=use_default_ignores
     )
@@ -240,7 +270,7 @@ def run_saved(
         sandbox.check_available()
     else:
         check_sandbox_available(sandbox_backend)
-    return _run_generated(
+    return run_generated(
         generated,
         mounts,
         container_paths,

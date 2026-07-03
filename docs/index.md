@@ -2,9 +2,9 @@
 
 **nfind** — short for **n**atural-**find** — finds files by describing them in plain
 language (it's `find`, but driven by a natural-language description instead of a filter
-expression). You give a natural-language prompt; an LLM writes a small Python filter for
-it; that filter runs against your file tree inside a hardened, disposable Docker
-container and prints the matching paths — a natural-language cousin of `find`.
+expression). You give a natural-language prompt; an LLM writes a small Python or Node.js
+filter for it; that filter runs against your file tree inside a hardened, disposable
+Docker container and prints the matching paths — a natural-language cousin of `find`.
 
 ```bash
 uv tool install nfind
@@ -63,7 +63,15 @@ describe in a sentence. See the [Examples gallery](examples.md).
 Because the filter runs inside the sandbox, it can safely inspect file *contents* and
 metadata — not just names — to answer questions classic `find` + `grep` typically can't.
 
-<!-- diagram: architecture — to be added -->
+```mermaid
+flowchart LR
+    Prompt["prompt only"] --> Generate["LLM generates filter"]
+    Roots["host paths"] --> Enumerate["host enumerates paths"]
+    Generate --> Sandbox["run filter in sandbox"]
+    Enumerate --> Sandbox
+    Sandbox --> Map["validate and map paths back"]
+    Map --> Output["stdout: path records"]
+```
 
 ## Why it exists
 
@@ -86,7 +94,7 @@ attribute index can't express. See [How nfind compares](comparison.md).
   [`--show-code`](cli.md#options), [`--save`](cli.md#options), and
   [`--confirm`](cli.md#options) let you inspect, keep, or approve the generated filter.
 - **[Save & replay](cli.md#saving--replaying-filters)** — `--save` writes the filter as
-  a **standalone, auditable filter program** (a self-describing, dependency-declaring artifact), guaranteeing perfect **reproducibility**; replay it sandboxed with `--run`
+  a **standalone, auditable filter program** (a self-describing, dependency-declaring artifact); replay it sandboxed with `--run`
   or run trusted Python saves directly via `uv run`.
 - **[Output modes](output-modes.md)** — a clean path list by default, `--fields` for
   extra per-path fields, `--json` for machine-readable records.
@@ -117,9 +125,9 @@ See [Examples](examples.md) for the full prompt gallery.
 
 - Python 3.11+
 - [Docker](https://docs.docker.com/get-docker/) installed and running, or an experimental
-alternate backend — [Apple Containers](https://opensource.apple.com/projects/container/)
-on macOS, or [Podman](https://podman.io/) - An OpenAI API key in `OPENAI_API_KEY` (or
-another [provider's](cli.md#providers) key)
+  alternate backend — [Apple Containers](https://opensource.apple.com/projects/container/)
+  on macOS, or [Podman](https://podman.io/)
+- An OpenAI API key in `OPENAI_API_KEY` (or another [provider's](cli.md#providers) key)
 
 See [Installation](installation.md) for details.
 

@@ -12,7 +12,14 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .constants import DEFAULT_BUILD_TIMEOUT, DEFAULT_IMAGE
+from .constants import (
+    DEFAULT_BUILD_TIMEOUT,
+    DEFAULT_CPUS,
+    DEFAULT_IMAGE,
+    DEFAULT_MEMORY,
+    DEFAULT_PIDS_LIMIT,
+    DEFAULT_TIMEOUT,
+)
 from .errors import DependencyError, DockerError
 from .runtimes import PYTHON_RUNTIME, RUNTIMES, GeneratedFilter, Runtime
 from .sandbox import (
@@ -24,8 +31,8 @@ from .sandbox import (
     SandboxError,
     SandboxOutputTooLarge,
     SandboxTimeout,
-    _dockerfile_path,
     create_sandbox,
+    dockerfile_path,
 )
 from .whitelist import approve_packages, load_whitelist
 from .worker import MAX_RESULT_BYTES, _normalize_results
@@ -53,7 +60,7 @@ def build_worker_image(
         sandbox = create_sandbox(
             sandbox_backend,
             image,
-            dockerfile=_dockerfile_path(runtime.dockerfile),
+            dockerfile=dockerfile_path(runtime.dockerfile),
             build_timeout=build_timeout,
         )
     sandbox.ensure_image(rebuild=rebuild)
@@ -94,10 +101,10 @@ def run_filter(
     sandbox: Sandbox | None = None,
     sandbox_backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND,
     image: str = DEFAULT_IMAGE,
-    timeout: float = 10.0,
-    memory: str = "256m",
-    cpus: float = 1.0,
-    pids_limit: int = 64,
+    timeout: float = DEFAULT_TIMEOUT,
+    memory: str = DEFAULT_MEMORY,
+    cpus: float = DEFAULT_CPUS,
+    pids_limit: int = DEFAULT_PIDS_LIMIT,
     meta: dict[str, Any] | None = None,
     limits: Limits | None = None,
     mounts: list[Mount] | None = None,
@@ -118,7 +125,7 @@ def run_filter(
     if mounts is None:
         mounts = [Mount(root, "/data", read_only=True)]
     if sandbox is None:
-        sandbox = create_sandbox(sandbox_backend, image, dockerfile=_dockerfile_path())
+        sandbox = create_sandbox(sandbox_backend, image, dockerfile=dockerfile_path())
     request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
 
     try:
@@ -199,6 +206,3 @@ def run_generated(
         mapped["path"] = host_by_container[record["path"]]
         host_records.append(mapped)
     return host_records
-
-
-_run_generated = run_generated

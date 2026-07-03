@@ -168,10 +168,9 @@ Declining a `--confirm` prompt aborts before the container runs and exits with c
 
 `--save PATH` writes the generated filter as a **standalone, auditable filter
 program** (a self-describing, replayable script) rather than a bare function.
-This guarantees perfect **reproducibility** for your search results, allowing
-you to run the exact same logic later with zero LLM overhead or non-deterministic
-variance. For the Python runtime that's a [PEP 723](https://peps.python.org/pep-0723/)
-script:
+This lets you run the exact same filter logic later with zero LLM overhead or
+generation variance. For the Python runtime that's a
+[PEP 723](https://peps.python.org/pep-0723/) script:
 
 ```bash
 nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save mp3-live.py
@@ -186,7 +185,7 @@ nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save 
 nfind filter
 
 Prompt:  MP3 files whose title tag contains 'live', using mutagen
-Model:   gpt-4o-mini
+Model:   openai/gpt-5.4
 Runtime: python
 Saved:   2026-06-21
 
@@ -215,6 +214,10 @@ uv run mp3-live.py ~/Music
 `--run` reuses the dependency [whitelist](dependencies.md): a saved filter that
 declares a not-yet-approved package still prompts (or is rejected with `--no-deps`),
 so a replayed filter can't silently pull new packages.
+
+Saved filters preserve the generated source and dependency names. Package versions are
+not pinned by default, so a future replay may install newer package releases unless you
+run against an already-cached derived image or your own pinned base image.
 
 > **Safety:** `uv run` executes the filter with your full user privileges, network
 > access, and write access — none of nfind's [sandbox](safety.md) protections apply.

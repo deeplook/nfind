@@ -25,7 +25,7 @@ from .base import (
     SandboxUnavailable,
     _CliSandbox,
     _docker_error_detail,
-    _dockerfile_path,
+    dockerfile_path,
 )
 
 
@@ -84,17 +84,17 @@ def build_apple_container_image(
         if probe.returncode == 0:
             return
 
-    dockerfile_path = _dockerfile_path(dockerfile)
+    dockerfile_path_value = dockerfile_path(dockerfile)
     try:
         completed = base._run_cli(
             [
                 "container",
                 "build",
                 "--file",
-                str(dockerfile_path),
+                str(dockerfile_path_value),
                 "--tag",
                 image,
-                str(dockerfile_path.parent),
+                str(dockerfile_path_value.parent),
             ],
             timeout=build_timeout,
         )

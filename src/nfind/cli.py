@@ -29,6 +29,7 @@ from .command_plan import (
     plan_command,
 )
 from .config import ConfigError, default_config_path, load_config
+from .constants import DEFAULT_CPUS, DEFAULT_MEMORY, DEFAULT_PIDS_LIMIT, DEFAULT_TIMEOUT
 from .extract import iter_extract_rows
 
 app = typer.Typer(
@@ -60,9 +61,10 @@ _PODMAN_SANDBOX_WARNING = (
 
 
 def _validate_sandbox_backend(value: str) -> SandboxBackend:
-    if value in ("docker", "apple", "podman"):
+    if value in sandbox_module.SANDBOX_BACKENDS:
         return cast(SandboxBackend, value)
-    raise ValueError("--sandbox must be one of: docker, apple, podman")
+    choices = ", ".join(sandbox_module.SANDBOX_BACKENDS)
+    raise ValueError(f"--sandbox must be one of: {choices}")
 
 
 def _warn_if_experimental_sandbox(sandbox_backend: SandboxBackend) -> None:
@@ -278,19 +280,19 @@ def main(
     timeout: Annotated[
         float,
         typer.Option(help="Seconds the generated filter may run before it is killed."),
-    ] = 180.0,
+    ] = DEFAULT_TIMEOUT,
     memory: Annotated[
         str,
         typer.Option(help="Memory limit for the worker container (e.g. 256m)."),
-    ] = "256m",
+    ] = DEFAULT_MEMORY,
     cpus: Annotated[
         float,
         typer.Option(help="CPU limit for the worker container."),
-    ] = 1.0,
+    ] = DEFAULT_CPUS,
     pids_limit: Annotated[
         int,
         typer.Option(help="Maximum number of processes inside the worker container."),
-    ] = 64,
+    ] = DEFAULT_PIDS_LIMIT,
     rebuild: Annotated[
         bool,
         typer.Option(help="Rebuild the worker image before searching."),
@@ -508,8 +510,7 @@ def main(
         return typer.confirm("Install and remember them?", default=False, err=True)
 
     def on_retry(retry: int, error: ValueError) -> None:
-        if fields:
-            typer.echo(f"generation attempt failed, retrying (retry {retry}): {error}", err=True)
+        typer.echo(f"generation attempt failed, retrying (retry {retry}): {error}", err=True)
 
     needs_hook = show_code or save is not None or confirm or generate_only_mode
     hook = on_generated if needs_hook else None

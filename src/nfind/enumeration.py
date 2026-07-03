@@ -115,7 +115,7 @@ def enumerate_paths(
     return container_paths, host_by_container
 
 
-def _normalize_roots(path: str | Path | Sequence[str | Path]) -> list[Path]:
+def normalize_roots(path: str | Path | Sequence[str | Path]) -> list[Path]:
     """Resolve one-or-many search paths to a de-duplicated list of existing roots."""
     items: Sequence[str | Path]
     items = [path] if isinstance(path, (str, Path)) else list(path)

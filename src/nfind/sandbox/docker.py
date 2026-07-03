@@ -21,7 +21,7 @@ from .base import (
     SandboxUnavailable,
     _CliSandbox,
     _docker_error_detail,
-    _dockerfile_path,
+    dockerfile_path,
 )
 
 
@@ -117,13 +117,13 @@ def build_image(
         if probe.returncode == 0:
             return
 
-    dockerfile_path = _dockerfile_path(dockerfile)
+    dockerfile_path_value = dockerfile_path(dockerfile)
     try:
         completed = base._run_cli(
             _docker_build_command(
-                dockerfile=str(dockerfile_path),
+                dockerfile=str(dockerfile_path_value),
                 tag=image,
-                context=str(dockerfile_path.parent),
+                context=str(dockerfile_path_value.parent),
             ),
             timeout=build_timeout,
         )

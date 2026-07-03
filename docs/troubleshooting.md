@@ -83,7 +83,7 @@ selection](cli.md#endpoint-selection-chat-completions-vs-responses).
 ### The filter timed out
 
 ```
-error: Generated filter exceeded the 10s timeout.
+error: Generated filter exceeded the 180s timeout.
 ```
 
 Content-heavy prompts over large trees can exceed the default limit. Raise it:
@@ -103,7 +103,7 @@ diagnose and stabilise:
 - Use [`--confirm`](cli.md#reviewing-the-generated-code) to approve the code first.
 - Be explicit in the prompt (extensions, thresholds, "directly inside" vs. "anywhere
   beneath"). See [Examples](examples.md) for well-formed prompts.
-- A stronger model can help: `nfind "…" --model gpt-4o`.
+- A stronger model can help: `nfind "…" --model openai/gpt-5.4`.
 
 ### Worker image build is slow or fails
 

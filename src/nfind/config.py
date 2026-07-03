@@ -16,9 +16,10 @@ from __future__ import annotations
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from .paths import user_dir
+from .sandbox import SANDBOX_BACKENDS, SandboxBackend
 
 
 class ConfigError(Exception):
@@ -31,11 +32,12 @@ def _as_str(value: Any) -> str:
     return value
 
 
-def _as_sandbox_backend(value: Any) -> Literal["docker", "apple"]:
+def _as_sandbox_backend(value: Any) -> SandboxBackend:
     backend = _as_str(value)
-    if backend not in {"docker", "apple"}:
-        raise ConfigError("expected one of: docker, apple")
-    return cast(Literal["docker", "apple"], backend)
+    if backend not in SANDBOX_BACKENDS:
+        choices = ", ".join(SANDBOX_BACKENDS)
+        raise ConfigError(f"expected one of: {choices}")
+    return cast(SandboxBackend, backend)
 
 
 def _as_bool(value: Any) -> bool:

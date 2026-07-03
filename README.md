@@ -213,7 +213,7 @@ highlighting is disabled when `NO_COLOR` is set or when stderr is redirected.
 
 If the model's reply doesn't validate (malformed JSON, wrong function shape, an invalid
 package name), nfind feeds the error back and retries a few times before giving up;
-`--fields` reports when a retry happens.
+retry notices are printed to stderr.
 
 The first run builds the worker image for the chosen runtime
 (`nfind-search-paths:latest` for Python, `nfind-search-node:latest` for Node.js);

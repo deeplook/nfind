@@ -121,17 +121,17 @@ def test_build_image_reports_timeout():
         sandbox.build_image("test-image", build_timeout=7)
 
 
-# --- _derived_image_tag / derive_image ------------------------------------------
+# --- derived_image_tag / derive_image ------------------------------------------
 
 
 def test_derived_image_tag_is_stable_and_content_addressed():
     text = "FROM base\nRUN pip install a b\n"
-    tag1 = sandbox._derived_image_tag("nfind-search-paths:latest", text)
-    tag2 = sandbox._derived_image_tag("nfind-search-paths:latest", text)
+    tag1 = sandbox.derived_image_tag("nfind-search-paths:latest", text)
+    tag2 = sandbox.derived_image_tag("nfind-search-paths:latest", text)
     assert tag1 == tag2
     assert tag1.startswith("nfind-search-paths:deps-")
     # Different Dockerfile text yields a different tag.
-    assert tag1 != sandbox._derived_image_tag("nfind-search-paths:latest", text + "x")
+    assert tag1 != sandbox.derived_image_tag("nfind-search-paths:latest", text + "x")
 
 
 def test_derive_image_builds_and_returns_tag():
