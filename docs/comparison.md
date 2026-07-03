@@ -18,7 +18,8 @@ live** over the target directory in a sandbox.
 | A query becomes | A lookup against the index (constrained `kMDItem*` predicate grammar) | A natural-language prompt → generated Python/JS, run in a container sandbox |
 | Speed / scale | Near-instant, whole-disk, ranked | Seconds per query; aimed at a specific directory |
 | Freshness | Current via filesystem events | Current — reads the real files now, nothing to go stale |
-| Platform | macOS only, built-in, offline | macOS/Linux; needs Docker (default) or experimental Apple Containers on macOS + an OpenAI key |
+| Platform | macOS only, built-in, offline | macOS/Linux; needs Docker (default) or an experimental backend (Apple Containers on macOS, or Podman) + an OpenAI key |
+| Portability | Spotlight and Siri only work locally (GUI-bound) | Headless CLI tool; works perfectly over remote terminals via **SSH** on remote servers |
 
 ## What each is good at
 
@@ -28,7 +29,7 @@ dates) — with zero setup and a system-wide UI.
 
 **nfind wins at** questions a fixed attribute index can't express:
 
-- **Structural / relational** queries — "directories containing *only* audio files",
+- **Deep structural / relational** queries — "directories containing *only* audio files",
   "Python files larger than their `.pyc`", "Helm charts with both `Chart.yaml` and a
   `templates/`", "initialized Terraform modules".
 - **Computed output** — "…and for each, the line count / number of imports"
@@ -48,6 +49,10 @@ dates) — with zero setup and a system-wide UI.
   a directory and a structural question.
 - **Non-deterministic** — the model picks the implementation, so results can vary; this
   is why [`--show-code` / `--confirm`](cli.md#reviewing-the-generated-code) exist.
+- **Reproducibility** — because nfind allows you to `--save` the generated code, you
+  get deterministic, reproducible search results later with zero LLM overhead or
+  non-deterministic variance (unlike chat-based AI assistants where the same prompt
+  can yield different logic each run).
 - **Dependencies** — needs a container backend and an API key, and the host reaches the OpenAI API
   to generate code. Your **prompt** is sent to the model; your **file list and contents
   are not** — the actual file access happens locally in a read-only sandbox. With the

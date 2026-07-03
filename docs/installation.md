@@ -34,6 +34,7 @@ nfind needs two things at runtime in addition to Python:
 |---|---|---|---|---|
 | [Docker](https://docs.docker.com/get-docker/) | Default sandboxed execution of the generated filter | [Docker Desktop](https://docs.docker.com/desktop/mac/install/) or `brew install docker` | `sudo apt install docker.io` | `docker info` |
 | [Apple Containers](https://github.com/apple/container) | Experimental alternate sandbox via `--sandbox apple` | Install Apple `container`, then `container system start` | — | `container system status` |
+| [Podman](https://podman.io/) | Experimental alternate sandbox via `--sandbox podman` | `brew install podman`, then `podman machine init && podman machine start` | `sudo apt install podman` | `podman info` |
 | OpenAI API key | Generating the filter from your prompt | — | — | `echo $OPENAI_API_KEY` |
 
 Set your API key before running:

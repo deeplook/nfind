@@ -243,12 +243,14 @@ It's a no-op on other platforms. Field schema and examples:
 
 ---
 
-## 10. Save a filter and replay it
+## 10. Save a filter and replay it (for standalone auditing and reproducibility)
 
-`--save` writes the generated filter as a self-describing, dependency-declaring
-artifact you can read, version, and re-run. Python filters are saved as
-[PEP 723](https://peps.python.org/pep-0723/) scripts; Node filters are saved with a
-comment header and machine-readable dependency metadata.
+`--save` writes the generated filter as a **standalone, auditable filter program**
+— a self-describing, dependency-declaring artifact you can read, version, and re-run.
+This offers perfect **reproducibility** since you can run the exact same search
+logic later with zero LLM overhead (or cost) or non-deterministic variance. Python
+filters are saved as [PEP 723](https://peps.python.org/pep-0723/) scripts; Node
+filters are saved with a comment header and machine-readable dependency metadata.
 
 ```bash
 nfind "audio files with no album-art embedded" ~/Music --save no-art.py

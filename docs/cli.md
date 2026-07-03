@@ -78,7 +78,7 @@ saved filters (`--run`) so no stage pays an LLM call — see
 | `--model` | `openai/gpt-5.4` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
 | `--list-models` | off | List the model ids available for the provider in `--model` and exit. Needs that provider's API key. See [Providers](#providers). |
 | `--image` | per-runtime | Override the base image tag for the chosen [runtime](runtimes.md). |
-| `--sandbox` | `docker` | Sandbox backend: `docker`, or experimental `apple` on macOS. |
+| `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, or experimental `podman`. |
 | `--timeout` | `180.0` | Seconds the generated filter may run before it is killed. |
 | `--memory` | `256m` | Memory limit for the worker container. |
 | `--cpus` | `1.0` | CPU limit for the worker container. |
@@ -109,6 +109,13 @@ Docker-equivalent `--pids-limit` and `--security-opt no-new-privileges` flags in
 current CLI. Its `--cpus` option accepts whole-number CPU counts only, so values like
 `--cpus 1` work but fractional Docker-style limits like `--cpus 0.5` are rejected
 before the container runs.
+
+`--sandbox podman` uses the `podman` CLI. Podman is drop-in compatible with Docker's
+hardening flags, so nfind runs it with the **same** command as Docker — `--network none`,
+`--cap-drop ALL`, `--security-opt no-new-privileges`, a read-only root, and
+pids/memory/CPU/tmpfs limits — including fractional `--cpus` values. It is an explicit
+opt-in and prints a warning before running, because the backend has not yet been
+validated against a real Podman runtime.
 
 ## Reviewing the generated code
 
@@ -159,9 +166,12 @@ Declining a `--confirm` prompt aborts before the container runs and exits with c
 
 ## Saving & replaying filters
 
-`--save PATH` writes the generated filter as a **self-describing, replayable script**
-rather than a bare function. For the Python runtime that's a
-[PEP 723](https://peps.python.org/pep-0723/) script:
+`--save PATH` writes the generated filter as a **standalone, auditable filter
+program** (a self-describing, replayable script) rather than a bare function.
+This guarantees perfect **reproducibility** for your search results, allowing
+you to run the exact same logic later with zero LLM overhead or non-deterministic
+variance. For the Python runtime that's a [PEP 723](https://peps.python.org/pep-0723/)
+script:
 
 ```bash
 nfind "MP3 files whose title tag contains 'live', using mutagen" ~/Music --save mp3-live.py

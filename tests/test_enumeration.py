@@ -392,7 +392,7 @@ def test_cli_threads_sandbox_backend_to_run_saved(tmp_path):
 
 def test_cli_rejects_unknown_sandbox_backend():
     runner = CliRunner()
-    result = runner.invoke(cli.app, ["prompt", "/tmp", "--sandbox", "podman"])
+    result = runner.invoke(cli.app, ["prompt", "/tmp", "--sandbox", "gvisor"])
 
     assert result.exit_code == 2
     assert "--sandbox must be one of" in result.output

@@ -19,10 +19,12 @@ for record in records:
     print(record["path"])
 ```
 
-Requirements are the same as the CLI: Docker running by default (or Apple Containers
-on macOS via `sandbox_backend="apple"`), and `OPENAI_API_KEY` set in the environment.
-The first call builds the worker image; later calls reuse it. The Apple backend is
-experimental on macOS 15 because it cannot disable networking the way Docker does.
+Requirements are the same as the CLI: Docker running by default (or an experimental
+alternate backend — Apple Containers on macOS via `sandbox_backend="apple"`, or Podman
+via `sandbox_backend="podman"`), and `OPENAI_API_KEY` set in the environment. The first
+call builds the worker image; later calls reuse it. The Apple backend is experimental on
+macOS 15 because it cannot disable networking the way Docker does; the Podman backend is
+experimental because it has not yet been validated against a real Podman runtime.
 
 ## `search`
 
@@ -46,7 +48,7 @@ def search(
     macos_meta: bool = False,            # macOS: expose tags/quarantine to the filter
     format_code: bool = True,            # tidy generated Python with ruff before running
     sandbox: Sandbox | None = None,      # override the execution backend (see below)
-    sandbox_backend: Literal["docker", "apple"] = "docker",
+    sandbox_backend: Literal["docker", "apple", "podman"] = "docker",
     exclude: Sequence[str] = (),         # glob patterns to prune before filtering
     max_depth: int | None = None,
     use_default_ignores: bool = True,
@@ -235,7 +237,7 @@ records = execution.run_filter(
 | `execution.run_filter(code, root, container_paths, …)` | Execute the filter in the sandbox; return container-path records. Pass `limits=Limits(…)` to set the resource/output caps directly, or a `sandbox=` to override the backend. Also re-exported from `nfind.backend` for compatibility. |
 | `load_whitelist(runtime="python")` / `approve_packages(pkgs, runtime="python")` | Read the approved-package set / persist new approvals for one runtime (`"python"` or `"node"`). |
 | `check_docker_available()` | Raise `DockerUnavailableError` if Docker can't be reached. |
-| `check_sandbox_available("docker" | "apple")` | Raise `DockerUnavailableError` if the selected sandbox backend can't be reached. |
+| `check_sandbox_available("docker" | "apple" | "podman")` | Raise `DockerUnavailableError` if the selected sandbox backend can't be reached. |
 
 These lower-level helpers return the in-container paths the filter will see — each root's
 own host path when it can be safely mounted there, or neutral `/data` / `/data/0` … mount
@@ -250,8 +252,12 @@ The hardened execution lives behind a small, domain-agnostic `Sandbox` protocol 
 `no-new-privileges`, and process/memory/CPU/file-descriptor/tmpfs limits) in one
 auditable place, plus the image build/derive mechanics. `AppleContainerSandbox` is an
 experimental macOS backend selected with `sandbox_backend="apple"`; on macOS 15 it
-does not provide Docker-equivalent no-network isolation. `execution.build_worker_image`
-and `execution.run_filter` are nfind-specific adapters over the selected backend.
+does not provide Docker-equivalent no-network isolation. `PodmanSandbox`
+(`sandbox_backend="podman"`) reuses the identical Docker-family run command and is
+experimental only until it is validated against a real Podman runtime. The backends live
+in one module each under `nfind.sandbox` (`base`, `docker`, `apple`, `podman`), sharing a
+`_CliSandbox` base class. `execution.build_worker_image` and `execution.run_filter` are
+nfind-specific adapters over the selected backend.
 
 `search` and `run_saved` accept an optional `sandbox` to override the backend — pass a
 fake implementing the protocol to drive the nfind logic without Docker, or an alternate

@@ -15,8 +15,9 @@ nfind "Python files that import requests" ./src
 
 ## What can you ask?
 
-The prompt is free-form. These are examples of the kind of query that isn't possible
-with `find` or `grep` — they show why generating a real program per question matters:
+You can ask **deep structural questions** about your files. The prompt is free-form.
+These are examples of the kind of query that isn't possible with `find` or `grep` —
+they show why generating a real program per question matters:
 
 ```bash
 # Cross-file structural analysis
@@ -49,26 +50,28 @@ describe in a sentence. See the [Examples gallery](examples.md).
    If the reply doesn't validate, nfind feeds the error back and retries a few times.
    The generated Python filter is then tidied with ruff (unused imports removed, imports
    sorted, reformatted) before it is shown, saved, or run.
-3. **Run safely** — by default, the generated code executes in a throwaway Docker
-   container with the search root bind-mounted **read-only**, networking disabled, all
-   Linux capabilities dropped, and CPU/memory/process limits applied. On macOS,
-   `--sandbox apple` opts into experimental Apple Containers support with an explicit
-   macOS 15 networking warning.
+3. **Run safely inside a disposable, hardened sandbox** — by default, the generated
+   code executes inside a **disposable, hardened sandbox** (a throwaway Docker container)
+   with the search root bind-mounted **read-only**, networking disabled, all Linux
+   capabilities dropped, and CPU/memory/process limits applied to minimize the **blast
+   radius**. On macOS, `--sandbox apple` opts into experimental Apple Containers support
+   with an explicit macOS 15 networking warning; `--sandbox podman` is an experimental
+   drop-in that applies the same hardening flags as Docker.
 4. **Map back** — the container returns matching container paths; nfind maps them to
    host paths and prints them.
 
 Because the filter runs inside the sandbox, it can safely inspect file *contents* and
-metadata — not just names — to answer questions classic `find` + `grep` can't.
+metadata — not just names — to answer questions classic `find` + `grep` typically can't.
 
 <!-- diagram: architecture — to be added -->
 
 ## Why it exists
 
-Tools like `lfind` send the whole file list to an LLM and let the model do the
-filtering — which doesn't scale and only sees filenames. nfind instead has the LLM
-write code once, then runs that code locally over the full tree. It scales to large
-directories, can read file contents, and keeps you in control: you can review, save,
-or confirm the generated code before it runs.
+Tools like [lfind](https://pypi.org/project/lfind/) send the whole file list to an
+LLM and let the model do the filtering — which doesn't scale and only sees filenames.
+nfind instead has the LLM write code once, then runs that code locally over the full
+tree. It scales to large directories, can read file contents, and keeps you in
+control: you can review, save, or confirm the generated code before it runs.
 
 Unlike Spotlight (`mdfind`), which queries a pre-built metadata index, nfind generates
 and runs a program per question — so it can answer structural and computed queries an
@@ -83,7 +86,7 @@ attribute index can't express. See [How nfind compares](comparison.md).
   [`--show-code`](cli.md#options), [`--save`](cli.md#options), and
   [`--confirm`](cli.md#options) let you inspect, keep, or approve the generated filter.
 - **[Save & replay](cli.md#saving--replaying-filters)** — `--save` writes the filter as
-  a self-describing, dependency-declaring artifact; replay it sandboxed with `--run`
+  a **standalone, auditable filter program** (a self-describing, dependency-declaring artifact), guaranteeing perfect **reproducibility**; replay it sandboxed with `--run`
   or run trusted Python saves directly via `uv run`.
 - **[Output modes](output-modes.md)** — a clean path list by default, `--fields` for
   extra per-path fields, `--json` for machine-readable records.
@@ -113,8 +116,10 @@ See [Examples](examples.md) for the full prompt gallery.
 ## Requirements
 
 - Python 3.11+
-- [Docker](https://docs.docker.com/get-docker/) installed and running
-- An OpenAI API key in `OPENAI_API_KEY` (or another [provider's](cli.md#providers) key)
+- [Docker](https://docs.docker.com/get-docker/) installed and running, or an experimental
+alternate backend — [Apple Containers](https://opensource.apple.com/projects/container/)
+on macOS, or [Podman](https://podman.io/) - An OpenAI API key in `OPENAI_API_KEY` (or
+another [provider's](cli.md#providers) key)
 
 See [Installation](installation.md) for details.
 

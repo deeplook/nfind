@@ -52,10 +52,17 @@ _APPLE_SANDBOX_MACOS26_WARNING = (
 )
 
 
+_PODMAN_SANDBOX_WARNING = (
+    "warning: Podman sandbox is experimental; nfind applies the same hardening flags as "
+    "Docker, but the backend has not been validated against a real Podman runtime. Use "
+    "Docker for the most thoroughly tested sandbox."
+)
+
+
 def _validate_sandbox_backend(value: str) -> SandboxBackend:
-    if value == "docker" or value == "apple":
+    if value in ("docker", "apple", "podman"):
         return cast(SandboxBackend, value)
-    raise ValueError("--sandbox must be one of: docker, apple")
+    raise ValueError("--sandbox must be one of: docker, apple, podman")
 
 
 def _warn_if_experimental_sandbox(sandbox_backend: SandboxBackend) -> None:
@@ -66,6 +73,8 @@ def _warn_if_experimental_sandbox(sandbox_backend: SandboxBackend) -> None:
             else _APPLE_SANDBOX_MACOS15_WARNING
         )
         typer.echo(warning, err=True)
+    elif sandbox_backend == "podman":
+        typer.echo(_PODMAN_SANDBOX_WARNING, err=True)
 
 
 def _highlight(code: str, runtime: str = "python") -> str:
@@ -262,7 +271,8 @@ def main(
         str,
         typer.Option(
             "--sandbox",
-            help="Sandbox backend: docker (default) or apple (Apple Containers, experimental).",
+            help="Sandbox backend: docker (default), apple (Apple Containers, experimental), "
+            "or podman (experimental).",
         ),
     ] = DEFAULT_SANDBOX_BACKEND,
     timeout: Annotated[

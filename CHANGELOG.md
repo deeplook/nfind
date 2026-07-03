@@ -53,6 +53,12 @@ All notable changes to this project are documented here. The format is based on
 - **macOS-aware Apple networking.** On macOS 26+ nfind uses Apple Containers'
   `--network none`; on macOS 15 it falls back to `--no-dns` and prints an explicit
   warning about the weaker network isolation.
+- **Podman sandbox backend (experimental).** `--sandbox podman` runs saved and generated
+  filters with the `podman` CLI. Podman is drop-in compatible with Docker's hardening
+  flags, so nfind applies the *same* run command as Docker — `--network none`,
+  `--cap-drop ALL`, `--security-opt no-new-privileges`, read-only root, pids/memory/CPU
+  limits, and a `tmpfs`. It is marked experimental only because the backend has not yet
+  been validated against a real Podman runtime, so nfind prints a warning before running.
 
 ## [0.1.0] - 2026-06-23
 

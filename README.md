@@ -11,10 +11,11 @@
 **Find files by describing them in natural language.**
 
 The name is short for **n**atural-**find** — `find`, but driven by a natural-language
-description instead of a filter expression. `nfind` takes a plain-English description, asks an LLM to write
-a small filter function for it — in Python (`filter_paths`) or Node.js (`filterPaths`) —
-and runs that function against your file tree to print the matching paths — a
-natural-language cousin of `find`.
+description instead of a filter expression. `nfind` takes a plain text description,
+asks an LLM to write a small filter function for it — in Python (`filter_paths`) or
+Node.js (`filterPaths`) — and runs that function against your file tree to print the
+matching paths — a natural-language cousin of `find` that can answer **deep structural
+questions** about your files.
 
 The generated code is never executed on your machine directly. By default it runs
 inside a **disposable, hardened Docker container** with the search directory
@@ -24,21 +25,25 @@ Apple Containers instead; this is experimental on macOS 15 because Apple does no
 support Docker-style no-network isolation there. On macOS 26+, nfind is prepared to
 use Apple Containers' `--network none` support. In both cases nfind prints an explicit
 warning because Apple Containers still differs from Docker's hardening surface.
+`--sandbox podman` is an experimental drop-in that applies the same hardening flags as
+Docker; it prints a warning until it has been validated against a real Podman runtime.
 
 ## Why nfind?
 
-nfind sits in a gap no other file-search tool fills. It combines three things at once:
+nfind sits in a gap not filled by other file-search tools. It combines three things at once:
 
 1. **Natural language** — you describe what you want, not a query grammar or a `find`
    incantation.
-2. **A real generated program, not a one-liner** — the LLM writes an actual
-   Python/Node filter, so it can express structural, relational, and *computed*
+2. **A standalone, auditable filter program, not a one-liner** — the LLM writes an actual
+   Python/Node filter program that you can review, save, and run directly. Because it is
+   a real, complete program, it can express deep structural, relational, and *computed*
    questions (e.g. "directories that contain *only* audio files", "Python files and
    their line counts") that a glob or a single `find` predicate can't.
-3. **Local, sandboxed execution that reads file contents** — the program runs over
-   your real tree in a read-only container, so it can open and inspect files — yet your
-   file list and contents never leave the machine (only your prompt is sent to the
-   model). The default Docker backend also disables networking.
+3. **Local, disposable, hardened sandbox execution** — the program runs over your real
+   tree inside a **disposable, hardened sandbox** (with your directory mounted read-only),
+   so it can open and inspect files — yet your file list and contents never leave the
+   machine (only your prompt is sent to the model). The default Docker backend disables
+   networking. Apple Containers do it on macOS 26+.
 
 Each neighbouring category has only part of this:
 
@@ -50,6 +55,8 @@ Each neighbouring category has only part of this:
 | Send-the-file-list-to-an-LLM tools (e.g. lfind) | ✓ | ✗ (filenames only) | ✗ |
 | **nfind** | **✓** | **✓** | **✓** |
 
+Additionally, while system-level search tools like Spotlight and Siri only work locally on physical machines, `nfind` is a headless CLI tool that works perfectly over remote terminals via **SSH**, running the same sandboxed searches on your remote servers.
+
 In one line: nfind is like asking an analyst to write and run a one-off script against
 a folder — safely, and without your files leaving your machine. See
 [docs/comparison.md](docs/comparison.md) for the full breakdown.
@@ -57,8 +64,9 @@ a folder — safely, and without your files leaving your machine. See
 ## Requirements
 
 - Python 3.11+
-- [Docker](https://docs.docker.com/get-docker/) installed and running, or Apple
-  Containers on macOS via `--sandbox apple` (experimental; see [Safety model](#safety-model))
+- [Docker](https://docs.docker.com/get-docker/) installed and running, or an experimental
+  alternate backend — Apple Containers on macOS via `--sandbox apple`, or Podman via
+  `--sandbox podman` (see [Safety model](#safety-model))
 - An API key for your provider — `OPENAI_API_KEY` by default, or the matching key for
   another [provider](#providers)
 
@@ -220,7 +228,7 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | `--memory` | `256m` | Worker container memory limit |
 | `--cpus` | `1.0` | Worker container CPU limit |
 | `--pids-limit` | `64` | Max processes inside the worker |
-| `--sandbox` | `docker` | Sandbox backend: `docker`, or experimental `apple` on macOS |
+| `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, or experimental `podman` |
 | `--rebuild` | off | Rebuild the worker image first |
 | `--exclude GLOB` | — | Skip matching names/paths during enumeration (repeatable) |
 | `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
@@ -280,6 +288,8 @@ paths = [record["path"] for record in records]
 
 ## Safety model
 
+To minimize the **blast radius** of running LLM-generated code locally, `nfind` uses a sandboxed execution model that provides **strong isolation guarantees when running on Docker**:
+
 - Search roots are mounted **read-only** under `/data`; results are mapped back to host
   paths afterward.
 - The default Docker backend runs with `--network none`, `--cap-drop ALL`,
@@ -290,5 +300,9 @@ paths = [record["path"] for record in records]
   `--network none`; on macOS 15 Apple does **not** support that flag, so nfind falls
   back to `--no-dns` and raw IP network access may still be possible. Apple `--cpus`
   values must be whole numbers, so fractional CPU limits are rejected.
+- `--sandbox podman` uses Podman with the **same** hardened run command as Docker
+  (`--network none`, dropped capabilities, `no-new-privileges`, read-only root, and
+  pids/memory/CPU/tmpfs limits). It is experimental only because it has not been
+  validated against a real Podman runtime yet, so nfind prints a warning before running.
 - The host validates that the filter returns only paths it was given, so generated
   code cannot inject arbitrary paths into the output.
