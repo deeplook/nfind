@@ -1,10 +1,12 @@
 import sys
+import time
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
-from nfind import cli, config
+from nfind import cli, config, constants
 
 # --- config.load_config ---------------------------------------------------------
 
@@ -53,6 +55,29 @@ def test_load_config_reads_enumeration_keys(tmp_path):
         "no_ignore": True,
         "print0": True,
     }
+
+
+def test_load_config_reads_limit_keys(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "command-timeout = 300\nmax-results = 100\nmax-items = 200\nmax-output-bytes = 4096\n"
+    )
+    assert config.load_config(path) == {
+        "command_timeout": 300.0,
+        "max_results": 100,
+        "max_items": 200,
+        "max_output_bytes": 4096,
+    }
+
+
+def test_documented_limit_defaults_match_constants():
+    limits = (Path(__file__).parents[1] / "docs" / "limits.md").read_text()
+    assert f"| Image build time | {constants.DEFAULT_BUILD_TIMEOUT:g} seconds |" in limits
+    assert f"| Filter execution time | {constants.DEFAULT_TIMEOUT:g} seconds |" in limits
+    memory_mb = constants.DEFAULT_MEMORY.removesuffix("m")
+    assert f"| Worker memory | {memory_mb} MB |" in limits
+    assert f"| Worker CPU | {constants.DEFAULT_CPUS:g} CPU |" in limits
+    assert f"| Worker processes | {constants.DEFAULT_PIDS_LIMIT} |" in limits
 
 
 def test_load_config_rejects_non_list_exclude(tmp_path):
@@ -176,3 +201,20 @@ def test_cli_unknown_config_key_errors(tmp_path):
     result = runner.invoke(cli.app, ["files", str(tmp_path), "--config", str(cfg)])
     assert result.exit_code == 2
     assert "unknown config key" in result.output
+
+
+@pytest.mark.skipif(not hasattr(__import__("signal"), "setitimer"), reason="POSIX timer required")
+def test_cli_whole_command_timeout():
+    def slow_models(_model):
+        time.sleep(0.2)
+        return []
+
+    runner = CliRunner()
+    with patch.object(cli.backend, "list_models", side_effect=slow_models):
+        result = runner.invoke(
+            cli.app,
+            ["--list-models", "--command-timeout", "0.01"],
+        )
+
+    assert result.exit_code == 1
+    assert "whole-command timeout" in result.output

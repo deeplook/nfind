@@ -8,6 +8,8 @@ when its runtime is unavailable.
 
 from __future__ import annotations
 
+import signal
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -213,6 +215,71 @@ def test_docker_cli_memory_limit_failure(sample_tree: Path, tmp_path: Path) -> N
 
     assert result.exit_code == 1
     assert "Generated filter failed" in result.output
+
+
+@pytest.mark.skipif(
+    not hasattr(signal, "setitimer"), reason="whole-command timeout needs a POSIX timer"
+)
+def test_docker_cli_whole_command_timeout_aborts_and_cleans_up(
+    saved_filter: Path,
+    sample_tree: Path,
+    tmp_path: Path,
+) -> None:
+    if not _backend_available("docker"):
+        pytest.skip("docker sandbox backend is not available")
+
+    # Prime the image with a fast run so the deadline below fires during the container
+    # run rather than an image build — that is the path whose cleanup we want to prove.
+    warmup = _runner().invoke(
+        cli.app,
+        [
+            "--run",
+            str(saved_filter),
+            str(sample_tree),
+            "--sandbox",
+            "docker",
+            "--image",
+            constants.DEFAULT_IMAGE,
+            "--timeout",
+            "30",
+        ],
+    )
+    assert warmup.exit_code == 0, warmup.output
+
+    slow = tmp_path / "slow_filter.py"
+    slow.write_text(
+        "def filter_paths(paths):\n    import time\n    time.sleep(30)\n    return paths\n"
+    )
+
+    result = _runner().invoke(
+        cli.app,
+        [
+            "--run",
+            str(slow),
+            str(sample_tree),
+            "--sandbox",
+            "docker",
+            "--image",
+            constants.DEFAULT_IMAGE,
+            # Filter timeout stays high so the *whole-command* deadline wins the race.
+            "--timeout",
+            "60",
+            "--command-timeout",
+            "3",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "whole-command timeout" in result.output
+
+    # The interrupted run must not leave its worker container behind.
+    running = subprocess.run(
+        ["docker", "ps", "-q", "--filter", "name=nfind-search-"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert running.stdout.strip() == "", f"leftover container: {running.stdout!r}"
 
 
 def test_apple_cli_rejects_fractional_cpu_before_running(

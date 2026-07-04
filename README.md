@@ -17,6 +17,11 @@ Node.js (`filterPaths`) — and runs that function against your file tree to pri
 matching paths — a natural-language cousin of `find` that can answer **deep structural
 questions** about your files.
 
+Like `find`, `nfind` walks directory trees recursively. Unlike `find`, it skips common
+VCS, dependency, virtual-environment, and cache names by default (including `.git`,
+`node_modules`, `.venv`, and `__pycache__`). Pass `--no-ignore` to walk the complete
+tree, or `--max-depth N` to limit recursion.
+
 The generated code is never executed on your machine directly. By default it runs
 inside a **disposable, hardened Docker container** with the search directory
 bind-mounted **read-only**, networking disabled, all Linux capabilities dropped, and
@@ -96,6 +101,9 @@ nfind "directories that contain only audio files"
 
 # Search a specific directory
 nfind "Python files that import requests" ./src
+
+# Include normally ignored paths such as .git, node_modules, and .venv
+nfind "Python files" ./src --no-ignore
 
 # Search specific files (a root may be a file, not just a directory)
 nfind "files that define a class" ./src/app.py ./src/models.py
@@ -225,6 +233,7 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | --- | --- | --- |
 | `--model` | `openai/gpt-5.4` | Model used to generate the filter; `provider/model` for non-OpenAI (see [Providers](#providers)) |
 | `--timeout` | `180.0` | Seconds the filter may run before it is killed |
+| `--command-timeout` | unlimited | Optional POSIX wall-clock deadline for the complete command |
 | `--memory` | `256m` | Worker container memory limit |
 | `--cpus` | `1.0` | Worker container CPU limit |
 | `--pids-limit` | `64` | Max processes inside the worker |
@@ -233,6 +242,9 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 | `--exclude GLOB` | — | Skip matching names/paths during enumeration (repeatable) |
 | `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
 | `--max-depth N` | unlimited | Descend at most `N` levels below each search path |
+| `--max-results N` | unlimited | Return at most `N` path records |
+| `--max-items N` | unlimited | With `--extract`, emit at most `N` item rows |
+| `--max-output-bytes N` | unlimited | Bound encoded stdout without partial rows or invalid JSON |
 | `--fields` / `-f` | off | Show extra per-path fields alongside each path |
 | `--json` | off | Output records (path + extra fields) as JSON |
 | `--extract` | off | Explode a list-valued field into one match per line (items inside files) |

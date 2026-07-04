@@ -126,6 +126,10 @@ resource-bound:
 nfind "…" ./subdir --memory 512m --cpus 2
 ```
 
+`--timeout` covers only the generated filter's sandbox execution, not enumeration,
+model generation, image building, or rendering. See [Limits and scaling](limits.md) for
+the complete stage-by-stage model and current defaults.
+
 ### Worker runs out of memory on very large trees
 
 The paths are serialized to JSON and piped into the container, then deserialized back

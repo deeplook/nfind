@@ -133,7 +133,9 @@ def run_filter(
     except SandboxTimeout as exc:
         raise TimeoutError(f"Generated filter exceeded the {limits.timeout:g}s timeout.") from exc
     except SandboxOutputTooLarge as exc:
-        raise RuntimeError("Worker output exceeded the allowed size.") from exc
+        raise RuntimeError(
+            f"Worker protocol response exceeded the {MAX_RESULT_BYTES:,}-byte safety limit."
+        ) from exc
 
     if run.returncode != 0:
         error = run.stderr.decode(errors="replace").strip()

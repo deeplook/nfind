@@ -78,6 +78,10 @@ def test_run_defaults_to_empty_paths(tmp_path):
         ({"extract_field": "todos"}, "--extract-field requires --extract"),
         ({"yes": True, "no_deps": True}, "--yes and --no-deps"),
         ({"max_depth": 0}, "--max-depth"),
+        ({"command_timeout": 0}, "--command-timeout"),
+        ({"max_results": -1}, "--max-results"),
+        ({"max_items": 0}, "--max-items"),
+        ({"max_output_bytes": 0}, "--max-output-bytes"),
     ],
 )
 def test_rejects_invalid_command_options(overrides, message):

@@ -230,7 +230,7 @@ def test_execute_worker_main_truncates_oversized_response(tmp_path, monkeypatch)
     assert worker.execute_worker_main(str(response)) == 0
     assert json.loads(response.read_text()) == {
         "ok": False,
-        "error": "filter response exceeded the allowed size",
+        "error": "filter response exceeded the 10-byte protocol safety limit",
     }
 
 
@@ -309,7 +309,7 @@ def test_run_filter_maps_timeout_to_timeouterror(tmp_path):
 
 def test_run_filter_rejects_oversized_output(tmp_path):
     fake = FakeSandbox(run_error=EXECUTION.SandboxOutputTooLarge("too big"))
-    with pytest.raises(RuntimeError, match="exceeded the allowed size"):
+    with pytest.raises(RuntimeError, match="1,000,000-byte safety limit"):
         EXECUTION.run_filter("code", tmp_path, [], sandbox=fake)
 
 

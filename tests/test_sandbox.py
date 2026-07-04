@@ -227,6 +227,35 @@ def test_run_maps_timeout_and_removes_container():
     remove.assert_called_once()
 
 
+def test_run_removes_container_on_whole_command_interrupt():
+    box = DockerSandbox("img:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(base, "_run_cli", side_effect=KeyboardInterrupt),
+        patch.object(docker, "_remove_container") as remove,
+        pytest.raises(KeyboardInterrupt),
+    ):
+        box.run(b"{}", mounts=[], limits=Limits())
+
+    remove.assert_called_once()
+
+
+def test_run_removes_container_on_command_timeout():
+    # The whole-command deadline raises CommandTimeoutError mid-run; unlike the interrupt
+    # case it derives from TimeoutError, so pin that the same cleanup path fires and the
+    # concrete exception (not a SandboxTimeout) still propagates unchanged.
+    from nfind.deadline import CommandTimeoutError
+
+    box = DockerSandbox("img:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(base, "_run_cli", side_effect=CommandTimeoutError("deadline")),
+        patch.object(docker, "_remove_container") as remove,
+        pytest.raises(CommandTimeoutError),
+    ):
+        box.run(b"{}", mounts=[], limits=Limits())
+
+    remove.assert_called_once()
+
+
 def test_run_rejects_oversized_output():
     completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"x" * 10, stderr=b"")
     box = DockerSandbox("img:latest", dockerfile="Dockerfile.python")
@@ -528,6 +557,20 @@ def test_run_cli_timeout_kills_plugin_process_group():
         pytest.raises(subprocess.TimeoutExpired),
     ):
         base._run_cli(["docker", "info"], timeout=1, capture_output=True)
+
+    killpg.assert_called_once_with(123, base.signal.SIGKILL)
+
+
+def test_run_cli_interrupt_kills_plugin_process_group():
+    process = Mock(pid=123, returncode=None)
+    process.communicate.side_effect = KeyboardInterrupt
+    with (
+        patch.object(base.subprocess, "Popen", return_value=process),
+        patch.object(base.os, "name", "posix"),
+        patch.object(base.os, "killpg", create=True) as killpg,
+        pytest.raises(KeyboardInterrupt),
+    ):
+        base._run_cli(["docker", "info"], timeout=10, capture_output=True)
 
     killpg.assert_called_once_with(123, base.signal.SIGKILL)
 

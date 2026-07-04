@@ -37,6 +37,7 @@ nav:
   - Reference:
     - CLI Reference: cli.md
     - Configuration: configuration.md
+    - Limits and Scaling: limits.md
     - Output Modes: output-modes.md
     - Python API: api.md
   - Concepts:

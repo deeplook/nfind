@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, cast
@@ -29,7 +30,14 @@ from .command_plan import (
     plan_command,
 )
 from .config import ConfigError, default_config_path, load_config
-from .constants import DEFAULT_CPUS, DEFAULT_MEMORY, DEFAULT_PIDS_LIMIT, DEFAULT_TIMEOUT
+from .constants import (
+    DEFAULT_COMMAND_TIMEOUT,
+    DEFAULT_CPUS,
+    DEFAULT_MEMORY,
+    DEFAULT_PIDS_LIMIT,
+    DEFAULT_TIMEOUT,
+)
+from .deadline import arm_command_timeout
 from .extract import iter_extract_rows
 
 app = typer.Typer(
@@ -131,6 +139,9 @@ def _emit(
     print0: bool,
     extract: bool = False,
     extract_field: str | None = None,
+    max_results: int | None = None,
+    max_items: int | None = None,
+    max_output_bytes: int | None = None,
 ) -> None:
     """Render result records in the requested output mode.
 
@@ -144,33 +155,67 @@ def _emit(
     ``path[:line]<TAB><payload>`` line per element (NUL-separated under ``--print0``);
     ``--json`` always wins and stays nested, so ``--extract`` only affects text output.
     """
+    truncated_by: list[str] = []
+    limited = records
+    if max_results is not None and len(limited) > max_results:
+        limited = limited[:max_results]
+        truncated_by.append("max-results")
+
     if as_json:
-        typer.echo(json.dumps({"count": len(records), "results": records}, indent=2))
-        return
-    if extract:
-        rows = list(iter_extract_rows(records, extract_field))
-        if print0:
-            sys.stdout.write("".join(f"{row}\0" for row in rows))
+
+        def encode_json(current: list[dict[str, Any]]) -> str:
+            payload: dict[str, Any] = {"count": len(current), "results": current}
+            if truncated_by:
+                payload.update(truncated=True, truncated_by=truncated_by)
+            return json.dumps(payload, indent=2)
+
+        output = encode_json(limited)
+        if max_output_bytes is not None:
+            while len(output.encode("utf-8", "surrogateescape")) + 1 > max_output_bytes:
+                if "max-output-bytes" not in truncated_by:
+                    truncated_by.append("max-output-bytes")
+                if not limited:
+                    raise ValueError("--max-output-bytes is too small for a valid JSON result.")
+                limited = limited[:-1]
+                output = encode_json(limited)
+        typer.echo(output)
+    else:
+        if extract:
+            rows = iter_extract_rows(limited, extract_field)
         else:
-            for row in rows:
-                typer.echo(row)
-        return
-    if print0:
-        # NUL-terminate each path (the find -print0 / xargs -0 convention) so paths
-        # containing spaces or newlines survive the pipeline intact.
-        sys.stdout.write("".join(f"{record['path']}\0" for record in records))
-        return
-    for record in records:
-        path = record["path"]
-        extras = {key: value for key, value in record.items() if key != "path"}
-        if fields and extras:
-            detail = ", ".join(
-                f"{key}={len(value)}" if isinstance(value, list) else f"{key}={value}"
-                for key, value in extras.items()
-            )
-            typer.echo(f"{path}\t{detail}")
-        else:
-            typer.echo(path)
+
+            def rendered_rows() -> Iterator[str]:
+                for record in limited:
+                    path = record["path"]
+                    extras = {key: value for key, value in record.items() if key != "path"}
+                    if fields and extras:
+                        detail = ", ".join(
+                            f"{key}={len(value)}" if isinstance(value, list) else f"{key}={value}"
+                            for key, value in extras.items()
+                        )
+                        yield f"{path}\t{detail}"
+                    else:
+                        yield path
+
+            rows = rendered_rows()
+
+        separator = "\0" if print0 else "\n"
+        written = 0
+        for index, row in enumerate(rows):
+            if extract and max_items is not None and index >= max_items:
+                truncated_by.append("max-items")
+                break
+            encoded_size = len(f"{row}{separator}".encode("utf-8", "surrogateescape"))
+            if max_output_bytes is not None and written + encoded_size > max_output_bytes:
+                truncated_by.append("max-output-bytes")
+                break
+            sys.stdout.write(f"{row}{separator}")
+            written += encoded_size
+
+    if truncated_by:
+        labels = ", ".join(dict.fromkeys(truncated_by))
+        warning = f"warning: output truncated by {labels}; increase the limit to see more"
+        typer.echo(warning, err=True)
 
 
 def _read_stdin_paths() -> list[str]:
@@ -218,6 +263,7 @@ def _resolve_stdin_paths(request: CommandRequest) -> tuple[CommandRequest, bool]
 
 @app.command(no_args_is_help=True)
 def main(
+    ctx: typer.Context,
     prompt: Annotated[
         str | None,
         typer.Argument(
@@ -229,9 +275,11 @@ def main(
         list[str] | None,
         typer.Argument(
             metavar="[PATH]...",
-            help="One or more directories or files to search. With several, each is "
-            "searched and results are merged. Use '-' to read a NUL- or newline-"
-            "delimited path list from stdin (e.g. 'find . | nfind \"...\" -'). If "
+            help="One or more directories or files to search. Directories are walked "
+            "recursively, with common ignored names pruned unless --no-ignore is set. "
+            "With several, each is searched and results are merged. Use '-' to read a "
+            "NUL- or newline-delimited path list from stdin (e.g. 'find . | nfind "
+            '"..." -\'). If '
             "omitted, the filter is generated but not run (useful with --save or "
             "--show-code).",
         ),
@@ -243,8 +291,8 @@ def main(
             envvar="NFIND_CONFIG",
             is_eager=True,
             callback=_load_config_defaults,
-            help="TOML config file supplying defaults for options (model, timeout, "
-            "memory, cpus, pids-limit, build-timeout, image, json, fields, no-format). "
+            help="TOML config file supplying reusable option defaults, including "
+            "models, resource limits, output limits, and enumeration controls. "
             "Defaults to config.toml in nfind's per-user config directory; "
             "command-line options win.",
         ),
@@ -281,6 +329,13 @@ def main(
         float,
         typer.Option(help="Seconds the generated filter may run before it is killed."),
     ] = DEFAULT_TIMEOUT,
+    command_timeout: Annotated[
+        float | None,
+        typer.Option(
+            "--command-timeout",
+            help="Optional POSIX wall-clock deadline for the entire command, in seconds.",
+        ),
+    ] = DEFAULT_COMMAND_TIMEOUT,
     memory: Annotated[
         str,
         typer.Option(help="Memory limit for the worker container (e.g. 256m)."),
@@ -394,8 +449,8 @@ def main(
         bool,
         typer.Option(
             "--no-ignore",
-            help="Don't skip the default ignored directories (.git, node_modules, "
-            "__pycache__, .venv, caches, …).",
+            help="Walk the complete tree instead of skipping default ignored names "
+            "(.git, node_modules, __pycache__, .venv, caches, …).",
         ),
     ] = False,
     max_depth: Annotated[
@@ -415,6 +470,18 @@ def main(
             "safe for paths containing spaces or newlines.",
         ),
     ] = False,
+    max_results: Annotated[
+        int | None,
+        typer.Option(help="Return at most N path records; complete results only."),
+    ] = None,
+    max_items: Annotated[
+        int | None,
+        typer.Option(help="With --extract, emit at most N extracted item rows."),
+    ] = None,
+    max_output_bytes: Annotated[
+        int | None,
+        typer.Option(help="Write at most N encoded stdout bytes; never partial rows or JSON."),
+    ] = None,
 ) -> None:
     """Search PATH for files matching PROMPT and print one path per line."""
     try:
@@ -435,16 +502,27 @@ def main(
             yes=yes,
             no_deps=no_deps,
             max_depth=max_depth,
+            command_timeout=command_timeout,
+            max_results=max_results,
+            max_items=max_items,
+            max_output_bytes=max_output_bytes,
         )
-    except ValueError as exc:
+    except (TimeoutError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(2) from exc
+        raise typer.Exit(1 if isinstance(exc, TimeoutError) else 2) from exc
+
+    try:
+        cancel_deadline = arm_command_timeout(command_timeout)
+    except (TimeoutError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1 if isinstance(exc, TimeoutError) else 2) from exc
+    ctx.call_on_close(cancel_deadline)
 
     try:
         request, stdin_no_paths = _resolve_stdin_paths(request)
-    except ValueError as exc:
+    except (TimeoutError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(2) from exc
+        raise typer.Exit(1 if isinstance(exc, TimeoutError) else 2) from exc
     if stdin_no_paths:
         _emit(
             [],
@@ -453,6 +531,9 @@ def main(
             print0=print0,
             extract=extract,
             extract_field=extract_field,
+            max_results=max_results,
+            max_items=max_items,
+            max_output_bytes=max_output_bytes,
         )
         raise typer.Exit(0)
 
@@ -460,7 +541,7 @@ def main(
         try:
             for model_id in backend.list_models(request.model):
                 typer.echo(model_id)
-        except (RuntimeError, ValueError) as exc:
+        except (TimeoutError, RuntimeError, ValueError) as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from exc
         raise typer.Exit(0)
@@ -588,8 +669,11 @@ def main(
             print0=print0,
             extract=extract,
             extract_field=extract_field,
+            max_results=max_results,
+            max_items=max_items,
+            max_output_bytes=max_output_bytes,
         )
-    except ValueError as exc:
+    except (TimeoutError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 

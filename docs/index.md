@@ -98,6 +98,8 @@ attribute index can't express. See [How nfind compares](comparison.md).
   or run trusted Python saves directly via `uv run`.
 - **[Output modes](output-modes.md)** — a clean path list by default, `--fields` for
   extra per-path fields, `--json` for machine-readable records.
+- **[Limits and scaling](limits.md)** — input scope, file sizes, execution time,
+  sandbox resources, and result-protocol limits in one place.
 - **[Declared dependencies](dependencies.md)** — filters can request libraries (to read
   MP3 tags, image sizes, …); approved packages are installed into a derived sandbox
   image and remembered, gated by a whitelist.

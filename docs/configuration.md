@@ -49,8 +49,9 @@ no-format = false
 
 The settable keys mirror the option flag names (the underscore spelling, e.g.
 `pids_limit`, is also accepted): `model`, `sandbox` (`docker`, `apple`, or `podman`),
-`image`, `timeout`, `memory`, `cpus`, `pids-limit`, `build-timeout`, `json`, `fields`,
-`no-format`, `exclude` (a list of globs), `no-ignore`, `max-depth`, and `print0`.
+`image`, `timeout`, `command-timeout`, `memory`, `cpus`, `pids-limit`, `build-timeout`,
+`json`, `fields`, `no-format`, `exclude` (a list of globs), `no-ignore`, `max-depth`,
+`max-results`, `max-items`, `max-output-bytes`, and `print0`.
 Per-invocation actions (`--save`, `--run`) and package-approval shortcuts (`--yes`,
 `--no-deps`) are intentionally **not** configurable, so each run stays explicit. An
 unknown key or a wrong value type is a hard error that names the offending key.

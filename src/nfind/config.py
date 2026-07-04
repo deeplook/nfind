@@ -73,6 +73,7 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "sandbox": ("sandbox_backend", _as_sandbox_backend),
     "image": ("image", _as_str),
     "timeout": ("timeout", _as_float),
+    "command-timeout": ("command_timeout", _as_float),
     "memory": ("memory", _as_str),
     "cpus": ("cpus", _as_float),
     "pids-limit": ("pids_limit", _as_int),
@@ -84,6 +85,9 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "no-ignore": ("no_ignore", _as_bool),
     "max-depth": ("max_depth", _as_int),
     "print0": ("print0", _as_bool),
+    "max-results": ("max_results", _as_int),
+    "max-items": ("max_items", _as_int),
+    "max-output-bytes": ("max_output_bytes", _as_int),
 }
 
 

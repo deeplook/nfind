@@ -129,7 +129,11 @@ def execute_worker_main(response_path: str) -> int:
 
     encoded = json.dumps(response, separators=(",", ":")).encode()
     if len(encoded) > MAX_RESULT_BYTES:
-        encoded = b'{"ok":false,"error":"filter response exceeded the allowed size"}'
+        encoded = (
+            b'{"ok":false,"error":"filter response exceeded the '
+            + str(MAX_RESULT_BYTES).encode()
+            + b'-byte protocol safety limit"}'
+        )
     Path(response_path).write_bytes(encoded)
     return 0
 

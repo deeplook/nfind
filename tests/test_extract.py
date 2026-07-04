@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from nfind import cli
@@ -114,3 +116,65 @@ class TestEmitExtract:
 
         with pytest.raises(ValueError, match="--extract-field"):
             cli._emit(records, as_json=False, fields=False, print0=False, extract=True)
+
+    def test_max_items_emits_complete_rows_and_warns(self, capsys):
+        cli._emit(
+            self._RECORDS,
+            as_json=False,
+            fields=False,
+            print0=False,
+            extract=True,
+            max_items=1,
+        )
+
+        captured = capsys.readouterr()
+        assert captured.out == "a.py:1\tx\n"
+        assert "max-items" in captured.err
+
+    def test_max_output_bytes_never_emits_partial_row(self, capsys):
+        cli._emit(
+            self._RECORDS,
+            as_json=False,
+            fields=False,
+            print0=False,
+            extract=True,
+            max_output_bytes=len(b"a.py:1\tx\n"),
+        )
+
+        captured = capsys.readouterr()
+        assert captured.out == "a.py:1\tx\n"
+        assert "max-output-bytes" in captured.err
+
+    def test_json_limits_records_and_stays_valid(self, capsys):
+        records = [{"path": "a"}, {"path": "b"}]
+        cli._emit(
+            records,
+            as_json=True,
+            fields=False,
+            print0=False,
+            max_results=1,
+        )
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload == {
+            "count": 1,
+            "results": [{"path": "a"}],
+            "truncated": True,
+            "truncated_by": ["max-results"],
+        }
+
+    def test_json_output_byte_limit_remains_valid(self, capsys):
+        records = [{"path": "a", "text": "x" * 500}, {"path": "b"}]
+        cli._emit(
+            records,
+            as_json=True,
+            fields=False,
+            print0=False,
+            max_output_bytes=250,
+        )
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert len(captured.out.encode()) <= 250
+        assert payload["truncated"] is True
+        assert "max-output-bytes" in payload["truncated_by"]

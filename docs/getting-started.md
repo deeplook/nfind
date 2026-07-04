@@ -342,8 +342,9 @@ NFIND_CONFIG=./ci.toml nfind "Rust files that use unsafe"
 ```
 
 Precedence is **command-line > config file > built-in default**. Settable keys mirror the
-flag names (`model`, `sandbox`, `image`, `timeout`, `memory`, `cpus`, `pids-limit`,
-`build-timeout`, `json`, `fields`, `no-format`, `exclude`, `no-ignore`, `max-depth`,
+flag names (`model`, `sandbox`, `image`, `timeout`, `command-timeout`, `memory`, `cpus`,
+`pids-limit`, `build-timeout`, `json`, `fields`, `no-format`, `exclude`, `no-ignore`,
+`max-depth`, `max-results`, `max-items`, `max-output-bytes`,
 `print0`); actions like `--save`/`--run` and approval shortcuts like `--yes`/`--no-deps`
 are intentionally not configurable. Full reference:
 [Configuration](configuration.md#config-file).

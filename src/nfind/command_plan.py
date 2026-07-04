@@ -54,6 +54,12 @@ def validate_max_depth(max_depth: int | None) -> None:
         raise ValueError("--max-depth must be at least 1.")
 
 
+def validate_limits(**limits: int | float | None) -> None:
+    for name, value in limits.items():
+        if value is not None and value <= 0:
+            raise ValueError(f"--{name.replace('_', '-')} must be positive.")
+
+
 def build_command_request(
     *,
     prompt: str | None,
@@ -99,11 +105,21 @@ def plan_command(
     yes: bool,
     no_deps: bool,
     max_depth: int | None,
+    command_timeout: float | None = None,
+    max_results: int | None = None,
+    max_items: int | None = None,
+    max_output_bytes: int | None = None,
 ) -> CommandRequest:
     validate_output_modes(as_json=as_json, fields=fields, print0=print0, extract=extract)
     validate_extract_modes(extract=extract, extract_field=extract_field)
     validate_dependency_modes(yes=yes, no_deps=no_deps)
     validate_max_depth(max_depth)
+    validate_limits(
+        command_timeout=command_timeout,
+        max_results=max_results,
+        max_items=max_items,
+        max_output_bytes=max_output_bytes,
+    )
     return build_command_request(
         prompt=prompt,
         paths=paths,

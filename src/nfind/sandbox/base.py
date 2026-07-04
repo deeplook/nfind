@@ -166,6 +166,21 @@ def _run_cli(
         raise subprocess.TimeoutExpired(
             command, timeout, output=output or exc.output, stderr=errors or exc.stderr
         ) from exc
+    except BaseException:
+        # A whole-command deadline or user interrupt can arrive while communicate()
+        # is blocked. Do not leave the CLI process (or its process group) behind.
+        if os.name == "posix":
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=2)
+        if captured_stdout is not None:
+            captured_stdout.close()
+        if captured_stderr is not None:
+            captured_stderr.close()
+        raise
 
     if captured_stdout is not None and captured_stderr is not None:
         captured_stdout.seek(0)
@@ -285,6 +300,9 @@ class _CliSandbox(ABC):
         except subprocess.TimeoutExpired as exc:
             self._remove(name)
             raise SandboxTimeout(f"Sandbox run exceeded the {limits.timeout:g}s timeout.") from exc
+        except BaseException:
+            self._remove(name)
+            raise
 
         if (
             len(completed.stdout) > limits.max_output_bytes

@@ -11,6 +11,7 @@ DEFAULT_TIMEOUT = 180.0
 DEFAULT_MEMORY = "256m"
 DEFAULT_CPUS = 1.0
 DEFAULT_PIDS_LIMIT = 64
+DEFAULT_COMMAND_TIMEOUT: float | None = None
 
 # Providers reachable through the OpenAI-compatible chat-completions API. A model is
 # selected as "provider/model" (e.g. "anthropic/claude-opus-4-8"); a bare name
@@ -30,7 +31,7 @@ PROVIDERS: dict[str, tuple[str | None, str | None]] = {
     "lmstudio": ("http://localhost:1234/v1", None),
 }
 
-# Directory/file names skipped during enumeration unless --no-ignore is given. These are
+# Entry names skipped during recursive enumeration unless --no-ignore is given. These are
 # VCS metadata, dependency trees, and tool caches that are almost never search targets and
 # would otherwise bloat the path list the filter receives (and slow the search).
 DEFAULT_IGNORES = frozenset(
