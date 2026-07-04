@@ -561,6 +561,7 @@ def test_run_cli_timeout_kills_plugin_process_group():
     killpg.assert_called_once_with(123, base.signal.SIGKILL)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="os.killpg and signal.SIGKILL are POSIX-only")
 def test_run_cli_interrupt_kills_plugin_process_group():
     process = Mock(pid=123, returncode=None)
     process.communicate.side_effect = KeyboardInterrupt
