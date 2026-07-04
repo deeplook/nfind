@@ -5,11 +5,21 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege for the Actions-based Pages deployment: read the repo, write the
+# Pages deployment, and mint the OIDC token deploy-pages exchanges for the publish.
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+# Serialise deployments; let an in-flight publish finish rather than cancelling it, so
+# concurrent pushes can't wedge Pages the way the legacy branch build did.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -17,5 +27,24 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Deploy
-        run: uvx --with mkdocs-material mkdocs gh-deploy --force
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build site
+        run: uvx --with mkdocs-material mkdocs build --strict
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
