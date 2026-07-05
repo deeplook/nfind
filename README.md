@@ -25,13 +25,9 @@ tree, or `--max-depth N` to limit recursion.
 The generated code is never executed on your machine directly. By default it runs
 inside a **disposable, hardened Docker container** with the search directory
 bind-mounted **read-only**, networking disabled, all Linux capabilities dropped, and
-CPU, memory, and process limits applied. On macOS, `--sandbox apple` can opt into
-Apple Containers instead; this is experimental on macOS 15 because Apple does not
-support Docker-style no-network isolation there. On macOS 26+, nfind is prepared to
-use Apple Containers' `--network none` support. In both cases nfind prints an explicit
-warning because Apple Containers still differs from Docker's hardening surface.
-`--sandbox podman` is an experimental drop-in that applies the same hardening flags as
-Docker; it prints a warning until it has been validated against a real Podman runtime.
+CPU, memory, and process limits applied. Experimental alternate backends — Apple
+Containers (`--sandbox apple`) and Podman (`--sandbox podman`) — are available with
+weaker or not-yet-validated guarantees; see the [Safety model](#safety-model) below.
 
 ## Demo
 
@@ -238,34 +234,23 @@ later runs reuse it. Pass `--rebuild` to force a fresh build.
 
 ### Useful options
 
+The options newcomers reach for most often:
+
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `--model` | `openai/gpt-5.4` | Model used to generate the filter; `provider/model` for non-OpenAI (see [Providers](#providers)) |
-| `--timeout` | `180.0` | Seconds the filter may run before it is killed |
-| `--command-timeout` | unlimited | Optional POSIX wall-clock deadline for the complete command |
-| `--memory` | `256m` | Worker container memory limit |
-| `--cpus` | `1.0` | Worker container CPU limit |
-| `--pids-limit` | `64` | Max processes inside the worker |
+| `--json` | off | Output records (path + extra fields) as JSON |
+| `--fields` / `-f` | off | Show extra per-path fields alongside each path |
+| `--show-code` | off | Print the generated filter before running |
+| `--save` / `--run` | — | Save the generated filter, or replay a saved one without an LLM call |
 | `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, or experimental `podman` |
-| `--rebuild` | off | Rebuild the worker image first |
-| `--exclude GLOB` | — | Skip matching names/paths during enumeration (repeatable) |
 | `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
 | `--max-depth N` | unlimited | Descend at most `N` levels below each search path |
-| `--max-results N` | unlimited | Return at most `N` path records |
-| `--max-items N` | unlimited | With `--extract`, emit at most `N` item rows |
-| `--max-output-bytes N` | unlimited | Bound encoded stdout without partial rows or invalid JSON |
-| `--fields` / `-f` | off | Show extra per-path fields alongside each path |
-| `--json` | off | Output records (path + extra fields) as JSON |
-| `--extract` | off | Explode a list-valued field into one match per line (items inside files) |
-| `--extract-field NAME` | — | With `--extract`, choose the list field to explode when several exist |
-| `--print0` / `-0` | off | Separate result paths with NUL bytes for `xargs -0` |
-| `--yes` / `-y` | off | Approve any requested packages without prompting |
-| `--no-deps` | off | Reject third-party packages (standard library only) |
-| `--macos-meta` | off | macOS: expose Finder tags and download metadata to the filter |
-| `--show-code` | off | Print the generated filter before running |
-| `--save` | — | Write the generated filter as a replayable script |
-| `--run` | — | Replay a saved filter through the sandbox without an LLM call |
-| `--confirm` / `-i` | off | Show the code and confirm before running |
+| `--yes` / `--no-deps` | off | Approve requested packages without prompting, or reject third-party packages entirely |
+
+Run `nfind -h` for the authoritative list, or see the full
+[CLI reference](docs/cli.md) for every option (resource limits, output bounds,
+`--exclude`, `--extract`, `--print0`, `--macos-meta`, `--confirm`, and more).
 
 ### Providers
 
