@@ -33,6 +33,12 @@ warning because Apple Containers still differs from Docker's hardening surface.
 `--sandbox podman` is an experimental drop-in that applies the same hardening flags as
 Docker; it prints a warning until it has been validated against a real Podman runtime.
 
+## Demo
+
+A recorded demo session — click the image to play it on [Asciinema]:
+
+[![asciicast](https://asciinema.org/a/1260123.png)](https://asciinema.org/a/1260123)
+
 ## Why nfind?
 
 nfind sits in a gap not filled by other file-search tools. It combines three things at once:
@@ -318,3 +324,5 @@ To minimize the **blast radius** of running LLM-generated code locally, `nfind` 
   validated against a real Podman runtime yet, so nfind prints a warning before running.
 - The host validates that the filter returns only paths it was given, so generated
   code cannot inject arbitrary paths into the output.
+
+[Asciinema]: https://asciinema.org
