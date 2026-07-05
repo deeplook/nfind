@@ -124,7 +124,10 @@ def normalize_roots(path: str | Path | Sequence[str | Path]) -> list[Path]:
     roots: list[Path] = []
     seen: set[Path] = set()
     for item in items:
-        root = Path(item).expanduser().resolve(strict=True)
+        try:
+            root = Path(item).expanduser().resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"search path does not exist: {item}") from exc
         if root not in seen:
             seen.add(root)
             roots.append(root)

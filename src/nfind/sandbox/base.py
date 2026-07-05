@@ -19,6 +19,7 @@ import hashlib
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 import uuid
 from abc import ABC, abstractmethod
@@ -268,6 +269,8 @@ class _CliSandbox(ABC):
         derived = derived_image_tag(self.image, dockerfile_text)
         if not rebuild and self._image_present(derived):
             return derived
+        # Frame the raw build output that streams to stderr as an expected one-off step.
+        print("nfind: building the sandbox image with requested packages...", file=sys.stderr)
         with tempfile.TemporaryDirectory(prefix="nfind-deps-") as context:
             (Path(context) / "Dockerfile").write_text(dockerfile_text)
             try:

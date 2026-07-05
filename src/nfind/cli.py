@@ -286,9 +286,8 @@ def main(
             "recursively, with common ignored names pruned unless --no-ignore is set. "
             "With several, each is searched and results are merged. Use '-' to read a "
             "NUL- or newline-delimited path list from stdin (e.g. 'find . | nfind "
-            '"..." -\'). If '
-            "omitted, the filter is generated but not run (useful with --save or "
-            "--show-code).",
+            '"..." -\'). Defaults to the current directory when omitted; with '
+            "--save/--show-code/--confirm and no PATH, the filter is generated but not run.",
         ),
     ] = None,
     version: Annotated[
@@ -573,13 +572,17 @@ def main(
     if isinstance(request, GeneratedSearchRequest) and macos_meta and sys.platform != "darwin":
         typer.echo("warning: --macos-meta is ignored on non-macOS hosts.", err=True)
 
+    # A prompt with no PATH defaults to the current directory, like `find`. The
+    # exception is generate-only mode (--save/--show-code/--confirm without a PATH),
+    # where the user wants to inspect or keep the filter without running it.
+    if (
+        isinstance(request, GeneratedSearchRequest)
+        and not request.paths
+        and not (show_code or save is not None or confirm)
+    ):
+        request = replace(request, paths=["."])
+
     generate_only_mode = isinstance(request, GeneratedSearchRequest) and not request.paths
-    if generate_only_mode and not (show_code or save is not None or confirm):
-        typer.echo(
-            "warning: no PATH given and no --save, --show-code, or --confirm — "
-            "the generated filter will be discarded.",
-            err=True,
-        )
 
     def on_generated(generated: GeneratedFilter) -> None:
         if save is not None:

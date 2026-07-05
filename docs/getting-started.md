@@ -41,6 +41,10 @@ docker info                    # sanity-check the daemon is up
 The first real search builds the base worker image (tens of seconds); later runs reuse
 it. See [Installation](installation.md) if anything above is missing.
 
+Each search makes a single LLM request to generate the filter (only your prompt is sent,
+never your file list) — typically a fraction of a cent on the default model. Replaying a
+saved filter with [`--run`](#10-save-a-filter-and-replay-it) makes no LLM call at all.
+
 ---
 
 ## 1. Your first search

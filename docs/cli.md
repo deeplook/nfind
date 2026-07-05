@@ -65,7 +65,7 @@ saved filters (`--run`) so no stage pays an LLM call — see
 | Argument | Default | Description |
 |---|---|---|
 | `PROMPT` | — (required) | Natural-language description of the paths to find. |
-| `PATH`... | — | One or more directories or files to search. Directories are walked recursively, with common ignored names pruned unless `--no-ignore` is set. With several, results are merged. Use `-` to read a NUL- or newline-delimited path list from stdin. If omitted, the filter is generated but not run (useful with `--save` or `--show-code`). |
+| `PATH`... | `.` | One or more directories or files to search. Directories are walked recursively, with common ignored names pruned unless `--no-ignore` is set. With several, results are merged. Use `-` to read a NUL- or newline-delimited path list from stdin. Defaults to the current directory when omitted; with `--save`, `--show-code`, or `--confirm` and no `PATH`, the filter is generated but not run. |
 
 ## Options
 
@@ -142,7 +142,9 @@ nfind "files with no extension" --save filter.py
 nfind "files with no extension" -i        # or --confirm
 ```
 
-Omitting `PATH` entirely generates the filter without running it — useful when you want to capture or inspect a filter before deciding where to run it:
+Combining `--save`, `--show-code`, or `--confirm` with **no** `PATH` generates the filter
+without running it — useful when you want to capture or inspect a filter before deciding
+where to run it:
 
 ```bash
 # Generate and save without searching anything
@@ -153,7 +155,8 @@ nfind "MP3 files whose bitrate is below 128 kbps, using mutagen" --show-code
 nfind --run filter.py ~/Music
 ```
 
-nfind warns when no `PATH` is given and none of `--save`, `--show-code`, or `--confirm` is set, since the generated filter would be silently discarded.
+Without any of those flags, an omitted `PATH` defaults to the current directory (like
+`find`), so the filter is generated **and** run.
 
 `--show-code` and `--confirm` print the **full artifact as
 [`--save`](#saving--replaying-filters) would write it** — a Python PEP 723 script or a

@@ -1911,15 +1911,17 @@ def test_no_paths_save_writes_filter_file(tmp_path):
     assert "filter_paths" in save_path.read_text()
 
 
-def test_no_paths_warns_without_useful_flag():
+def test_no_paths_defaults_to_current_directory():
     from typer.testing import CliRunner
 
-    fake = _gen(_SIMPLE_FILTER)
-    with patch("nfind.backend.generate_only", side_effect=_fake_generate_only(fake)):
+    with patch("nfind.backend.search", return_value=[]) as mock:
         result = CliRunner().invoke(cli.app, ["files with no extension"])
 
     assert result.exit_code == 0
-    assert "will be discarded" in result.output
+    assert mock.called
+    # First positional arg to backend.search is the list of search paths.
+    assert mock.call_args.args[0] == ["."]
+    assert "will be discarded" not in result.output
 
 
 def test_no_paths_no_warning_with_show_code():

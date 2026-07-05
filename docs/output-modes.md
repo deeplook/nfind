@@ -49,6 +49,12 @@ nfind "Python files that import os"
 /path/to/b.py
 ```
 
+Result paths are always **absolute and symlink-resolved** (the equivalent of
+`realpath`), even when you searched a relative root such as `.`. On macOS this means a
+search under `/tmp` prints `/private/tmp/...`, since `/tmp` is a symlink. If you need to
+string-match results against paths from another tool, resolve those too (e.g. with
+`realpath`) so both sides use the canonical form.
+
 Clean and pipeable. Any extra fields the filter produced are ignored in this mode.
 
 ## `--fields` / `-f` — path plus fields

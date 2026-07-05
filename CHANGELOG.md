@@ -41,12 +41,19 @@ All notable changes to this project are documented here. The format is based on
   single run, `-` can be mixed with explicit paths, and an empty stdin prints nothing and
   exits 0 rather than falling back to the current directory. This makes nfind a first-class
   citizen in Unix pipes (`find … | nfind "…" -`).
-- **Generate-only mode.** Omitting `PATH` generates the filter (LLM call) without
-  running the sandbox or enumerating any paths — useful with `--save` to capture a
-  filter for later replay, or with `--show-code` to inspect it inline. nfind warns
-  when no path and none of `--save`, `--show-code`, or `--confirm` is given, since
-  the filter would otherwise be silently discarded. `backend.generate_only()` exposes
-  the same behaviour programmatically.
+- **An omitted `PATH` defaults to the current directory**, like `find`, so a bare
+  `nfind "PROMPT"` now generates the filter *and* runs it against `.`. Generate-only
+  mode is preserved for the cases that want it: combining `--save`, `--show-code`, or
+  `--confirm` with no `PATH` still generates the filter without running it (and
+  `backend.generate_only()` exposes that programmatically). Previously a bare prompt
+  warned and discarded the filter without searching anything.
+- **Clearer missing-path error.** A search path that doesn't exist now reports
+  `search path does not exist: <path>` (showing the path as typed) instead of a raw
+  `[Errno 2] No such file or directory` message.
+- **Framed first-run image builds.** Before the raw builder output streams to stderr,
+  nfind now prints a one-line notice (`building the sandbox worker image (first run
+  only)…`) so the initial pause reads as an expected one-off build rather than a hang.
+- **`--version` / `-V`.** Print the installed nfind version and exit.
 - **Apple Containers sandbox backend.** `--sandbox apple` can run saved and generated
   filters with Apple's `container` CLI as an opt-in alternative to Docker, including
   CLI/config support, resource limits, read-only mounts, and integration coverage.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import subprocess
+import sys
 from collections.abc import Sequence
 
 from ..constants import DEFAULT_BUILD_TIMEOUT, DEFAULT_IMAGE, DOCKER_CHECK_TIMEOUT
@@ -117,6 +118,9 @@ def build_image(
         if probe.returncode == 0:
             return
 
+    # Frame the raw BuildKit output that follows (it streams to stderr) so a first-time
+    # user knows the pause is an expected one-off image build, not a hang.
+    print("nfind: building the sandbox worker image (first run only)...", file=sys.stderr)
     dockerfile_path_value = dockerfile_path(dockerfile)
     try:
         completed = base._run_cli(
