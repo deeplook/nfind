@@ -12,7 +12,7 @@ from typing import Annotated, Any, cast
 
 import typer
 
-from . import backend
+from . import __version__, backend
 from . import sandbox as sandbox_module
 from .backend import (
     DEFAULT_BUILD_TIMEOUT,
@@ -66,6 +66,13 @@ _PODMAN_SANDBOX_WARNING = (
     "Docker, but the backend has not been validated against a real Podman runtime. Use "
     "Docker for the most thoroughly tested sandbox."
 )
+
+
+def _print_version(value: bool) -> None:
+    """Print the nfind version and exit (eager --version callback)."""
+    if value:
+        typer.echo(f"nfind {__version__}")
+        raise typer.Exit()
 
 
 def _validate_sandbox_backend(value: str) -> SandboxBackend:
@@ -284,6 +291,16 @@ def main(
             "--show-code).",
         ),
     ] = None,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            is_eager=True,
+            callback=_print_version,
+            help="Show the nfind version and exit.",
+        ),
+    ] = False,
     config_file: Annotated[
         Path | None,
         typer.Option(

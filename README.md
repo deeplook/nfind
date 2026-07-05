@@ -117,6 +117,9 @@ nfind "files that define a class" ./src/app.py ./src/models.py
 # Help (both forms work)
 nfind -h
 nfind --help
+
+# Version
+nfind --version   # or -V
 ```
 
 ### Output modes

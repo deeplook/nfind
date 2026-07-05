@@ -103,6 +103,7 @@ saved filters (`--run`) so no stage pays an LLM call — see
 | `--no-format` | off | Skip the ruff cleanup (remove unused imports, sort imports, format) applied to the generated filter. |
 | `--macos-meta` | off | macOS only: expose Finder tags and download metadata to the filter (see [macOS metadata](macos-metadata.md)). |
 | `-h`, `--help` | — | Show help and exit. |
+| `-V`, `--version` | — | Show the nfind version and exit. |
 
 `--timeout` limits only the generated filter's sandbox execution; it is not a
 whole-command deadline. Enumeration, model generation and retries, image builds, and
