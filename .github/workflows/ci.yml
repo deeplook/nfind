@@ -54,8 +54,10 @@ jobs:
     # main `test` job skips the nerdctl integration cases because nerdctl is not installed
     # there; this job installs the nerdctl-full bundle (nerdctl + buildkit + CNI) so those
     # cases actually run end-to-end (image build + hardened container run). containerd is
-    # already present on the runner; we only add nerdctl/buildkit and open the sockets to
-    # the non-root runner user so the `nerdctl` binary nfind execs can reach them.
+    # already present on the runner. nerdctl treats any non-root invocation as rootless
+    # (there is no rootful-as-non-root override), and nfind's rootless nerdctl path has a
+    # documented mount caveat, so we drive nerdctl as root to exercise the rootful happy
+    # path against the system containerd.
     runs-on: ubuntu-latest
     env:
       NERDCTL_VERSION: "2.3.4"
@@ -84,22 +86,28 @@ jobs:
             "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-full-${NERDCTL_VERSION}-linux-amd64.tar.gz"
           sudo tar -C /usr/local -xzf /tmp/nerdctl-full.tgz
 
-      - name: Start buildkit and open runtime sockets to the runner user
+      - name: Start buildkit (rootful)
         run: |
           set -eux
           sudo systemctl daemon-reload
-          # containerd is already running on the runner; nerdctl build needs buildkit.
+          # containerd already runs on the runner; nerdctl build needs buildkit too.
           sudo systemctl enable --now buildkit
-          # nfind execs `nerdctl` as the (non-root) runner user, so the rootful
-          # containerd/buildkit sockets must be reachable without sudo.
-          sudo chmod 666 /run/containerd/containerd.sock
-          sudo chmod 666 /run/buildkit/buildkitd.sock
 
-      - name: Smoke-test nerdctl
-        run: nerdctl info
+      - name: Smoke-test nerdctl (rootful)
+        run: sudo "$(command -v nerdctl)" info
 
-      - name: Integration tests (real containerd via nerdctl)
-        run: uv run pytest tests/test_cli_integration.py -m integration
+      - name: Integration tests (real rootful containerd via nerdctl)
+        run: |
+          set -eux
+          # Run as root so nerdctl uses the system (rootful) containerd. Use a
+          # world-traversable basetemp (umask 022 -> 0755 dirs, 0644 files) so the
+          # container's non-root worker (uid 10001) can read the bind-mounted search tree,
+          # rather than pytest's default 0700 pytest-of-root base.
+          sudo mkdir -p /tmp/nfind-ci
+          sudo chmod 0755 /tmp/nfind-ci
+          sudo -E env "PATH=$PATH" "$(command -v uv)" run pytest \
+            tests/test_cli_integration.py -m integration -k real_backend \
+            --basetemp=/tmp/nfind-ci
 
   test-windows:
     # Verify host-side path handling and subprocess/config logic on Windows. When Docker
