@@ -15,6 +15,8 @@ audited at a glance and a new backend (e.g. Podman) is a small addition:
   command shared with Podman.
 * :mod:`~nfind.sandbox.podman` -- the Podman backend (experimental; reuses the
   Docker-family run command).
+* :mod:`~nfind.sandbox.nerdctl` -- the nerdctl/containerd backend (experimental; reuses the
+  Docker-family run command).
 * :mod:`~nfind.sandbox.apple` -- the Apple Containers backend and its run command.
 
 The :class:`Sandbox` ``Protocol`` lets callers swap in a fake for tests (no container
@@ -51,13 +53,18 @@ from .docker import (
     check_docker_available,
     docker_supports_linux_containers,
 )
+from .nerdctl import (
+    NerdctlSandbox,
+    build_nerdctl_image,
+    check_nerdctl_available,
+)
 from .podman import (
     PodmanSandbox,
     build_podman_image,
     check_podman_available,
 )
 
-SandboxBackend = Literal["docker", "apple", "podman"]
+SandboxBackend = Literal["docker", "apple", "podman", "nerdctl"]
 SANDBOX_BACKENDS = get_args(SandboxBackend)
 DEFAULT_SANDBOX_BACKEND: SandboxBackend = "docker"
 
@@ -72,6 +79,9 @@ def check_sandbox_available(backend: SandboxBackend = DEFAULT_SANDBOX_BACKEND) -
         return
     if backend == "podman":
         check_podman_available()
+        return
+    if backend == "nerdctl":
+        check_nerdctl_available()
         return
     raise ValueError(f"Unsupported sandbox backend: {backend}")
 
@@ -103,6 +113,8 @@ def create_sandbox(
         return AppleContainerSandbox(image, **kwargs)
     if backend == "podman":
         return PodmanSandbox(image, **kwargs)
+    if backend == "nerdctl":
+        return NerdctlSandbox(image, **kwargs)
     raise ValueError(f"Unsupported sandbox backend: {backend}")
 
 
@@ -142,6 +154,10 @@ __all__ = [
     "PodmanSandbox",
     "build_podman_image",
     "check_podman_available",
+    # nerdctl backend.
+    "NerdctlSandbox",
+    "build_nerdctl_image",
+    "check_nerdctl_available",
     # Helpers used by sibling modules.
     "dockerfile_path",
     "derived_image_tag",

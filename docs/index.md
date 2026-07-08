@@ -55,8 +55,8 @@ describe in a sentence. See the [Examples gallery](examples.md).
    with the search root bind-mounted **read-only**, networking disabled, all Linux
    capabilities dropped, and CPU/memory/process limits applied to minimize the **blast
    radius**. On macOS, `--sandbox apple` opts into experimental Apple Containers support
-   with an explicit macOS 15 networking warning; `--sandbox podman` is an experimental
-   drop-in that applies the same hardening flags as Docker.
+   with an explicit macOS 15 networking warning; `--sandbox podman` and `--sandbox nerdctl`
+   (containerd) are experimental drop-ins that apply the same hardening flags as Docker.
 4. **Map back** — the container returns matching container paths; nfind maps them to
    host paths and prints them.
 
@@ -128,7 +128,8 @@ See [Examples](examples.md) for the full prompt gallery.
 - Python 3.11+
 - [Docker](https://docs.docker.com/get-docker/) installed and running, or an experimental
   alternate backend — [Apple Containers](https://opensource.apple.com/projects/container/)
-  on macOS, or [Podman](https://podman.io/)
+  on macOS, [Podman](https://podman.io/), or
+  [nerdctl](https://github.com/containerd/nerdctl) (containerd)
 - An OpenAI API key in `OPENAI_API_KEY` (or another [provider's](cli.md#providers) key)
 
 See [Installation](installation.md) for details.

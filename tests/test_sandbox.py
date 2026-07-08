@@ -18,10 +18,12 @@ from nfind.sandbox import (
     DockerSandbox,
     Limits,
     Mount,
+    NerdctlSandbox,
     PodmanSandbox,
     apple,
     base,
     docker,
+    nerdctl,
     podman,
 )
 
@@ -407,10 +409,12 @@ def test_create_sandbox_returns_requested_backend():
     docker_box = sandbox.create_sandbox("docker", "img:latest", dockerfile="Dockerfile.python")
     apple_box = sandbox.create_sandbox("apple", "img:latest", dockerfile="Dockerfile.python")
     podman_box = sandbox.create_sandbox("podman", "img:latest", dockerfile="Dockerfile.python")
+    nerdctl_box = sandbox.create_sandbox("nerdctl", "img:latest", dockerfile="Dockerfile.python")
 
     assert isinstance(docker_box, DockerSandbox)
     assert isinstance(apple_box, AppleContainerSandbox)
     assert isinstance(podman_box, PodmanSandbox)
+    assert isinstance(nerdctl_box, NerdctlSandbox)
 
 
 # --- PodmanSandbox --------------------------------------------------------------
@@ -597,6 +601,112 @@ def test_remove_podman_container_invokes_podman_rm():
     with patch.object(base, "_run_cli") as run:
         podman._remove_podman_container("c1")
     assert run.call_args.args[0] == ["podman", "rm", "--force", "c1"]
+
+
+# --- NerdctlSandbox -------------------------------------------------------------
+
+
+def test_check_nerdctl_available_probes_with_nerdctl_ps():
+    available = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with patch.object(base, "_run_cli", return_value=available) as run:
+        sandbox.check_nerdctl_available()
+
+    assert run.call_args.args[0] == ["nerdctl", "ps", "--quiet", "--no-trunc"]
+
+
+def test_check_nerdctl_available_reports_missing_cli():
+    with (
+        patch.object(base, "_run_cli", side_effect=FileNotFoundError),
+        pytest.raises(sandbox.SandboxUnavailable, match="nerdctl CLI was not found"),
+    ):
+        sandbox.check_nerdctl_available()
+
+
+def test_check_nerdctl_available_reports_unavailable_daemon():
+    unavailable = subprocess.CompletedProcess(
+        args=[], returncode=1, stdout="", stderr="cannot reach containerd\n"
+    )
+    with (
+        patch.object(base, "_run_cli", return_value=unavailable),
+        pytest.raises(sandbox.SandboxUnavailable, match="nerdctl is unavailable: cannot reach"),
+    ):
+        sandbox.check_nerdctl_available()
+
+
+def test_build_nerdctl_image_omits_docker_load_flag():
+    available = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    missing = subprocess.CompletedProcess(args=[], returncode=1)
+    built = subprocess.CompletedProcess(args=[], returncode=0)
+    with patch.object(base, "_run_cli", side_effect=[available, missing, built]) as run:
+        sandbox.build_nerdctl_image("test-image")
+
+    command = run.call_args_list[2].args[0]
+    assert command[0:2] == ["nerdctl", "build"]
+    assert "--load" not in command
+    assert "--tag" in command and "test-image" in command
+
+
+def test_nerdctl_run_uses_docker_family_security_flags(tmp_path):
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=b'{"ok":true,"results":[]}', stderr=b""
+    )
+    box = NerdctlSandbox("img:latest", dockerfile="Dockerfile.python")
+    with patch.object(base, "_run_cli", return_value=completed) as run:
+        result = box.run(
+            b"{}",
+            mounts=[Mount(tmp_path.resolve(), "/data", read_only=True)],
+            limits=Limits(),
+        )
+
+    assert result.returncode == 0
+    command = run.call_args.args[0]
+    assert command[0:2] == ["nerdctl", "run"]
+    network_index = command.index("--network")
+    assert command[network_index : network_index + 2] == ["--network", "none"]
+    assert "--read-only" in command
+    assert "no-new-privileges" in command
+    assert "--pids-limit" in command
+    assert f"type=bind,src={tmp_path.resolve()},dst=/data,readonly" in command
+    assert command[-1] == "img:latest"
+
+
+def test_nerdctl_and_docker_share_identical_hardening(tmp_path):
+    # nerdctl reuses the shared Docker-family run command, so it must differ from Docker
+    # only by the executable name — the two cannot drift on the security-critical flags.
+    mounts = [Mount(tmp_path.resolve(), "/data", read_only=True)]
+    limits = Limits()
+    docker_cmd = DockerSandbox("img:latest")._build_run_command("box", mounts, limits)
+    nerdctl_cmd = NerdctlSandbox("img:latest")._build_run_command("box", mounts, limits)
+
+    assert docker_cmd[0] == "docker" and nerdctl_cmd[0] == "nerdctl"
+    assert docker_cmd[1:] == nerdctl_cmd[1:]
+
+
+def test_nerdctl_run_maps_timeout_and_removes_container():
+    box = NerdctlSandbox("img:latest", dockerfile="Dockerfile.python")
+    with (
+        patch.object(base, "_run_cli", side_effect=subprocess.TimeoutExpired("nerdctl", 10)),
+        patch.object(nerdctl, "_remove_nerdctl_container") as remove,
+        pytest.raises(sandbox.SandboxTimeout, match="exceeded"),
+    ):
+        box.run(b"{}", mounts=[], limits=Limits(timeout=10))
+
+    remove.assert_called_once()
+
+
+def test_ensure_nerdctl_image_delegates_to_build():
+    box = NerdctlSandbox("img:latest", dockerfile="Dockerfile.python", build_timeout=42)
+    with patch.object(nerdctl, "build_nerdctl_image") as build:
+        box.ensure_image(rebuild=True)
+    build.assert_called_once_with(
+        "img:latest", rebuild=True, build_timeout=42, dockerfile="Dockerfile.python"
+    )
+
+
+def test_remove_nerdctl_container_invokes_nerdctl_rm():
+    with patch.object(base, "_run_cli") as run:
+        nerdctl._remove_nerdctl_container("c1")
+    assert run.call_args.args[0] == ["nerdctl", "rm", "--force", "c1"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="os.killpg and signal.SIGKILL are POSIX-only")

@@ -81,7 +81,7 @@ saved filters (`--run`) so no stage pays an LLM call — see
 | `--model` | `openai/gpt-5.4` | Model used to generate the filter. Bare name = OpenAI; `provider/model` for others (see [Providers](#providers)). |
 | `--list-models` | off | List the model ids available for the provider in `--model` and exit. Needs that provider's API key. See [Providers](#providers). |
 | `--image` | per-runtime | Override the base image tag for the chosen [runtime](runtimes.md). |
-| `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, or experimental `podman`. |
+| `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, experimental `podman`, or experimental `nerdctl` (containerd). |
 | `--timeout` | `180.0` | Seconds the generated filter may run before it is killed. |
 | `--command-timeout` | unlimited | Optional POSIX wall-clock deadline for the entire command. |
 | `--memory` | `256m` | Memory limit for the worker container. |
@@ -128,6 +128,13 @@ additionally remaps the read-only mount to the worker user (`--userns=keep-id`) 
 non-root worker can read it. It is an explicit opt-in and prints a warning before running,
 because it has been validated only on limited hosts and rootless isolation differs from a
 rootful Docker daemon.
+
+`--sandbox nerdctl` uses the `nerdctl` CLI to run the worker on **containerd** (e.g. under
+Lima or Rancher Desktop). nerdctl is Docker-compatible, so nfind runs it with the same
+hardened command, including `--network none`. It is an explicit opt-in and prints a warning
+before running: it has not yet been validated against a real containerd runtime, and on
+rootless nerdctl the read-only mount may be unreadable by the non-root worker (nerdctl has
+no `keep-id` remap like Podman's).
 
 ## Reviewing the generated code
 

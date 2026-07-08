@@ -26,8 +26,9 @@ The generated code is never executed on your machine directly. By default it run
 inside a **disposable, hardened Docker container** with the search directory
 bind-mounted **read-only**, networking disabled, all Linux capabilities dropped, and
 CPU, memory, and process limits applied. Experimental alternate backends — Apple
-Containers (`--sandbox apple`) and Podman (`--sandbox podman`) — are available with
-weaker or not-yet-validated guarantees; see the [Safety model](#safety-model) below.
+Containers (`--sandbox apple`), Podman (`--sandbox podman`), and nerdctl/containerd
+(`--sandbox nerdctl`) — are available with weaker or not-yet-validated guarantees; see the
+[Safety model](#safety-model) below.
 
 ## Demo
 
@@ -72,8 +73,9 @@ a folder — safely, and without your files leaving your machine. See
 
 - Python 3.11+
 - [Docker](https://docs.docker.com/get-docker/) installed and running, or an experimental
-  alternate backend — Apple Containers on macOS via `--sandbox apple`, or Podman via
-  `--sandbox podman` (see [Safety model](#safety-model))
+  alternate backend — Apple Containers on macOS via `--sandbox apple`, Podman via
+  `--sandbox podman`, or nerdctl/containerd via `--sandbox nerdctl` (see
+  [Safety model](#safety-model))
 - An API key for your provider — `OPENAI_API_KEY` by default, or the matching key for
   another [provider](#providers)
 
@@ -243,7 +245,7 @@ The options newcomers reach for most often:
 | `--fields` / `-f` | off | Show extra per-path fields alongside each path |
 | `--show-code` | off | Print the generated filter before running |
 | `--save` / `--run` | — | Save the generated filter, or replay a saved one without an LLM call |
-| `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, or experimental `podman` |
+| `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, experimental `podman`, or experimental `nerdctl` (containerd) |
 | `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
 | `--max-depth N` | unlimited | Descend at most `N` levels below each search path |
 | `--yes` / `--no-deps` | off | Approve requested packages without prompting, or reject third-party packages entirely |
@@ -312,6 +314,11 @@ To minimize the **blast radius** of running LLM-generated code locally, `nfind` 
   the worker user (`--userns=keep-id`) so the non-root worker can read it. It is
   experimental because it has been validated only on limited hosts and rootless isolation
   differs from a rootful Docker daemon, so nfind prints a warning before running.
+- `--sandbox nerdctl` runs the worker on containerd via the `nerdctl` CLI (e.g. Lima or
+  Rancher Desktop), using the **same** hardened run command as Docker, including
+  `--network none`. It is experimental: not yet validated against a real containerd
+  runtime, and on rootless nerdctl the mount may be unreadable by the non-root worker
+  (no `keep-id` remap like Podman's), so nfind prints a warning before running.
 - The host validates that the filter returns only paths it was given, so generated
   code cannot inject arbitrary paths into the output.
 

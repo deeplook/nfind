@@ -69,6 +69,14 @@ _PODMAN_SANDBOX_WARNING = (
     "differs from a rootful Docker daemon. Use Docker for the most thoroughly tested sandbox."
 )
 
+_NERDCTL_SANDBOX_WARNING = (
+    "warning: nerdctl sandbox is experimental; nfind applies the same hardening flags as "
+    "Docker, including full network isolation via --network none. It has not been validated "
+    "against a real nerdctl/containerd runtime, and on rootless nerdctl the read-only mount "
+    "may be unreadable by the non-root worker (unlike rootless Podman, nerdctl has no "
+    "keep-id remap). Use Docker for the most thoroughly tested sandbox."
+)
+
 
 def _print_version(value: bool) -> None:
     """Print the nfind version and exit (eager --version callback)."""
@@ -94,6 +102,8 @@ def _warn_if_experimental_sandbox(sandbox_backend: SandboxBackend) -> None:
         typer.echo(warning, err=True)
     elif sandbox_backend == "podman":
         typer.echo(_PODMAN_SANDBOX_WARNING, err=True)
+    elif sandbox_backend == "nerdctl":
+        typer.echo(_NERDCTL_SANDBOX_WARNING, err=True)
 
 
 def _highlight(code: str, runtime: str = "python") -> str:
@@ -340,7 +350,7 @@ def main(
         typer.Option(
             "--sandbox",
             help="Sandbox backend: docker (default), apple (Apple Containers, experimental), "
-            "or podman (experimental).",
+            "podman (experimental), or nerdctl (containerd, experimental).",
         ),
     ] = DEFAULT_SANDBOX_BACKEND,
     timeout: Annotated[

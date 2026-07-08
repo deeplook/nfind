@@ -48,7 +48,8 @@ no-format = false
 ```
 
 The settable keys mirror the option flag names (the underscore spelling, e.g.
-`pids_limit`, is also accepted): `model`, `sandbox` (`docker`, `apple`, or `podman`),
+`pids_limit`, is also accepted): `model`, `sandbox` (`docker`, `apple`, `podman`, or
+`nerdctl`),
 `image`, `timeout`, `command-timeout`, `memory`, `cpus`, `pids-limit`, `build-timeout`,
 `json`, `fields`, `no-format`, `exclude` (a list of globs), `no-ignore`, `max-depth`,
 `max-results`, `max-items`, `max-output-bytes`, and `print0`.

@@ -18,7 +18,7 @@ live** over the target directory in a sandbox.
 | A query becomes | A lookup against the index (constrained `kMDItem*` predicate grammar) | A natural-language prompt → generated Python/JS, run in a container sandbox |
 | Speed / scale | Near-instant, whole-disk, ranked | Seconds per query; aimed at a specific directory |
 | Freshness | Current via filesystem events | Current — reads the real files now, nothing to go stale |
-| Platform | macOS only, built-in, offline | macOS/Linux; needs Docker (default) or an experimental backend (Apple Containers on macOS, or Podman) + an OpenAI key |
+| Platform | macOS only, built-in, offline | macOS/Linux; needs Docker (default) or an experimental backend (Apple Containers on macOS, Podman, or nerdctl/containerd) + an OpenAI key |
 | Portability | Spotlight and Siri only work locally (GUI-bound) | Headless CLI tool; works perfectly over remote terminals via **SSH** on remote servers |
 
 ## What each is good at
