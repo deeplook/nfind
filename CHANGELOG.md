@@ -67,9 +67,11 @@ All notable changes to this project are documented here. The format is based on
   limits, and a `tmpfs`. On rootless Podman — which remaps the host user to root inside the
   container, leaving the read-only mount unreadable by the non-root worker — nfind adds a
   `--userns=keep-id` mapping onto the worker's uid/gid so the mount stays readable without
-  relaxing any hardening flag. It is marked experimental because it has been validated only
-  on limited hosts and rootless isolation differs from a rootful Docker daemon, so nfind
-  prints a warning before running.
+  relaxing any hardening flag. Network isolation is on par with Docker: `--network none`
+  yields an empty network namespace with only loopback (no interfaces, DNS, or egress) in
+  both rootless and rootful mode, unlike Apple Containers on macOS 15. It is marked
+  experimental because it has been validated only on limited hosts and rootless isolation
+  differs from a rootful Docker daemon, so nfind prints a warning before running.
 
 ## [0.1.0] - 2026-06-23
 
