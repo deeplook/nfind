@@ -71,10 +71,10 @@ _PODMAN_SANDBOX_WARNING = (
 
 _NERDCTL_SANDBOX_WARNING = (
     "warning: nerdctl sandbox is experimental; nfind applies the same hardening flags as "
-    "Docker, including full network isolation via --network none. It has not been validated "
-    "against a real nerdctl/containerd runtime, and on rootless nerdctl the read-only mount "
-    "may be unreadable by the non-root worker (unlike rootless Podman, nerdctl has no "
-    "keep-id remap). Use Docker for the most thoroughly tested sandbox."
+    "Docker, including full network isolation via --network none. It is validated end-to-end "
+    "on Linux CI against rootful containerd, but on rootless nerdctl the read-only mount may "
+    "be unreadable by the non-root worker (unlike rootless Podman, nerdctl has no keep-id "
+    "remap), so prefer rootful containerd. Use Docker for the most thoroughly tested sandbox."
 )
 
 

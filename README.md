@@ -316,9 +316,9 @@ To minimize the **blast radius** of running LLM-generated code locally, `nfind` 
   differs from a rootful Docker daemon, so nfind prints a warning before running.
 - `--sandbox nerdctl` runs the worker on containerd via the `nerdctl` CLI (e.g. Lima or
   Rancher Desktop), using the **same** hardened run command as Docker, including
-  `--network none`. It is experimental: not yet validated against a real containerd
-  runtime, and on rootless nerdctl the mount may be unreadable by the non-root worker
-  (no `keep-id` remap like Podman's), so nfind prints a warning before running.
+  `--network none`. It is experimental: validated on Linux CI against rootful containerd,
+  but on rootless nerdctl the mount may be unreadable by the non-root worker (no `keep-id`
+  remap like Podman's), so prefer rootful containerd; nfind prints a warning before running.
 - The host validates that the filter returns only paths it was given, so generated
   code cannot inject arbitrary paths into the output.
 

@@ -13,10 +13,12 @@ Unlike the Podman backend, nerdctl does **not** support ``--userns=keep-id:uid=.
 (its ``--userns`` handling is limited), so the rootless mount-readability remap nfind
 applies for rootless Podman cannot be reused here. On rootless nerdctl the read-only mount
 may therefore appear owned by root and be unreadable by the image's non-root worker; this is
-a known open caveat.
+a known open caveat, and rootful containerd is the supported path.
 
-nerdctl support is validated only against mocked commands; the exact runtime behavior of the
-real ``nerdctl`` CLI is unverified, so nfind treats this backend as experimental.
+This backend is exercised end-to-end on Linux CI against a real, rootful containerd (image
+build plus hardened container run), in addition to the mocked-command unit tests. It is
+still marked experimental because that validation covers only rootful containerd on a single
+CI host, and the rootless caveat above is unresolved.
 """
 
 from __future__ import annotations

@@ -27,8 +27,8 @@ calls reuse it. The Apple backend is experimental on macOS 15 because it cannot 
 networking the way Docker does; the Podman backend is experimental because it has been
 validated only on limited hosts and rootless Podman's isolation differs from a rootful
 Docker daemon (nfind remaps the read-only mount to the worker user via `--userns=keep-id`
-so rootless runs stay readable); the nerdctl backend is experimental and has not yet been
-validated against a real containerd runtime.
+so rootless runs stay readable); the nerdctl backend is experimental — validated on Linux CI
+against rootful containerd, with rootless containerd unsupported (no `keep-id` remap).
 
 ## `search`
 
@@ -261,8 +261,8 @@ does not provide Docker-equivalent no-network isolation. `PodmanSandbox`
 rootless `--userns=keep-id` remap so the non-root worker can read the mount; it stays
 experimental because it is validated only on limited hosts. `NerdctlSandbox`
 (`sandbox_backend="nerdctl"`) likewise reuses the Docker-family run command for
-containerd via the `nerdctl` CLI; it is experimental and unverified against a real
-containerd runtime, and has no rootless mount remap (nerdctl lacks Podman's `keep-id`).
+containerd via the `nerdctl` CLI; it is experimental — validated on Linux CI against
+rootful containerd, with no rootless mount remap (nerdctl lacks Podman's `keep-id`).
 The backends live in one module each under `nfind.sandbox` (`base`, `docker`, `apple`,
 `podman`, `nerdctl`), sharing a `_CliSandbox` base class.
 `execution.build_worker_image` and `execution.run_filter` are nfind-specific adapters
