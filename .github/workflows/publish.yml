@@ -21,6 +21,6 @@ jobs:
         run: uv build
 
       - name: Publish to PyPI
-        # No credentials: uv uses Trusted Publishing via the OIDC token above
-        # (uv default is --trusted-publishing automatic in supported CI).
-        run: uv publish
+        # Trusted Publishing via the OIDC token above (no stored credentials), and
+        # generates + uploads PEP 740 attestations for the built artifacts by default.
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
