@@ -516,6 +516,62 @@ def test_podman_and_docker_share_identical_hardening(tmp_path):
     assert docker_cmd[1:] == podman_cmd[1:]
 
 
+def test_podman_rootless_remaps_mount_to_worker_uid(tmp_path):
+    # Rootless Podman maps the host user to root inside the container, so the read-only
+    # /data mount is unreadable by the non-root worker unless we remap keep-id onto the
+    # worker's own uid/gid. Without this the run silently finds nothing.
+    mounts = [Mount(tmp_path.resolve(), "/data", read_only=True)]
+    box = PodmanSandbox("img:latest", run_uid=10001, run_gid=10001)
+    with patch.object(podman, "podman_is_rootless", return_value=True):
+        command = box._build_run_command("box", mounts, Limits())
+
+    assert "--userns" in command
+    userns_index = command.index("--userns")
+    assert command[userns_index + 1] == "keep-id:uid=10001,gid=10001"
+    # The remap sits between the container name and the hardening flags, never replacing
+    # any of them.
+    assert command[userns_index - 1] == "box"
+    assert "--read-only" in command and "no-new-privileges" in command
+
+
+def test_podman_rootful_omits_userns_remap(tmp_path):
+    # Rootful Podman has no host->root remap and rejects keep-id, so the flag must not be
+    # added even when a worker uid is known.
+    mounts = [Mount(tmp_path.resolve(), "/data", read_only=True)]
+    box = PodmanSandbox("img:latest", run_uid=10001, run_gid=10001)
+    with patch.object(podman, "podman_is_rootless", return_value=False):
+        command = box._build_run_command("box", mounts, Limits())
+
+    assert "--userns" not in command
+
+
+def test_podman_without_worker_uid_omits_userns_remap(tmp_path):
+    # When the worker uid is unknown we cannot build a valid keep-id mapping, so no remap
+    # is emitted regardless of rootless mode.
+    mounts = [Mount(tmp_path.resolve(), "/data", read_only=True)]
+    box = PodmanSandbox("img:latest")
+    with patch.object(podman, "podman_is_rootless", return_value=True):
+        command = box._build_run_command("box", mounts, Limits())
+
+    assert "--userns" not in command
+
+
+def test_podman_is_rootless_reads_podman_info():
+    podman.podman_is_rootless.cache_clear()
+    completed = Mock(returncode=0, stdout="true\n")
+    with patch.object(base, "_run_cli", return_value=completed) as run:
+        assert podman.podman_is_rootless() is True
+    assert run.call_args.args[0][:2] == ["podman", "info"]
+    podman.podman_is_rootless.cache_clear()
+
+
+def test_podman_is_rootless_defaults_false_when_probe_fails():
+    podman.podman_is_rootless.cache_clear()
+    with patch.object(base, "_run_cli", side_effect=FileNotFoundError):
+        assert podman.podman_is_rootless() is False
+    podman.podman_is_rootless.cache_clear()
+
+
 def test_podman_run_maps_timeout_and_removes_container():
     box = PodmanSandbox("img:latest", dockerfile="Dockerfile.python")
     with (

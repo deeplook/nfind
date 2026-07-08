@@ -108,8 +108,15 @@ def run_filter(
     meta: dict[str, Any] | None = None,
     limits: Limits | None = None,
     mounts: list[Mount] | None = None,
+    run_uid: int | None = None,
+    run_gid: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Execute generated code in the sandbox and return container-path records."""
+    """Execute generated code in the sandbox and return container-path records.
+
+    ``run_uid``/``run_gid`` are the worker's numeric uid/gid inside the image; they let a
+    remapping backend (rootless Podman) keep the read-only bind mount readable by the
+    non-root worker. They are used only when this function creates the sandbox itself.
+    """
     if limits is None:
         limits = Limits(
             memory=memory,
@@ -125,7 +132,13 @@ def run_filter(
     if mounts is None:
         mounts = [Mount(root, "/data", read_only=True)]
     if sandbox is None:
-        sandbox = create_sandbox(sandbox_backend, image, dockerfile=dockerfile_path())
+        sandbox = create_sandbox(
+            sandbox_backend,
+            image,
+            dockerfile=dockerfile_path(),
+            run_uid=run_uid,
+            run_gid=run_gid,
+        )
     request = json.dumps({"code": code, "paths": container_paths, "meta": meta or {}}).encode()
 
     try:
@@ -201,6 +214,8 @@ def run_generated(
         pids_limit=pids_limit,
         meta=meta,
         mounts=mounts,
+        run_uid=runtime.worker_uid,
+        run_gid=runtime.worker_gid,
     )
     host_records: list[dict[str, Any]] = []
     for record in records:

@@ -79,6 +79,12 @@ selection](cli.md#endpoint-selection-chat-completions-vs-responses).
 
 - **Prompt too narrow or ambiguous.** Rephrase more explicitly, e.g. list the
   extensions you mean: "audio files with extension mp3, flac, or wav".
+- **Empty on an alternate backend but not Docker.** If the same search returns results
+  under `--sandbox docker` but nothing under `--sandbox podman` (or `apple`), the worker
+  probably can't read the mounted directory. Rootless Podman remaps the host user to root
+  inside the container, so the read-only mount is unreadable by the non-root worker; nfind
+  handles this by remapping the mount to the worker user (`--userns=keep-id`). Make sure
+  you are on a current nfind, and that `podman machine` is running.
 
 ### The filter timed out
 

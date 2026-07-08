@@ -64,8 +64,12 @@ All notable changes to this project are documented here. The format is based on
   filters with the `podman` CLI. Podman is drop-in compatible with Docker's hardening
   flags, so nfind applies the *same* run command as Docker — `--network none`,
   `--cap-drop ALL`, `--security-opt no-new-privileges`, read-only root, pids/memory/CPU
-  limits, and a `tmpfs`. It is marked experimental only because the backend has not yet
-  been validated against a real Podman runtime, so nfind prints a warning before running.
+  limits, and a `tmpfs`. On rootless Podman — which remaps the host user to root inside the
+  container, leaving the read-only mount unreadable by the non-root worker — nfind adds a
+  `--userns=keep-id` mapping onto the worker's uid/gid so the mount stays readable without
+  relaxing any hardening flag. It is marked experimental because it has been validated only
+  on limited hosts and rootless isolation differs from a rootful Docker daemon, so nfind
+  prints a warning before running.
 
 ## [0.1.0] - 2026-06-23
 

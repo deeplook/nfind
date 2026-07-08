@@ -24,7 +24,9 @@ alternate backend — Apple Containers on macOS via `sandbox_backend="apple"`, o
 via `sandbox_backend="podman"`), and `OPENAI_API_KEY` set in the environment. The first
 call builds the worker image; later calls reuse it. The Apple backend is experimental on
 macOS 15 because it cannot disable networking the way Docker does; the Podman backend is
-experimental because it has not yet been validated against a real Podman runtime.
+experimental because it has been validated only on limited hosts and rootless Podman's
+isolation differs from a rootful Docker daemon (nfind remaps the read-only mount to the
+worker user via `--userns=keep-id` so rootless runs stay readable).
 
 ## `search`
 
@@ -253,8 +255,9 @@ The hardened execution lives behind a small, domain-agnostic `Sandbox` protocol 
 auditable place, plus the image build/derive mechanics. `AppleContainerSandbox` is an
 experimental macOS backend selected with `sandbox_backend="apple"`; on macOS 15 it
 does not provide Docker-equivalent no-network isolation. `PodmanSandbox`
-(`sandbox_backend="podman"`) reuses the identical Docker-family run command and is
-experimental only until it is validated against a real Podman runtime. The backends live
+(`sandbox_backend="podman"`) reuses the identical Docker-family run command, adding a
+rootless `--userns=keep-id` remap so the non-root worker can read the mount; it stays
+experimental because it is validated only on limited hosts. The backends live
 in one module each under `nfind.sandbox` (`base`, `docker`, `apple`, `podman`), sharing a
 `_CliSandbox` base class. `execution.build_worker_image` and `execution.run_filter` are
 nfind-specific adapters over the selected backend.

@@ -275,9 +275,9 @@ stronger model.
 
 ## Example prompts
 
-- "directories that contain only audio files"
-- "files that have no extension"
-- "directories that contain more than 50 files"
+- "SRT subtitle files whose final cue looks truncated: it ends without sentence punctuation, has unbalanced quotes/brackets, or stops mid-sentence"
+- "PDF files that contain fillable form fields, using pypdf"
+- "SVG files that use gradient elements such as linearGradient or radialGradient, using lxml or stdlib xml"
 - "Python virtual environments (directories with a pyvenv.cfg directly inside)"
 - "initialized Terraform root modules"
 
@@ -308,8 +308,10 @@ To minimize the **blast radius** of running LLM-generated code locally, `nfind` 
   values must be whole numbers, so fractional CPU limits are rejected.
 - `--sandbox podman` uses Podman with the **same** hardened run command as Docker
   (`--network none`, dropped capabilities, `no-new-privileges`, read-only root, and
-  pids/memory/CPU/tmpfs limits). It is experimental only because it has not been
-  validated against a real Podman runtime yet, so nfind prints a warning before running.
+  pids/memory/CPU/tmpfs limits). On rootless Podman it also remaps the read-only mount to
+  the worker user (`--userns=keep-id`) so the non-root worker can read it. It is
+  experimental because it has been validated only on limited hosts and rootless isolation
+  differs from a rootful Docker daemon, so nfind prints a warning before running.
 - The host validates that the filter returns only paths it was given, so generated
   code cannot inject arbitrary paths into the output.
 

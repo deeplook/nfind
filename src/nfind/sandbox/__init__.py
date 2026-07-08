@@ -24,7 +24,7 @@ runtime needed) or an alternate backend without touching the domain logic that d
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 from ..constants import DEFAULT_BUILD_TIMEOUT
 from .apple import (
@@ -82,14 +82,27 @@ def create_sandbox(
     *,
     dockerfile: str | Path = "Dockerfile.python",
     build_timeout: float = DEFAULT_BUILD_TIMEOUT,
+    run_uid: int | None = None,
+    run_gid: int | None = None,
 ) -> Sandbox:
-    """Create a concrete sandbox for ``backend``."""
+    """Create a concrete sandbox for ``backend``.
+
+    ``run_uid``/``run_gid`` are the numeric uid/gid the worker runs as inside the image;
+    backends that remap the host user into the container (rootless Podman) use them to
+    keep the read-only bind mount readable by the non-root worker.
+    """
+    kwargs: dict[str, Any] = {
+        "dockerfile": dockerfile,
+        "build_timeout": build_timeout,
+        "run_uid": run_uid,
+        "run_gid": run_gid,
+    }
     if backend == "docker":
-        return DockerSandbox(image, dockerfile=dockerfile, build_timeout=build_timeout)
+        return DockerSandbox(image, **kwargs)
     if backend == "apple":
-        return AppleContainerSandbox(image, dockerfile=dockerfile, build_timeout=build_timeout)
+        return AppleContainerSandbox(image, **kwargs)
     if backend == "podman":
-        return PodmanSandbox(image, dockerfile=dockerfile, build_timeout=build_timeout)
+        return PodmanSandbox(image, **kwargs)
     raise ValueError(f"Unsupported sandbox backend: {backend}")
 
 

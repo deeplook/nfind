@@ -123,9 +123,11 @@ before the container runs.
 `--sandbox podman` uses the `podman` CLI. Podman is drop-in compatible with Docker's
 hardening flags, so nfind runs it with the **same** command as Docker — `--network none`,
 `--cap-drop ALL`, `--security-opt no-new-privileges`, a read-only root, and
-pids/memory/CPU/tmpfs limits — including fractional `--cpus` values. It is an explicit
-opt-in and prints a warning before running, because the backend has not yet been
-validated against a real Podman runtime.
+pids/memory/CPU/tmpfs limits — including fractional `--cpus` values. On rootless Podman it
+additionally remaps the read-only mount to the worker user (`--userns=keep-id`) so the
+non-root worker can read it. It is an explicit opt-in and prints a warning before running,
+because it has been validated only on limited hosts and rootless isolation differs from a
+rootful Docker daemon.
 
 ## Reviewing the generated code
 

@@ -226,11 +226,19 @@ class _CliSandbox(ABC):
         dockerfile: str | Path = "Dockerfile.python",
         build_timeout: float = DEFAULT_BUILD_TIMEOUT,
         name_prefix: str = "nfind-search-",
+        run_uid: int | None = None,
+        run_gid: int | None = None,
     ) -> None:
         self.image = image
         self._dockerfile = Path(dockerfile)
         self.build_timeout = build_timeout
         self.name_prefix = name_prefix
+        # Numeric uid/gid the worker runs as inside the image. Backends that remap the
+        # host user into the container's namespace (rootless Podman) use these to make
+        # the read-only bind mount readable by the non-root worker; backends whose file
+        # sharing already exposes mounts to any uid (Docker, Apple) ignore them.
+        self.run_uid = run_uid
+        self.run_gid = run_gid
 
     # --- hooks each backend must implement ----------------------------------
 

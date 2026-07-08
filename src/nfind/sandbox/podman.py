@@ -6,15 +6,20 @@ Podman's CLI is drop-in compatible with the ``docker`` hardening flags, so
 -- the two backends therefore cannot drift on the security-critical flag set. What differs
 is Podman-specific: it is typically daemonless (rootless), ``podman build`` has no
 ``--load`` flag, and its error messaging references ``podman machine`` rather than a
-daemon. Everything generic comes from :mod:`nfind.sandbox.base`.
+daemon. Rootless Podman also remaps the host user to root inside the container, so the
+read-only ``/data`` mount would be unreadable by the non-root worker; this backend adds a
+``--userns=keep-id`` mapping onto the worker's uid/gid to keep the mount readable without
+weakening the shared hardening set (see :meth:`PodmanSandbox._userns_flags`).
 
-Podman support is validated only against mocked commands; the exact runtime behavior of
-the real ``podman`` CLI is unverified, so nfind treats this backend as experimental.
+The unit tests exercise this backend against mocked commands; the ``--userns`` remap was
+additionally confirmed against a real rootless ``podman`` machine, but nfind still treats
+this backend as experimental.
 """
 
 from __future__ import annotations
 
 import contextlib
+import functools
 import subprocess
 from collections.abc import Sequence
 
@@ -128,6 +133,29 @@ def _podman_image_exists(image: str) -> bool:
     return probe.returncode == 0
 
 
+@functools.lru_cache(maxsize=1)
+def podman_is_rootless() -> bool:
+    """Return whether Podman runs rootless on this host (cached for the process).
+
+    Rootless Podman remaps the invoking host user to *root* inside the container's user
+    namespace, so a read-only bind mount of a host-owned directory appears owned by root
+    and is unreadable by the image's non-root worker user -- the run then finds nothing.
+    Rootful Podman has no such remap (and rejects ``--userns=keep-id``), so the mapping
+    must be applied only when this returns True. On any probe failure we assume rootful,
+    which is the safe default: it never adds a flag that a rootful daemon would reject.
+    """
+    try:
+        completed = base._run_cli(
+            ["podman", "info", "--format", "{{.Host.Security.Rootless}}"],
+            capture_output=True,
+            text=True,
+            timeout=DOCKER_CHECK_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and completed.stdout.strip().lower() == "true"
+
+
 def _remove_podman_container(name: str) -> None:
     with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
         base._run_cli(
@@ -171,6 +199,21 @@ class PodmanSandbox(_CliSandbox):
     def _remove(self, name: str) -> None:
         _remove_podman_container(name)
 
+    def _userns_flags(self) -> list[str]:
+        """Return the rootless user-namespace remap so the worker can read bind mounts.
+
+        Rootless Podman maps the host user to root in the container; without a remap the
+        read-only ``/data`` mount is owned by root and unreadable by the non-root worker,
+        which silently yields no results. ``keep-id`` mapped onto the worker's own uid/gid
+        makes the mount appear owned by the worker inside the container. This is skipped in
+        rootful mode (where ``keep-id`` is invalid) and when the worker uid is unknown.
+        """
+        if self.run_uid is None or self.run_gid is None or not podman_is_rootless():
+            return []
+        return ["--userns", f"keep-id:uid={self.run_uid},gid={self.run_gid}"]
+
     def _build_run_command(self, name: str, mounts: Sequence[Mount], limits: Limits) -> list[str]:
         """Assemble the hardened ``podman run`` invocation (shared Docker-family flags)."""
-        return docker_family_run_command("podman", self.image, name, mounts, limits)
+        return docker_family_run_command(
+            "podman", self.image, name, mounts, limits, extra_flags=self._userns_flags()
+        )

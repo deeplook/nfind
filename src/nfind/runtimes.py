@@ -50,6 +50,8 @@ class Runtime:
     base_image: str
     dockerfile: str  # filename packaged next to this module
     final_user: str  # unprivileged user the worker runs as
+    worker_uid: int  # numeric uid of ``final_user`` inside the image
+    worker_gid: int  # numeric gid of ``final_user`` inside the image
     default_packages: frozenset[str]
     _package_name: re.Pattern[str]
     _validate_code: Callable[[str], None]
@@ -150,6 +152,8 @@ PYTHON_RUNTIME = Runtime(
     base_image=DEFAULT_IMAGE,
     dockerfile="Dockerfile.python",
     final_user="worker",
+    worker_uid=10001,
+    worker_gid=10001,
     default_packages=DEFAULT_ALLOWED_PACKAGES,
     _package_name=_PACKAGE_NAME,
     _validate_code=_validate_code_shape,
@@ -162,6 +166,8 @@ NODE_RUNTIME = Runtime(
     base_image=DEFAULT_NODE_IMAGE,
     dockerfile="Dockerfile.node",
     final_user="node",
+    worker_uid=1000,
+    worker_gid=1000,
     default_packages=DEFAULT_NODE_PACKAGES,
     _package_name=_NPM_NAME,
     _validate_code=_validate_node_code,

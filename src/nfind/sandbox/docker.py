@@ -169,7 +169,13 @@ def _remove_container(name: str) -> None:
 
 
 def docker_family_run_command(
-    executable: str, image: str, name: str, mounts: Sequence[Mount], limits: Limits
+    executable: str,
+    image: str,
+    name: str,
+    mounts: Sequence[Mount],
+    limits: Limits,
+    *,
+    extra_flags: Sequence[str] = (),
 ) -> list[str]:
     """Assemble the hardened ``<executable> run`` invocation shared by the Docker family.
 
@@ -178,6 +184,9 @@ def docker_family_run_command(
     security-relevant flag set to audit: no network, read-only root, all capabilities
     dropped, no privilege escalation, and process/memory/CPU/file-descriptor/tmpfs limits.
     Apple Containers differ and keep their own command (see :mod:`nfind.sandbox.apple`).
+
+    ``extra_flags`` are backend-specific, non-hardening run flags inserted verbatim (e.g.
+    Podman's rootless ``--userns`` mapping). They never relax the hardening set above.
     """
     command = [
         executable,
@@ -185,6 +194,7 @@ def docker_family_run_command(
         "--rm",
         "--name",
         name,
+        *extra_flags,
         "--interactive",
         "--network",
         "none",

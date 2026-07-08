@@ -63,8 +63,9 @@ _APPLE_SANDBOX_MACOS26_WARNING = (
 
 _PODMAN_SANDBOX_WARNING = (
     "warning: Podman sandbox is experimental; nfind applies the same hardening flags as "
-    "Docker, but the backend has not been validated against a real Podman runtime. Use "
-    "Docker for the most thoroughly tested sandbox."
+    "Docker and, on rootless Podman, remaps the read-only mount to the worker user so it "
+    "stays readable. It has been validated only on limited hosts, and rootless isolation "
+    "differs from a rootful Docker daemon. Use Docker for the most thoroughly tested sandbox."
 )
 
 
