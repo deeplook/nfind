@@ -27,7 +27,7 @@ inside a **disposable, hardened Docker container** with the search directory
 bind-mounted **read-only**, networking disabled, all Linux capabilities dropped, and
 CPU, memory, and process limits applied. Experimental alternate backends — Apple
 Containers (`--sandbox apple`), Podman (`--sandbox podman`), and nerdctl/containerd
-(`--sandbox nerdctl`) — are available with weaker or not-yet-validated guarantees; see the
+(`--sandbox nerdctl`) — are available with weaker or experimental guarantees; see the
 [Safety model](#safety-model) below.
 
 ## Demo
