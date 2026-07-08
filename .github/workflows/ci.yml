@@ -49,6 +49,58 @@ jobs:
       - name: Test
         run: uv run pytest --cov=src --cov-report=xml
 
+  test-nerdctl:
+    # Validate the experimental nerdctl backend against a real, rootful containerd. The
+    # main `test` job skips the nerdctl integration cases because nerdctl is not installed
+    # there; this job installs the nerdctl-full bundle (nerdctl + buildkit + CNI) so those
+    # cases actually run end-to-end (image build + hardened container run). containerd is
+    # already present on the runner; we only add nerdctl/buildkit and open the sockets to
+    # the non-root runner user so the `nerdctl` binary nfind execs can reach them.
+    runs-on: ubuntu-latest
+    env:
+      NERDCTL_VERSION: "2.3.4"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install nerdctl + buildkit (full bundle)
+        run: |
+          set -eux
+          curl -fsSL -o /tmp/nerdctl-full.tgz \
+            "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-full-${NERDCTL_VERSION}-linux-amd64.tar.gz"
+          sudo tar -C /usr/local -xzf /tmp/nerdctl-full.tgz
+
+      - name: Start buildkit and open runtime sockets to the runner user
+        run: |
+          set -eux
+          sudo systemctl daemon-reload
+          # containerd is already running on the runner; nerdctl build needs buildkit.
+          sudo systemctl enable --now buildkit
+          # nfind execs `nerdctl` as the (non-root) runner user, so the rootful
+          # containerd/buildkit sockets must be reachable without sudo.
+          sudo chmod 666 /run/containerd/containerd.sock
+          sudo chmod 666 /run/buildkit/buildkitd.sock
+
+      - name: Smoke-test nerdctl
+        run: nerdctl info
+
+      - name: Integration tests (real containerd via nerdctl)
+        run: uv run pytest tests/test_cli_integration.py -m integration
+
   test-windows:
     # Verify host-side path handling and subprocess/config logic on Windows. When Docker
     # is available on the runner, the real sandbox container integration tests run here

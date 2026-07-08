@@ -2,8 +2,10 @@
 
 These tests deliberately use ``nfind --run`` so the LLM is bypassed while the public
 CLI, config-file defaulting, image preparation, and container run path are exercised
-against a live Docker daemon or Apple ``container`` service. Each backend is skipped
-when its runtime is unavailable.
+against a live Docker daemon, Apple ``container`` service, or nerdctl/containerd runtime.
+Each backend is skipped when its runtime is unavailable, so on a typical dev box only the
+locally installed backends run; the nerdctl path is exercised on the Linux CI job that
+installs containerd.
 """
 
 from __future__ import annotations
@@ -29,10 +31,10 @@ def _backend_available(name: sandbox.SandboxBackend) -> bool:
     return name != "docker" or sandbox.docker_supports_linux_containers()
 
 
-@pytest.fixture(params=["docker", "apple"])
+@pytest.fixture(params=["docker", "apple", "nerdctl"])
 def sandbox_backend(request: pytest.FixtureRequest) -> Iterator[sandbox.SandboxBackend]:
     name = request.param
-    if name not in {"docker", "apple"}:
+    if name not in {"docker", "apple", "nerdctl"}:
         raise AssertionError(f"unexpected sandbox backend fixture param: {name}")
     if not _backend_available(name):
         pytest.skip(f"{name} sandbox backend is not available")
@@ -69,10 +71,16 @@ def _assert_successful_cli_run(
     assert result.exit_code == 0, result.output
     assert str(expected) in result.output
     assert "drop.log" not in result.output
-    if backend_name == "apple":
-        assert "Apple Containers sandbox is experimental" in result.output
-    else:
-        assert "Apple Containers sandbox is experimental" not in result.output
+    # Each experimental backend prints its own warning; docker prints none.
+    expected_warnings = {
+        "apple": "Apple Containers sandbox is experimental",
+        "nerdctl": "nerdctl sandbox is experimental",
+    }
+    for name, marker in expected_warnings.items():
+        if backend_name == name:
+            assert marker in result.output
+        else:
+            assert marker not in result.output
 
 
 def test_cli_run_exercises_real_backend_with_sandbox_resource_flags(
