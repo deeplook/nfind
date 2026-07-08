@@ -79,12 +79,22 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Install nerdctl + buildkit (full bundle)
+      - name: Install nerdctl + buildkit (full bundle, minus its containerd)
         run: |
           set -eux
           curl -fsSL -o /tmp/nerdctl-full.tgz \
             "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-full-${NERDCTL_VERSION}-linux-amd64.tar.gz"
           sudo tar -C /usr/local -xzf /tmp/nerdctl-full.tgz
+          # The bundle ships its own containerd + runc shim; on PATH they shadow the system
+          # containerd that both docker and nerdctl actually talk to, and the newer shim is
+          # incompatible with the running daemon (TTRPC "unsupported protocol" at task
+          # start). Keep only the client/build tools and let the system containerd (and its
+          # matching shim) serve the containers.
+          sudo rm -f /usr/local/bin/containerd \
+                     /usr/local/bin/containerd-shim \
+                     /usr/local/bin/containerd-shim-runc-v1 \
+                     /usr/local/bin/containerd-shim-runc-v2 \
+                     /usr/local/bin/ctr
 
       - name: Start buildkit (rootful)
         run: |
