@@ -6,6 +6,33 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-10
+
+### Documentation
+
+- **Cookbook — recipes by profession.** A new [Cookbook](docs/cookbook.md) gathers
+  real-world prompts grouped by who might use them (web developers, data scientists & data
+  engineers, AI engineers, authors, photographers, DevOps, solo entrepreneurs), plus an
+  `--extract` showcase. Every recipe is something `find`/`grep` can't express on its own —
+  it reads file contents or structure, computes a value, or relates files across a tree.
+  Linked from the top-level docs nav.
+- **README "What can you ask?" showcase.** Replaced the flat example-prompt list with a
+  curated set grouped by why each query is out of reach for `find`/`grep` (cross-file
+  relationships, structural correctness, binary/metadata introspection, macOS provenance ×
+  contents), linking to the Cookbook.
+- **Model-choice guidance.** Documented that model quality matters most for the
+  prompt-to-code step: the call is tiny and cheap (your file list and contents are never
+  sent), and the generated filter is reusable via `--save`/`--run`, so a capable model is
+  the cheapest place to spend quality.
+
+### Infrastructure
+
+- **PyPI Trusted Publishing (OIDC).** Releases now publish to PyPI via OpenID Connect,
+  removing the need for a long-lived API token.
+- **PEP 740 attestations.** Publishing goes through `pypa/gh-action-pypi-publish`, which
+  emits [PEP 740](https://peps.python.org/pep-0740/) attestations for the uploaded
+  artifacts.
+
 ## [0.2.0] - 2026-07-08
 
 ### Added
