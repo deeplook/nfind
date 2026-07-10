@@ -272,16 +272,42 @@ nfind "..." --model ollama/llama3.1                      # local, no key
 Supported prefixes: `openai`, `anthropic`, `gemini`, `groq`, `mistral`, `deepseek`,
 `xai`, `openrouter`, `ollama`, `lmstudio`. Each reads its own `*_API_KEY` (local
 servers need none). nfind handles providers without strict JSON mode automatically.
-Capable models follow the filter contract best; weaker ones may need a retry or a
-stronger model.
 
-## Example prompts
+**Prefer a capable model — it's the cheapest place to spend quality.** The model does
+just one thing: turn your prompt into the filter *program*, and the correctness of the
+whole search rides on that code. But the call is tiny — a short prompt in, a small filter
+out (your file list and contents are never sent) — so even a top-tier model usually costs
+a fraction of a cent per query. And the result is reusable: `--save` the filter once and
+`--run` it forever with no further LLM calls. Pay once for a strong model to write good,
+reusable code; weaker ones may only save a fraction of a cent while needing retries or
+producing a subtly wrong filter.
 
-- "SRT subtitle files whose final cue looks truncated: it ends without sentence punctuation, has unbalanced quotes/brackets, or stops mid-sentence"
-- "PDF files that contain fillable form fields, using pypdf"
-- "SVG files that use gradient elements such as linearGradient or radialGradient, using lxml or stdlib xml"
-- "Python virtual environments (directories with a pyvenv.cfg directly inside)"
-- "initialized Terraform root modules"
+## What can you ask?
+
+The prompt is free-form. What makes nfind different is the kind of question it can
+answer — ones that read *contents* or *structure*, compute a value, or relate files
+across a tree, and so are out of reach for `find` and `grep`:
+
+```bash
+# Cross-file relationships — the answer depends on two files, not one
+nfind "directories that contain both RAW and JPEG files with the same stems (already converted)" ~/Photos
+nfind "client directories with a signed contract PDF but no invoice of matching stem (delivered work never billed)" ~/Clients
+
+# Structural correctness a linter would catch — but across any tree, described in a sentence
+nfind "Kubernetes Deployment manifests with no resource limits set" ~/k8s
+nfind "Jupyter notebooks that contain cells with error or traceback outputs" ~/notebooks
+nfind "PDF files that still contain selectable text under a black redaction rectangle (failed redaction), using pypdf" ~/discovery
+
+# Binary & metadata introspection
+nfind "JPEG files shot with an ISO above 6400 (likely noisy), using pillow" ~/Photos
+nfind "GPX files, with their total elevation gain in meters, using gpxpy" ~/tracks --json
+
+# macOS provenance × file contents (Spotlight can do each alone; nfind combines them)
+nfind "PDFs I downloaded from arxiv.org that mention 'interpretability', using pypdf" ~/Papers --macos-meta
+```
+
+For dozens more, grouped by profession — web dev, data & AI, authors, photographers,
+DevOps, freelancers — see the **[Cookbook](docs/cookbook.md)**.
 
 ## Library use
 

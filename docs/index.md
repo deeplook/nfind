@@ -38,7 +38,8 @@ nfind "PDFs I downloaded from arxiv.org that mention 'mechanistic interpretabili
 
 Because nfind **generates a real program per query** — rather than matching fixed
 predicates or sending your files to a model — the answer is: almost anything you can
-describe in a sentence. See the [Examples gallery](examples.md).
+describe in a sentence. See the [Examples gallery](examples.md), or the
+[Cookbook](cookbook.md) for recipes grouped by profession.
 
 ## How it works
 
@@ -141,6 +142,7 @@ See [Installation](installation.md) for details.
 - [Installation](installation.md) — install via `uv`, `pipx`, or `pip`; Docker and API key setup
 - [Tutorial](getting-started.md) — a hands-on walkthrough of every feature, from first search to advanced options
 - [Examples](examples.md) — a gallery of prompts to adapt, with runtime and image information
+- [Cookbook](cookbook.md) — real-world recipes grouped by profession (web dev, data & AI, authors, photographers, DevOps, freelancers)
 
 ### Reference
 

@@ -74,6 +74,18 @@ nfind "large log files" --model anthropic/claude-sonnet-4-6
 nfind "TypeScript files using ts-morph" --model ollama/llama3.1
 ```
 
+!!! tip "Favour a capable model — it's the cheapest place to spend quality"
+
+    The model does one thing: turn your prompt into the filter *program*. The whole
+    correctness of a search rides on getting that code right, so **model quality matters
+    here more than almost anywhere**. Yet the call is tiny — a short prompt in, a small
+    filter out (your file list and contents are *never* sent) — so even a top-tier model
+    usually costs a fraction of a cent per query. And the output is reusable: `--save` the
+    generated filter once, then `--run` it as many times as you like with **no further LLM
+    calls**. Pay once for a strong model to write good, reusable code; a weaker model may
+    only save a fraction of a cent while needing retries or producing a subtly wrong
+    filter.
+
 ## Persistent state
 
 nfind persists two small files between runs:

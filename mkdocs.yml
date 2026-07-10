@@ -34,6 +34,7 @@ nav:
     - Installation: installation.md
     - Tutorial: getting-started.md
     - Examples: examples.md
+  - Cookbook: cookbook.md
   - Reference:
     - CLI Reference: cli.md
     - Configuration: configuration.md
