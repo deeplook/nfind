@@ -348,4 +348,35 @@ To minimize the **blast radius** of running LLM-generated code locally, `nfind` 
 - The host validates that the filter returns only paths it was given, so generated
   code cannot inject arbitrary paths into the output.
 
+## Development and semantic evaluation
+
+The ordinary development checks are deterministic and make no model requests:
+
+```bash
+make lint
+make test
+```
+
+The repository also contains a semantic corpus of 20 filesystem scenarios and 60 prompt
+variants. Free targets show the planned request count; paid execution must be selected
+explicitly:
+
+```bash
+make semantic-eval          # plan 20 canonical prompts; no model calls
+make semantic-eval-all      # plan all 60 variants; no model calls
+make semantic-eval-run      # paid: run the 20 canonical prompts
+make semantic-eval-run-all  # paid: run all 60 variants
+```
+
+Choose another model or limit the run through `EVAL_ARGS`:
+
+```bash
+make semantic-eval-run \
+  EVAL_ARGS="--model openai/gpt-5.5 --case xml-items-with-disabled-attribute \
+  --output eval-report.json"
+```
+
+See the [semantic evaluation guide](tests/semantic/README.md) for the cost-aware test
+strategy, fixture policy, report format, and supported claims.
+
 [Asciinema]: https://asciinema.org

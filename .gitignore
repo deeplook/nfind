@@ -24,6 +24,10 @@ site/
 # Work files
 work/
 
+# Paid semantic-evaluation output (generated locally; may contain model-produced code).
+/eval-*.json
+/smoke-report*.json
+
 # macOS metadata and editor backup files
 .DS_Store
 *~

@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Testing
+
+- **Deterministic semantic evaluation corpus.** Added 20 filesystem scenarios with 60
+  human-reviewed prompt variants and exact expected results, covering source structure,
+  relational directories, structured formats, Unicode, file sizes, and real ID3-tagged MP3
+  assets. Ordinary tests validate the corpus without making model calls.
+- **Opt-in live-model evaluation.** Added free planning and explicitly paid Make targets for
+  canonical or full-matrix runs, with model/case selection and JSON reports containing exact
+  scores, generated code, runtime, dependencies, retries, durations, and errors. The documented
+  strategy separates routine free tests, release smoke runs, targeted model/prompt checks, and
+  occasional instability calibration.
+
 ## [0.2.1] - 2026-07-10
 
 ### Documentation
