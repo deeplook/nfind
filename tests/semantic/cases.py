@@ -428,6 +428,6 @@ def materialize_case(case: SemanticCase, root: Path) -> None:
         destination = root / entry.path
         destination.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(entry, TextFile):
-            destination.write_text(entry.contents)
+            destination.write_text(entry.contents, encoding="utf-8")
         else:
             shutil.copyfile(assets / entry.asset, destination)

@@ -52,7 +52,7 @@ def test_python_import_case_has_unambiguous_ground_truth(tmp_path: Path) -> None
     matches = {
         path.relative_to(tmp_path).as_posix()
         for path in tmp_path.rglob("*.py")
-        if "import requests" in path.read_text().splitlines()
+        if "import requests" in path.read_text(encoding="utf-8").splitlines()
     }
 
     assert matches == PYTHON_IMPORT_CASE.expected

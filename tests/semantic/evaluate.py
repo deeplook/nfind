@@ -225,7 +225,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = build_report(results, model=args.model, sandbox_backend=args.sandbox)
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
-        args.output.write_text(rendered)
+        args.output.write_text(rendered, encoding="utf-8")
         print(f"Report written to {args.output}", file=sys.stderr)
     else:
         print(rendered, end="")
