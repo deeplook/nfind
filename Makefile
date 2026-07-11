@@ -1,9 +1,11 @@
 .DEFAULT_GOAL := help
 
-.PHONY: install lint format test coverage clean install-tool check-all publish-test publish serve-docs build-docs help
+.PHONY: install lint format test coverage clean install-tool check-all publish-test publish serve-docs build-docs semantic-eval semantic-eval-all semantic-eval-run semantic-eval-run-all help
+
+EVAL_ARGS ?=
 
 help:  ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-14s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-22s %s\n", $$1, $$2}'
 
 install:  ## Install all dependencies
 	uv sync
@@ -21,6 +23,18 @@ test:  ## Run the test suite
 
 coverage:  ## Run tests with HTML + terminal coverage report
 	uv run pytest --cov=src --cov-report=html --cov-report=term
+
+semantic-eval:  ## Plan the 20-case semantic evaluation (free; no model calls)
+	uv run python -m tests.semantic.evaluate $(EVAL_ARGS)
+
+semantic-eval-all:  ## Plan all 60 semantic prompt evaluations (free; no model calls)
+	uv run python -m tests.semantic.evaluate --all-prompts $(EVAL_ARGS)
+
+semantic-eval-run:  ## Run 20 paid canonical-prompt semantic evaluations
+	uv run python -m tests.semantic.evaluate --run $(EVAL_ARGS)
+
+semantic-eval-run-all:  ## Run all 60 paid semantic prompt evaluations
+	uv run python -m tests.semantic.evaluate --all-prompts --run $(EVAL_ARGS)
 
 check-all: install format lint test clean  ## Run format, lint, test, and clean
 	@echo "All checks passed!"
