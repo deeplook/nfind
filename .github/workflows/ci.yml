@@ -30,7 +30,7 @@ jobs:
       # would be silently skipped. nfind's own node runtime runs inside Docker, so
       # end users don't need node locally — this is a dev/CI requirement only.
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
 
@@ -72,7 +72,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
 
@@ -135,7 +135,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
 
