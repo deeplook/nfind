@@ -116,8 +116,9 @@ Entry ids are **stable identifiers, not positions**: deleting one leaves a gap r
 renumbering the rest, so an id you noted (or scripted) always refers to the same entry.
 `nfind cache delete 3 7 12` removes several at once and ignores ids that don't exist.
 
-`cache` is nfind's first and only subcommand. In the rare case a prompt collides with a
-subcommand name, use the explicit `nfind search "prompt"` form.
+`cache` and [`config`](configuration.md#managing-configuration-from-the-cli) are nfind's
+subcommands; the default `nfind "prompt"` interface is unchanged. In the rare case a prompt
+collides with a subcommand name, use the explicit `nfind search "prompt"` form.
 
 ## Options and configuration
 

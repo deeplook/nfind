@@ -32,8 +32,9 @@ run. nfind reads it from, in order:
    on Windows, `%APPDATA%\nfind\config.toml`).
 
 An explicit `--config`/`NFIND_CONFIG` path must exist; the default location is used only
-when present, so no config file is required. **Command-line options always override the
-file**, which overrides the built-in defaults.
+when present, so no config file is required — run [`nfind config init`](#managing-configuration-from-the-cli)
+to scaffold a commented starter file. **Command-line options always override the file**,
+which overrides the built-in defaults.
 
 ```toml
 # ~/.config/nfind/config.toml
@@ -52,18 +53,74 @@ The settable keys mirror the option flag names (the underscore spelling, e.g.
 `pids_limit`, is also accepted): `model`, `sandbox` (`docker`, `apple`, `podman`, or
 `nerdctl`),
 `image`, `timeout`, `command-timeout`, `memory`, `cpus`, `pids-limit`, `build-timeout`,
-`json`, `fields`, `no-format`, `exclude` (a list of globs), `no-ignore`, `max-depth`,
-`max-results`, `max-items`, `max-output-bytes`, and `print0`. The [query cache](caching.md)
-adds `cache`, `cache-semantic`, `cache-embedding-model`, and `cache-threshold`.
-Per-invocation actions (`--save`, `--run`, `--force`) and package-approval shortcuts
-(`--yes`, `--no-deps`) are intentionally **not** configurable, so each run stays explicit.
-An unknown key or a wrong value type is a hard error that names the offending key.
+`json`, `fields`, `show-code`, `no-format`, `exclude` (a list of globs), `no-ignore`,
+`max-depth`, `max-results`, `max-items`, `max-output-bytes`, and `print0`. The
+[query cache](caching.md) adds `cache`, `cache-semantic`, `cache-embedding-model`, and
+`cache-threshold`. Per-invocation actions (`--save`, `--run`, `--force`) and
+package-approval shortcuts (`--yes`, `--no-deps`) are intentionally **not** configurable, so
+each run stays explicit. An unknown key or a wrong value type is a hard error that names the
+offending key.
+
+Every option that can be set here is tagged **`(config)`** in `nfind -h`, so you can see at a
+glance which flags accept a config-file default.
 
 ```toml
 # Enumeration defaults also work, e.g. always skip vendored code:
 exclude = ["vendor", "*.min.js"]
 max-depth = 6
 ```
+
+## Managing configuration from the CLI
+
+The `nfind config` subcommand locates, reads, and edits the config file so you don't have to
+remember its per-OS path:
+
+!!! note "`nfind config` (the subcommand) vs. `--config` (the option)"
+
+    They share a word but do different jobs. **`nfind config …`** *manages* the config file
+    (create, inspect, edit it). The **`--config PATH`** option on a search *selects which*
+    file that one run reads (`nfind "…" --config ./project.toml`), the same choice
+    `$NFIND_CONFIG` makes for a whole session. Managing a file never changes which file a
+    search picks up, and selecting a file for a run doesn't go through the subcommand — so
+    both exist. The `nfind config` verbs always act on the resolved file (`$NFIND_CONFIG` if
+    set, otherwise the default location).
+
+```bash
+nfind config init              # write a commented template of every key and its default
+nfind config path              # print the config file path (whether or not it exists)
+nfind config show              # print the current config file (or note that none exists)
+nfind config get model         # print the value set for one key (built-in default if unset)
+nfind config get exclude       # list values print one per line
+nfind config set timeout 45              # set a scalar key
+nfind config set exclude vendor dist     # list keys take several values
+nfind config unset timeout               # remove a key (revert to the built-in default)
+nfind config edit              # open the config file in $EDITOR (creating its directory)
+```
+
+All verbs accept either key spelling (`pids-limit` or `pids_limit`) and reject unknown keys
+with the list of valid ones. They read and write the same file a search would —
+`$NFIND_CONFIG` if set, otherwise the default location — so what you inspect and change is
+what nfind uses.
+
+`set` validates the value against the same rules the config loader applies (so
+`config set timeout abc` or `config set sandbox jail` fail up front), creates the file and
+its directory on first use, and **preserves the existing comments and formatting** of your
+file — only the one key is rewritten. `set` and `unset` are for scripted or one-off changes;
+reach for `edit` when you want to rework the file by hand.
+
+### How the file gets created
+
+**nfind never creates a config file on its own.** A normal search that finds no config file
+just uses the built-in defaults; it does not write one. The file comes into being only when
+you ask for it:
+
+- `nfind config init` writes a commented template listing every key with its default value,
+  all commented out (so a fresh template overrides nothing until you uncomment a line). It
+  refuses to overwrite an existing file unless you pass `--force`. This is the easiest way to
+  discover the available keys.
+- `nfind config set KEY VALUE` creates a minimal file containing just the key you set.
+- `nfind config edit` creates the directory and opens your editor; the file exists once you
+  save it.
 
 ## Selecting a model and provider
 

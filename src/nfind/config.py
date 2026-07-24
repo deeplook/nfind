@@ -13,6 +13,7 @@ location) and used only when it exists. Keys mirror the option flag names
 
 from __future__ import annotations
 
+import os
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
@@ -80,6 +81,7 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "build-timeout": ("build_timeout", _as_float),
     "json": ("as_json", _as_bool),
     "fields": ("fields", _as_bool),
+    "show-code": ("show_code", _as_bool),
     "no-format": ("no_format", _as_bool),
     "exclude": ("exclude", _as_str_list),
     "no-ignore": ("no_ignore", _as_bool),
@@ -98,6 +100,96 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
 def default_config_path() -> Path:
     """Location of the config file when neither --config nor NFIND_CONFIG is set."""
     return user_dir("config") / "config.toml"
+
+
+def resolved_config_path() -> Path:
+    """The config file nfind would read: ``$NFIND_CONFIG`` if set, else the default location.
+
+    Mirrors the CLI's ``--config``/``NFIND_CONFIG`` resolution (minus the per-invocation
+    ``--config`` flag) so ``nfind config`` reports and edits the same file a search reads.
+    """
+    override = os.environ.get("NFIND_CONFIG")
+    if override:
+        return Path(override).expanduser()
+    return default_config_path()
+
+
+def known_config_keys() -> list[str]:
+    """The config-file keys nfind understands, in option-flag spelling, sorted."""
+    return sorted(_SCHEMA)
+
+
+def configurable_param_names() -> set[str]:
+    """The CLI/click parameter names that a config-file key can supply a default for.
+
+    Used to mark the matching options in ``--help``. Some keys (the semantic-cache ones)
+    map to parameters that are not CLI options; those simply match nothing.
+    """
+    return {param for param, _ in _SCHEMA.values()}
+
+
+def normalize_config_key(key: str) -> str:
+    """Return the canonical (hyphen-spelled) form of ``key`` or raise for an unknown one."""
+    normalized = key.replace("_", "-")
+    if normalized not in _SCHEMA:
+        valid = ", ".join(sorted(_SCHEMA))
+        raise ConfigError(f"unknown config key {key!r}. Valid keys: {valid}")
+    return normalized
+
+
+def _parse_bool(text: str) -> bool:
+    low = text.strip().lower()
+    if low in {"true", "1", "yes", "on"}:
+        return True
+    if low in {"false", "0", "no", "off"}:
+        return False
+    raise ConfigError("expected true or false")
+
+
+def _parse_int(text: str) -> int:
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise ConfigError("expected an integer") from exc
+
+
+def _parse_float(text: str) -> float:
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise ConfigError("expected a number") from exc
+
+
+def parse_config_value(key: str, raw_values: list[str]) -> Any:
+    """Parse CLI string value(s) for ``key`` into a validated TOML-writable Python value.
+
+    The target type is inferred from the key's schema entry: list keys (e.g. ``exclude``)
+    consume every value, scalar keys take exactly one. The parsed value is then run through
+    the same coercion :func:`load_config` uses, so ``config set`` rejects bad input with the
+    identical error a bad file would produce.
+    """
+    normalized = normalize_config_key(key)
+    _, coerce = _SCHEMA[normalized]
+    if coerce is _as_str_list:
+        if not raw_values:
+            raise ConfigError(f"config key {normalized!r} needs at least one value")
+        return coerce(list(raw_values))
+    if len(raw_values) != 1:
+        raise ConfigError(f"config key {normalized!r} takes a single value")
+    text = raw_values[0]
+    typed: Any
+    if coerce is _as_int:
+        typed = _parse_int(text)
+    elif coerce is _as_float:
+        typed = _parse_float(text)
+    elif coerce is _as_bool:
+        typed = _parse_bool(text)
+    else:  # string-valued keys (including the validated sandbox backend)
+        typed = text
+    try:
+        return coerce(typed)
+    except ConfigError as exc:
+        raise ConfigError(f"config key {normalized!r}: {exc}") from exc
 
 
 def load_config(path: Path) -> dict[str, Any]:

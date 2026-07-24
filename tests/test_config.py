@@ -86,6 +86,72 @@ def test_load_config_reads_cache_keys(tmp_path):
     }
 
 
+def test_resolved_config_path_prefers_env(monkeypatch, tmp_path):
+    target = tmp_path / "custom.toml"
+    monkeypatch.setenv("NFIND_CONFIG", str(target))
+    assert config.resolved_config_path() == target
+
+
+def test_resolved_config_path_falls_back_to_default(monkeypatch):
+    monkeypatch.delenv("NFIND_CONFIG", raising=False)
+    assert config.resolved_config_path() == config.default_config_path()
+
+
+def test_known_config_keys_are_sorted_and_include_cache_keys():
+    keys = config.known_config_keys()
+    assert keys == sorted(keys)
+    assert {"model", "cache", "cache-semantic", "cache-threshold"} <= set(keys)
+
+
+@pytest.mark.parametrize(
+    "key,raw,expected",
+    [
+        ("timeout", ["45"], 45.0),
+        ("pids-limit", ["128"], 128),
+        ("cache-semantic", ["true"], True),
+        ("cache-semantic", ["off"], False),
+        ("model", ["anthropic/claude-sonnet-4-6"], "anthropic/claude-sonnet-4-6"),
+        ("sandbox", ["podman"], "podman"),
+        ("exclude", ["vendor", "dist"], ["vendor", "dist"]),
+    ],
+)
+def test_parse_config_value_valid(key, raw, expected):
+    assert config.parse_config_value(key, raw) == expected
+
+
+@pytest.mark.parametrize(
+    "key,raw",
+    [
+        ("timeout", ["abc"]),  # not a number
+        ("pids-limit", ["1.5"]),  # not an integer
+        ("cache-semantic", ["maybe"]),  # not a bool
+        ("sandbox", ["jail"]),  # not a valid backend
+        ("bogus", ["1"]),  # unknown key
+        ("timeout", ["1", "2"]),  # scalar given two values
+        ("exclude", []),  # list given no values
+    ],
+)
+def test_parse_config_value_invalid(key, raw):
+    with pytest.raises(config.ConfigError):
+        config.parse_config_value(key, raw)
+
+
+def test_load_config_show_code_key(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("show-code = true\n")
+    assert config.load_config(path) == {"show_code": True}
+
+
+def test_configurable_param_names_includes_show_code():
+    assert "show_code" in config.configurable_param_names()
+
+
+def test_normalize_config_key_rejects_unknown():
+    with pytest.raises(config.ConfigError):
+        config.normalize_config_key("nope")
+    assert config.normalize_config_key("pids_limit") == "pids-limit"
+
+
 def test_documented_limit_defaults_match_constants():
     limits = (Path(__file__).parents[1] / "docs" / "limits.md").read_text()
     assert f"| Image build time | {constants.DEFAULT_BUILD_TIMEOUT:g} seconds |" in limits

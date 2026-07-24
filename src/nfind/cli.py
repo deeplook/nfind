@@ -6,11 +6,14 @@ import importlib.util
 import json
 import os
 import sys
+import tomllib
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, cast
 
+import click
+import tomlkit
 import typer
 
 from . import __version__, backend
@@ -32,7 +35,16 @@ from .command_plan import (
     SavedReplayRequest,
     plan_command,
 )
-from .config import ConfigError, default_config_path, load_config
+from .config import (
+    ConfigError,
+    configurable_param_names,
+    default_config_path,
+    known_config_keys,
+    load_config,
+    normalize_config_key,
+    parse_config_value,
+    resolved_config_path,
+)
 from .constants import (
     DEFAULT_COMMAND_TIMEOUT,
     DEFAULT_CPUS,
@@ -46,6 +58,69 @@ from .extract import iter_extract_rows
 from .query_cache import DEFAULT_SEMANTIC_THRESHOLD, iter_entry_summaries
 
 _DEFAULT_COMMAND = "search"
+
+
+# Grouping of the search command's options into Rich help panels (by click param name).
+# Kept in one place so the panels stay coherent; options not listed here (``--version``,
+# ``--config``, ``--help``) fall in Typer's default "Options" panel. Applied to the built
+# command in :func:`_style_search_help` because the ``Annotated[..., typer.Option(...)]``
+# metadata is re-evaluated on every build (no persistent option object to set earlier).
+_OPTION_PANELS: dict[str, str] = {
+    "model": "Model",
+    "list_models": "Model",
+    "image": "Sandbox & resources",
+    "sandbox_backend": "Sandbox & resources",
+    "timeout": "Sandbox & resources",
+    "command_timeout": "Sandbox & resources",
+    "memory": "Sandbox & resources",
+    "cpus": "Sandbox & resources",
+    "pids_limit": "Sandbox & resources",
+    "rebuild": "Sandbox & resources",
+    "build_timeout": "Sandbox & resources",
+    "exclude": "Search scope",
+    "no_ignore": "Search scope",
+    "max_depth": "Search scope",
+    "macos_meta": "Search scope",
+    "show_code": "Generated filter",
+    "save": "Generated filter",
+    "run": "Generated filter",
+    "confirm": "Generated filter",
+    "no_format": "Generated filter",
+    "yes": "Dependencies",
+    "no_deps": "Dependencies",
+    "as_json": "Output",
+    "fields": "Output",
+    "extract": "Output",
+    "extract_field": "Output",
+    "print0": "Output",
+    "max_results": "Output",
+    "max_items": "Output",
+    "max_output_bytes": "Output",
+    "cache": "Query cache",
+    "force": "Query cache",
+}
+
+
+def _style_search_help(command: Any) -> None:
+    """Tag configurable options and sort the search options into Rich help panels.
+
+    Applied to the built Click command as the group resolves it (the
+    ``Annotated[..., typer.Option(...)]`` metadata is re-evaluated on every build, so there
+    is no persistent option object to style earlier). The ``(config)`` marks are driven off
+    the config schema (:func:`configurable_param_names`) so they can't drift. Idempotent.
+    """
+    configurable = configurable_param_names()
+    for param in command.params:
+        # Match on Click's param_type_name rather than isinstance(param, click.Option):
+        # Typer 0.26 vendors click, so its options are not real click.Option instances.
+        if getattr(param, "param_type_name", None) != "option":
+            continue
+        panel = _OPTION_PANELS.get(param.name)
+        if panel is not None:
+            param.rich_help_panel = panel
+        help_text = getattr(param, "help", None)
+        if param.name in configurable and help_text and not help_text.endswith("(config)"):
+            param.help = f"{help_text}  (config)"
 
 
 class DefaultCommandGroup(typer.core.TyperGroup):
@@ -71,6 +146,58 @@ class DefaultCommandGroup(typer.core.TyperGroup):
             args = [_DEFAULT_COMMAND, *args]
         return super().parse_args(ctx, args)
 
+    def get_command(self, ctx: Any, cmd_name: str) -> Any:
+        # Tag the search command's configurable options as help is resolved. Both the real
+        # CLI and CliRunner reach the search command through here, so the marks show up
+        # consistently without hand-editing each option's help string.
+        command = super().get_command(ctx, cmd_name)
+        if cmd_name == _DEFAULT_COMMAND and command is not None:
+            _style_search_help(command)
+        return command
+
+
+class SearchCommand(typer.core.TyperCommand):
+    """The default ``search`` command, whose help also advertises nfind's subcommands.
+
+    Because ``nfind --help`` renders this single command's help (not the group's), Typer
+    draws no "Commands" panel. This appends one listing the sibling subcommands
+    (``cache``, ``config``) so they are as visible as they would be on a group's help.
+    """
+
+    def format_help(self, ctx: Any, formatter: Any) -> None:
+        super().format_help(ctx, formatter)
+        siblings = self._sibling_subcommands(ctx)
+        if not siblings:
+            return
+        try:
+            if self.rich_markup_mode is None:
+                raise ImportError  # Rich disabled -> use the plain formatter path below.
+            from typer import rich_utils
+
+            print_panel = rich_utils._print_commands_panel
+            get_console = rich_utils._get_rich_console
+            print_panel(
+                name="Subcommands",
+                commands=siblings,
+                markup_mode=self.rich_markup_mode,
+                console=get_console(),
+                cmd_len=max(len(c.name or "") for c in siblings),
+            )
+        except (ImportError, AttributeError):
+            # No Rich (or its private helper moved): fall back to a plain section.
+            with formatter.section("Subcommands"):
+                formatter.write_dl([(c.name or "", c.get_short_help_str()) for c in siblings])
+
+    def _sibling_subcommands(self, ctx: Any) -> list[Any]:
+        """The other subcommands registered on the parent group (cache, config)."""
+        group = getattr(getattr(ctx, "parent", None), "command", None)
+        commands = getattr(group, "commands", {})
+        return [
+            command
+            for name, command in commands.items()
+            if name != self.name and not getattr(command, "hidden", False)
+        ]
+
 
 app = typer.Typer(
     cls=DefaultCommandGroup,
@@ -85,6 +212,13 @@ cache_app = typer.Typer(
     help="Manage the cache of past prompts and their generated filters.",
 )
 app.add_typer(cache_app, name="cache")
+
+config_app = typer.Typer(
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help="Locate, inspect, and edit nfind's configuration file.",
+)
+app.add_typer(config_app, name="config")
 
 _APPLE_SANDBOX_MACOS15_WARNING = (
     "warning: Apple Containers sandbox is experimental and does not disable networking "
@@ -446,10 +580,220 @@ def cache_clear(
     typer.echo(f"cleared {removed} cached entries.", err=True)
 
 
+def _format_toml_value(value: Any) -> str:
+    """Render a parsed TOML value for `config get`: TOML booleans, one list item per line."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "\n".join(str(item) for item in value)
+    return str(value)
+
+
+def _config_template() -> str:
+    """A commented config file listing every key with its built-in default (all disabled).
+
+    Values are interpolated from the same constants the runtime uses, so the template can't
+    drift from the real defaults. Every line is commented out, so writing it changes no
+    behaviour until the user uncomments a key.
+    """
+    return f"""\
+# nfind configuration file
+#
+# Every setting below is OPTIONAL: nfind runs with no config file, using the built-in
+# defaults shown here. Uncomment a line to override that default; command-line options
+# always win over this file. Keys mirror the CLI option names (the underscore spelling,
+# e.g. pids_limit, also works). See https://deeplook.github.io/nfind/configuration/
+
+# -- Model & provider --------------------------------------------------------
+# model = "{DEFAULT_MODEL}"           # bare name = OpenAI; otherwise provider/model
+
+# -- Sandbox & resources -----------------------------------------------------
+# sandbox = "{DEFAULT_SANDBOX_BACKEND}"                 # docker | apple | podman | nerdctl
+# image = "registry/name:tag"      # override the runtime's base image (default: per-runtime)
+# timeout = {DEFAULT_TIMEOUT:g}                  # seconds the generated filter may run
+# command-timeout = 300            # whole-command deadline, seconds (default: unlimited)
+# memory = "{DEFAULT_MEMORY}"                # worker memory limit
+# cpus = {DEFAULT_CPUS:g}                       # worker CPU limit
+# pids-limit = {DEFAULT_PIDS_LIMIT}                # max processes inside the worker
+# build-timeout = {DEFAULT_BUILD_TIMEOUT:g}            # seconds allowed to build the worker image
+
+# -- Enumeration -------------------------------------------------------------
+# exclude = ["vendor", "*.min.js"] # globs to prune before filtering (default: none)
+# no-ignore = false                # also walk .git, node_modules, caches, …
+# max-depth = 6                    # limit traversal depth (default: unlimited)
+
+# -- Output ------------------------------------------------------------------
+# json = false
+# fields = false
+# print0 = false
+# show-code = false                # print the generated filter before running it
+# no-format = false                # skip the ruff cleanup of the generated filter
+# max-results = 100                # cap path records (default: unlimited)
+# max-items = 100                  # cap --extract rows (default: unlimited)
+# max-output-bytes = 1048576       # cap stdout bytes (default: unlimited)
+
+# -- Query cache -------------------------------------------------------------
+# cache = true                     # reuse and store generated filters
+# cache-semantic = false           # also reuse similar prompts (needs the 'semantic' extra)
+# cache-embedding-model = "{DEFAULT_EMBEDDING_MODEL}"
+# cache-threshold = {DEFAULT_SEMANTIC_THRESHOLD}              # max cosine distance for a reuse
+"""
+
+
+@config_app.command("init")
+def config_init(
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Overwrite an existing config file."),
+    ] = False,
+) -> None:
+    """Write a commented config-file template (every key with its default, all disabled)."""
+    path = resolved_config_path()
+    if path.is_file() and not force:
+        typer.echo(
+            f"error: config file already exists at {path} (use --force to overwrite).",
+            err=True,
+        )
+        raise typer.Exit(1)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_config_template(), encoding="utf-8")
+    typer.echo(f"wrote config template to {path}", err=True)
+
+
+@config_app.command("path")
+def config_path() -> None:
+    """Print the path of the config file nfind reads (whether or not it exists)."""
+    typer.echo(str(resolved_config_path()))
+
+
+@config_app.command("show")
+def config_show() -> None:
+    """Print the current config file, or note that none exists."""
+    path = resolved_config_path()
+    if not path.is_file():
+        typer.echo(f"no config file at {path} (using built-in defaults).", err=True)
+        raise typer.Exit(0)
+    typer.echo(path.read_text(encoding="utf-8").rstrip("\n"))
+
+
+@config_app.command("get")
+def config_get(
+    key: Annotated[
+        str,
+        typer.Argument(metavar="KEY", help="Config key, e.g. model or cache-threshold."),
+    ],
+) -> None:
+    """Print the value set for KEY in the config file (built-in default applies if unset)."""
+    normalized = key.replace("_", "-")
+    if normalized not in known_config_keys():
+        valid = ", ".join(known_config_keys())
+        typer.echo(f"error: unknown config key {key!r}. Valid keys: {valid}", err=True)
+        raise typer.Exit(2)
+    path = resolved_config_path()
+    if not path.is_file():
+        typer.echo(f"{normalized} is unset (no config file); using the built-in default.", err=True)
+        raise typer.Exit(0)
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    # A key may be written with either the hyphen or underscore spelling.
+    for candidate in (normalized, normalized.replace("-", "_")):
+        if candidate in data:
+            typer.echo(_format_toml_value(data[candidate]))
+            return
+    typer.echo(f"{normalized} is unset; using the built-in default.", err=True)
+
+
+@config_app.command("edit")
+def config_edit() -> None:
+    """Open the config file in your $EDITOR (creating its directory if needed)."""
+    path = resolved_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    click.edit(filename=str(path))
+
+
+def _load_toml_document(path: Path) -> tomlkit.TOMLDocument:
+    """Parse the config file into a comment-preserving tomlkit document (empty if absent)."""
+    if not path.is_file():
+        return tomlkit.document()
+    try:
+        return tomlkit.parse(path.read_text(encoding="utf-8"))
+    except tomlkit.exceptions.TOMLKitError as exc:
+        typer.echo(f"error: could not parse config file {path}: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+
+def _existing_key(doc: tomlkit.TOMLDocument, normalized: str) -> str | None:
+    """The spelling (hyphen or underscore) under which ``normalized`` is present, if any."""
+    for candidate in (normalized, normalized.replace("-", "_")):
+        if candidate in doc:
+            return candidate
+    return None
+
+
+@config_app.command("set")
+def config_set(
+    key: Annotated[
+        str,
+        typer.Argument(metavar="KEY", help="Config key, e.g. model or cache-threshold."),
+    ],
+    values: Annotated[
+        list[str],
+        typer.Argument(
+            metavar="VALUE...",
+            help="Value to set. Repeat for list-valued keys, e.g. 'set exclude vendor dist'.",
+        ),
+    ],
+) -> None:
+    """Set KEY in the config file, preserving existing comments and formatting."""
+    try:
+        normalized = normalize_config_key(key)
+        value = parse_config_value(key, list(values))
+    except ConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    path = resolved_config_path()
+    doc = _load_toml_document(path)
+    doc[_existing_key(doc, normalized) or normalized] = value
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    rendered = tomlkit.item(value).as_string()
+    typer.echo(f"set {normalized} = {rendered} in {path}", err=True)
+
+
+@config_app.command("unset")
+def config_unset(
+    key: Annotated[
+        str,
+        typer.Argument(metavar="KEY", help="Config key to remove from the file."),
+    ],
+) -> None:
+    """Remove KEY from the config file (reverting it to nfind's built-in default)."""
+    try:
+        normalized = normalize_config_key(key)
+    except ConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    path = resolved_config_path()
+    if not path.is_file():
+        typer.echo(f"{normalized} is not set (no config file at {path}).", err=True)
+        raise typer.Exit(0)
+    doc = _load_toml_document(path)
+    target = _existing_key(doc, normalized)
+    if target is None:
+        typer.echo(f"{normalized} is not set; nothing to do.", err=True)
+        raise typer.Exit(0)
+    del doc[target]
+    path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    typer.echo(f"unset {normalized} in {path}", err=True)
+
+
 @app.command(
     _DEFAULT_COMMAND,
+    cls=SearchCommand,
     no_args_is_help=True,
-    epilog="Run 'nfind cache -h' to manage stored prompts and filters.",
 )
 def main(
     ctx: typer.Context,
@@ -684,7 +1028,6 @@ def main(
         bool,
         typer.Option(
             "--cache/--no-cache",
-            rich_help_panel="Query cache",
             help="Reuse and store generated filters in the on-disk query cache "
             "(prompts you have run before skip the LLM). On by default; semantic matching "
             "and its embedding model/threshold are configured in the config file.",
@@ -694,13 +1037,15 @@ def main(
         bool,
         typer.Option(
             "--force",
-            rich_help_panel="Query cache",
             help="Ignore any cached match and regenerate the filter with the LLM "
             "(the fresh result is still stored).",
         ),
     ] = False,
 ) -> None:
-    """Search PATH for files matching PROMPT and print one path per line."""
+    """Search PATH for files matching PROMPT and print one path per line.
+
+    Options tagged (config) can be set as defaults in the config file; see 'nfind config'.
+    """
     try:
         request = plan_command(
             prompt=prompt,

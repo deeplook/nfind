@@ -18,6 +18,17 @@ pipx install nfind
 pip install nfind
 ```
 
+### Optional: semantic query cache
+
+nfind's [query cache](caching.md) reuses previously generated filters. Exact re-typings are
+matched with no extra dependency; to also reuse *similarly worded* prompts, install the
+`semantic` extra (adds `sqlite-vec`) and enable it in the config file:
+
+```bash
+uv tool install 'nfind[semantic]'    # or: pipx install 'nfind[semantic]'
+pip install 'nfind[semantic]'        # into the current environment
+```
+
 ## How to run nfind
 
 | Method / Install | Command | Best for |

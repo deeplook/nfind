@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **`--show-code` is now settable in the config file** (key `show-code`), for users who
+  always want to see the generated filter. Every option that accepts a config-file default
+  is now tagged `(config)` in `nfind -h`, so it's clear at a glance which flags can be made
+  persistent (per-invocation actions and the `--yes`/`--no-deps` approval shortcuts remain
+  deliberately non-configurable).
+- **`nfind -h` now shows a "Subcommands" panel** listing `cache` and `config`, so the
+  subcommands are discoverable from the top-level help (previously only mentioned in a
+  bottom-of-help note) while the full search-option listing is kept.
+- **Grouped `nfind -h` options into labelled panels** — Model, Sandbox & resources, Search
+  scope, Generated filter, Output, Dependencies, and Query cache — instead of one long flat
+  list, so related flags read together.
+
 ### Added
 
 - **Persistent query cache.** Generated filters are now stored on disk next to the prompt
@@ -34,10 +48,21 @@ All notable changes to this project are documented here. The format is based on
   `nfind search "prompt"` form is available if a prompt ever collides with a subcommand
   name.
 - **Config keys and Python API.** New config-file keys `cache`, `cache-semantic`,
-  `cache-embedding-model`, and `cache-threshold` (the last three are the config-only home for
-  semantic matching). `nfind.search()` / `nfind.generate_only()`
-  accept an optional `cache` (`nfind.QueryCache`), `force`, and `on_cache_hit`; passing no
-  cache keeps the previous behaviour, so embedding callers are unaffected.
+  `cache-embedding-model`, `cache-threshold` (the last three are the config-only home for
+  semantic matching), and `show-code`. `nfind.search()` / `nfind.generate_only()` accept an
+  optional `cache` (`nfind.QueryCache`), `force`, and `on_cache_hit`; passing no cache keeps
+  the previous behaviour, so embedding callers are unaffected.
+- **`nfind config` subcommand.** Locate, read, and edit the config file without remembering
+  its per-OS path: `nfind config init`, `path`, `show`, `get <key>`, `set <key> <value>...`,
+  `unset <key>`, and `edit` (open it in `$EDITOR`). All verbs accept either key spelling and
+  reject unknown keys with the list of valid ones, and resolve the same file a search reads
+  (`$NFIND_CONFIG` or the default location). `init` scaffolds a commented template of every
+  key with its default (all commented out; refuses to overwrite without `--force`), giving a
+  discoverable starting point — nfind otherwise never creates a config file on its own.
+  `set` validates the value against the config loader's own rules, takes several values for
+  list keys (e.g. `exclude`), creates the file on first use, and **preserves the file's
+  existing comments and formatting** (it edits via `tomlkit` rather than a lossy
+  parse-and-rewrite). Adds `tomlkit` as a dependency.
 
 ### Testing
 
