@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Persistent query cache.** Generated filters are now stored on disk next to the prompt
+  that produced them (a SQLite database under nfind's cache directory, `queries.db`;
+  override with `$NFIND_QUERY_CACHE`). Re-running a prompt you have run before — modulo
+  case and spacing — replays the stored filter and skips the LLM call, so repeat searches
+  are faster and free. Caching is on by default; disable it for a run with `--no-cache`,
+  or force a fresh generation (still stored) with `--force`. A cached filter is only reused
+  when the generation-affecting mode matches too (`--macos-meta`, `--extract`).
+- **Semantic cache matching (opt-in).** With the new `semantic` extra
+  (`pip install 'nfind[semantic]'`) and `cache-semantic = true` in the config file, a prompt
+  that merely *means* the same as a stored one — not just an exact re-typing — reuses the
+  cached filter via cosine-nearest-neighbour lookup over prompt embeddings (indexed with
+  `sqlite-vec`). Embeddings are produced through the same provider that generates filters
+  (configurable via `cache-embedding-model`, e.g. `ollama/...` to embed on-device), so no
+  separate model download is required and the trust boundary matches generation. Tune reuse
+  strictness with `cache-threshold`. These are set-once preferences, so they are configured
+  in the config file rather than as per-run flags — the search command exposes only the two
+  per-run cache flags, `--no-cache` and `--force`, grouped in their own help panel.
+- **`nfind cache` subcommand.** Manage the stored prompt/filter pairs: `nfind cache list`
+  (browse, newest first), `nfind cache show <id>` (prompt, provenance, and the generated
+  code), `nfind cache delete <id>...` (remove entries by id — ids are stable, so a deletion
+  leaves a gap rather than renumbering survivors), and `nfind cache clear` (empty the
+  cache). The default `nfind "prompt" PATH`
+  interface is unchanged; `cache` is nfind's first subcommand, and the explicit
+  `nfind search "prompt"` form is available if a prompt ever collides with a subcommand
+  name.
+- **Config keys and Python API.** New config-file keys `cache`, `cache-semantic`,
+  `cache-embedding-model`, and `cache-threshold` (the last three are the config-only home for
+  semantic matching). `nfind.search()` / `nfind.generate_only()`
+  accept an optional `cache` (`nfind.QueryCache`), `force`, and `on_cache_hit`; passing no
+  cache keeps the previous behaviour, so embedding callers are unaffected.
+
 ### Testing
 
 - **Deterministic semantic evaluation corpus.** Added 20 filesystem scenarios with 60

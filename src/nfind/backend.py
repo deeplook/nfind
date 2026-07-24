@@ -30,6 +30,7 @@ from .errors import DependencyError, DockerError, DockerUnavailableError
 from .execution import run_generated
 from .generation import format_generated_code, generate_filter, list_models
 from .metadata import collect_macos_metadata
+from .query_cache import CacheEntry, QueryCache
 from .runtimes import GeneratedFilter, imply_packages
 from .sandbox import (
     DEFAULT_SANDBOX_BACKEND,
@@ -55,10 +56,12 @@ __all__ = [
     "DEFAULT_BUILD_TIMEOUT",
     "DEFAULT_MODEL",
     "DEFAULT_SANDBOX_BACKEND",
+    "CacheEntry",
     "DependencyError",
     "DockerError",
     "DockerUnavailableError",
     "GeneratedFilter",
+    "QueryCache",
     "SandboxBackend",
     "list_models",
     "load_whitelist",
@@ -74,14 +77,32 @@ def _prepare_generated_filter(
     macos_meta: bool,
     extract: bool,
     format_code: bool,
+    cache: QueryCache | None = None,
+    force: bool = False,
+    on_cache_hit: Callable[[CacheEntry], None] | None = None,
 ) -> GeneratedFilter:
-    """Generate a filter and apply common post-processing before review or execution."""
+    """Generate a filter and apply common post-processing before review or execution.
+
+    When ``cache`` is supplied and ``force`` is false, a matching stored filter (same
+    prompt and mode) is replayed instead of calling the model; ``on_cache_hit`` is then
+    invoked with the entry. Otherwise the filter is generated as usual and, when ``cache``
+    is supplied, persisted for later reuse.
+    """
+    if cache is not None and not force:
+        hit = cache.lookup(prompt, macos_meta=macos_meta, extract=extract)
+        if hit is not None:
+            cache.record_use(hit.id)
+            if on_cache_hit is not None:
+                on_cache_hit(hit)
+            return hit.to_filter()
     generated = generate_filter(
         prompt, model=model, on_retry=on_retry, macos_meta=macos_meta, extract=extract
     )
     generated.dependencies = imply_packages(generated.runtime, generated.dependencies)
     if format_code:
         generated.code = format_generated_code(generated.code, generated.runtime)
+    if cache is not None:
+        cache.store(prompt, generated, model=model, macos_meta=macos_meta, extract=extract)
     return generated
 
 
@@ -109,6 +130,9 @@ def search(
     exclude: Sequence[str] = (),
     max_depth: int | None = None,
     use_default_ignores: bool = True,
+    cache: QueryCache | None = None,
+    force: bool = False,
+    on_cache_hit: Callable[[CacheEntry], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate and execute a filter, returning host-path result records.
 
@@ -170,6 +194,9 @@ def search(
         macos_meta=macos_meta,
         extract=extract,
         format_code=format_code,
+        cache=cache,
+        force=force,
+        on_cache_hit=on_cache_hit,
     )
     if on_generated is not None:
         on_generated(generated)
@@ -203,6 +230,9 @@ def generate_only(
     macos_meta: bool = False,
     extract: bool = False,
     format_code: bool = True,
+    cache: QueryCache | None = None,
+    force: bool = False,
+    on_cache_hit: Callable[[CacheEntry], None] | None = None,
 ) -> GeneratedFilter:
     """Generate a filter without running the sandbox.
 
@@ -211,6 +241,9 @@ def generate_only(
 
     Use this (or ``--no-exec`` on the CLI) when you want to inspect or save a
     filter without executing it — no path enumeration, no sandbox startup.
+
+    ``cache``/``force``/``on_cache_hit`` behave as in :func:`search`: a matching stored
+    filter is reused instead of calling the model, and a freshly generated one is stored.
     """
     generated = _prepare_generated_filter(
         prompt,
@@ -219,6 +252,9 @@ def generate_only(
         macos_meta=macos_meta,
         extract=extract,
         format_code=format_code,
+        cache=cache,
+        force=force,
+        on_cache_hit=on_cache_hit,
     )
     if on_generated is not None:
         on_generated(generated)

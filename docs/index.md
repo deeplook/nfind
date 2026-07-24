@@ -97,6 +97,9 @@ attribute index can't express. See [How nfind compares](comparison.md).
 - **[Save & replay](cli.md#saving--replaying-filters)** — `--save` writes the filter as
   a **standalone, auditable filter program** (a self-describing, dependency-declaring artifact); replay it sandboxed with `--run`
   or run trusted Python saves directly via `uv run`.
+- **[Query cache](caching.md)** — generated filters are stored next to their prompts, so
+  re-running a prompt skips the LLM call; browse them with `nfind cache`, with optional
+  semantic reuse of similarly worded prompts.
 - **[Output modes](output-modes.md)** — a clean path list by default, `--fields` for
   extra per-path fields, `--json` for machine-readable records.
 - **[Limits and scaling](limits.md)** — input scope, file sizes, execution time,
@@ -148,6 +151,7 @@ See [Installation](installation.md) for details.
 
 - [CLI reference](cli.md)
 - [Configuration](configuration.md) — env vars, config file, and model/provider selection
+- [Query cache](caching.md) — reuse generated filters across runs; the `nfind cache` subcommand
 - [Output modes](output-modes.md)
 - [Python API](api.md)
 

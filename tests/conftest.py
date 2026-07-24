@@ -16,5 +16,6 @@ def _isolate_user_config(tmp_path_factory, monkeypatch):
     """
     monkeypatch.delenv("NFIND_CONFIG", raising=False)
     monkeypatch.delenv("NFIND_ENDPOINT_CACHE", raising=False)
+    monkeypatch.delenv("NFIND_QUERY_CACHE", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("cache")))

@@ -10,6 +10,7 @@
 - [Saving & replaying filters](#saving--replaying-filters)
 - [Output modes](#output-modes)
 - [Dependencies](#dependencies)
+- [Query cache](#query-cache)
 - [Exit codes](#exit-codes)
 
 ---
@@ -102,6 +103,8 @@ saved filters (`--run`) so no stage pays an LLM call — see
 | `--no-deps` | off | Reject any third-party packages (standard library only). |
 | `--no-format` | off | Skip the ruff cleanup (remove unused imports, sort imports, format) applied to the generated filter. |
 | `--macos-meta` | off | macOS only: expose Finder tags and download metadata to the filter (see [macOS metadata](macos-metadata.md)). |
+| `--cache` / `--no-cache` | on | Reuse and store generated filters in the on-disk [query cache](caching.md); repeat prompts skip the LLM. |
+| `--force` | off | Ignore a cached match and regenerate with the model (the fresh result is still stored). |
 | `-h`, `--help` | — | Show help and exit. |
 | `-V`, `--version` | — | Show the nfind version and exit. |
 
@@ -382,6 +385,28 @@ Providers also vary in whether they support strict JSON mode, a custom `temperat
 recovers the JSON from the reply when needed, so generation still works. Some non-OpenAI
 models follow the filter contract less reliably — if a model misbehaves, try a stronger
 one or route through `openrouter/`.
+
+## Query cache
+
+Generated filters are stored on disk next to the prompt that produced them, so re-running
+a prompt you have used before replays the stored filter and skips the LLM call. Caching is
+on by default; the two per-run flags are `--no-cache` (skip the cache this run) and
+`--force` (regenerate anyway, still storing the result). Semantic matching and its embedding
+model/threshold are **set-once preferences configured in the [config file](configuration.md)**
+(`cache-semantic`, `cache-embedding-model`, `cache-threshold`), not per-run flags. Browse and
+manage stored entries with the `nfind cache` subcommand:
+
+```bash
+nfind cache list        # stored prompts, newest first
+nfind cache show 7      # one entry's prompt, provenance, and generated code
+nfind cache delete 7    # delete one entry by id (ids are stable; accepts several)
+nfind cache clear       # empty the cache (add --yes to skip the prompt)
+```
+
+`cache` is nfind's only subcommand; the default `nfind "prompt"` interface is unchanged, and
+the explicit `nfind search "prompt"` form is available if a prompt collides with a
+subcommand name. See the [Query Cache](caching.md) reference for matching rules, the
+semantic (embedding) option, and configuration.
 
 ## Exit codes
 

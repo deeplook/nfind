@@ -5,9 +5,11 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 
 from .backend import (
+    CacheEntry,
     DependencyError,
     DockerError,
     DockerUnavailableError,
+    QueryCache,
     load_whitelist,
     run_saved,
     search,
@@ -22,9 +24,11 @@ except PackageNotFoundError:  # pragma: no cover - only when running from an uni
     __version__ = "0.0.0+unknown"
 
 __all__ = [
+    "CacheEntry",
     "DependencyError",
     "DockerError",
     "DockerUnavailableError",
+    "QueryCache",
     "load_whitelist",
     "serialize_filter",
     "run_saved",

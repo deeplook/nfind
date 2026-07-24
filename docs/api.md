@@ -56,6 +56,9 @@ def search(
     exclude: Sequence[str] = (),         # glob patterns to prune before filtering
     max_depth: int | None = None,
     use_default_ignores: bool = True,
+    cache: QueryCache | None = None,     # reuse/store generated filters (opt-in)
+    force: bool = False,                 # ignore a cached match; regenerate
+    on_cache_hit: Callable[[CacheEntry], None] | None = None,
 ) -> list[dict[str, Any]]:
 ```
 
@@ -102,6 +105,32 @@ records = search(".", "files with no extension", on_generated=review)
 
 This is the same hook the CLI uses to implement
 [`--show-code`, `--save`, and `--confirm`](cli.md#reviewing-the-generated-code).
+
+### Reusing generated filters with the query cache
+
+Pass a `QueryCache` to reuse a previously generated filter for a repeated prompt instead of
+calling the model again. It is **opt-in for the API** — with no `cache` argument, `search`
+and `generate_only` behave exactly as before, so embedding callers are unaffected. This is
+the same store the [`nfind cache`](caching.md) CLI uses.
+
+```python
+from nfind import search, QueryCache, CacheEntry
+
+cache = QueryCache()  # default location, or QueryCache(Path("my.db"))
+
+def note(entry: CacheEntry) -> None:
+    print(f"reused filter #{entry.id} (generated {entry.created_at})")
+
+# First call generates and stores; a re-typed prompt reuses without an LLM call.
+search(".", "Python files that import os", cache=cache, on_cache_hit=note)
+search(".", "python files that import OS", cache=cache, on_cache_hit=note)
+cache.close()
+```
+
+`force=True` ignores any cached match and regenerates (still storing the fresh result).
+A filter is only reused when the generation-affecting mode matches too (`macos_meta`,
+`extract`). For semantic (embedding-based) matching, construct the cache with an `embedder`
+and see [Query Cache → Semantic matching](caching.md#semantic-matching-opt-in).
 
 ### Saving and replaying filters
 

@@ -152,6 +152,78 @@ def test_search_checks_custom_sandbox_before_generating_code(tmp_path):
     assert fake.check_calls == 1
 
 
+def _run_search(tmp_path, prompt, *, cache, force=False, on_cache_hit=None):
+    """Run a sandbox-free search whose generation is a stubbed filter."""
+    with (
+        patch.object(
+            MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
+        ) as generate,
+        patch.object(EXECUTION, "build_worker_image", return_value=EXECUTION.DEFAULT_IMAGE),
+        patch.object(EXECUTION, "run_filter", return_value=[]),
+    ):
+        MODULE.search(
+            str(tmp_path),
+            prompt,
+            sandbox=FakeSandbox(),
+            cache=cache,
+            force=force,
+            on_cache_hit=on_cache_hit,
+        )
+    return generate
+
+
+def test_search_stores_then_reuses_cached_filter(tmp_path):
+    (tmp_path / "file.txt").write_text("content")
+    cache = MODULE.QueryCache(tmp_path / "q.db")
+    try:
+        assert _run_search(tmp_path, "find files", cache=cache).call_count == 1
+        assert cache.lookup("find files", macos_meta=False, extract=False) is not None
+        # A re-typed prompt (different case) hits the cache: no second generation.
+        hits: list[object] = []
+        gen = _run_search(tmp_path, "FIND FILES", cache=cache, on_cache_hit=hits.append)
+        assert gen.call_count == 0
+        assert len(hits) == 1
+        # The hit was recorded as used.
+        reused = cache.lookup("find files", macos_meta=False, extract=False)
+        assert reused is not None and reused.used_count == 1
+    finally:
+        cache.close()
+
+
+def test_search_force_regenerates_and_restores(tmp_path):
+    (tmp_path / "file.txt").write_text("content")
+    cache = MODULE.QueryCache(tmp_path / "q.db")
+    try:
+        _run_search(tmp_path, "find files", cache=cache)
+        gen = _run_search(tmp_path, "find files", cache=cache, force=True)
+        assert gen.call_count == 1  # --force ignores the cached match
+        assert len(cache.all()) == 2  # ...but still stores the fresh result
+    finally:
+        cache.close()
+
+
+def test_search_without_cache_is_unchanged(tmp_path):
+    (tmp_path / "file.txt").write_text("content")
+    # No cache object -> generation always runs, nothing persisted (library default).
+    assert _run_search(tmp_path, "find files", cache=None).call_count == 1
+
+
+def test_generate_only_uses_cache(tmp_path):
+    cache = MODULE.QueryCache(tmp_path / "q.db")
+    try:
+        with patch.object(
+            MODULE, "generate_filter", return_value=_gen("def filter_paths(paths): return []")
+        ) as generate:
+            MODULE.generate_only("find files", cache=cache)
+            assert generate.call_count == 1
+            hits: list[object] = []
+            MODULE.generate_only("find files", cache=cache, on_cache_hit=hits.append)
+            assert generate.call_count == 1
+            assert len(hits) == 1
+    finally:
+        cache.close()
+
+
 def test_normalize_results_accepts_paths_and_records():
     allowed = {"/data/a", "/data/b"}
     assert worker._normalize_results(["/data/a"], allowed) == [{"path": "/data/a"}]
@@ -1877,7 +1949,19 @@ _SIMPLE_FILTER = "def filter_paths(paths):\n    return paths"
 def _fake_generate_only(fake_generated):
     """Return a side_effect for patching backend.generate_only."""
 
-    def _impl(prompt, *, model, on_generated, on_retry, macos_meta, extract, format_code):
+    def _impl(
+        prompt,
+        *,
+        model,
+        on_generated,
+        on_retry,
+        macos_meta,
+        extract,
+        format_code,
+        cache=None,
+        force=False,
+        on_cache_hit=None,
+    ):
         if on_generated is not None:
             on_generated(fake_generated)
 
