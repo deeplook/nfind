@@ -14,6 +14,7 @@ with the full detail.
 | `NFIND_CONFIG` | Path to the [config file](#config-file). Overrides the default location. |
 | `NFIND_WHITELIST` | Overrides the path of the approved-package [whitelist file](dependencies.md#the-whitelist-file). |
 | `NFIND_ENDPOINT_CACHE` | Overrides the path of the best-effort model endpoint cache (`chat/completions` vs. `responses`). |
+| `NFIND_QUERY_CACHE` | Overrides the path of the [query cache](caching.md) database (stored prompts and generated filters). |
 | `XDG_CONFIG_HOME` | Base directory for the config (`$XDG_CONFIG_HOME/nfind/config.toml`) and whitelist (`…/nfind/whitelist.json`); defaults to `~/.config`. Unix only — on Windows, `%APPDATA%\nfind` is used instead. |
 | `XDG_CACHE_HOME` | Base directory for the endpoint cache (`$XDG_CACHE_HOME/nfind/model-endpoints.json`); defaults to `~/.cache`. Unix only — on Windows, `%LOCALAPPDATA%\nfind` is used instead. |
 | `NO_COLOR` | When set, disables colored output and syntax highlighting (the [`NO_COLOR`](https://no-color.org/) convention). Color is also disabled when stderr is not a TTY. |
@@ -52,10 +53,11 @@ The settable keys mirror the option flag names (the underscore spelling, e.g.
 `nerdctl`),
 `image`, `timeout`, `command-timeout`, `memory`, `cpus`, `pids-limit`, `build-timeout`,
 `json`, `fields`, `no-format`, `exclude` (a list of globs), `no-ignore`, `max-depth`,
-`max-results`, `max-items`, `max-output-bytes`, and `print0`.
-Per-invocation actions (`--save`, `--run`) and package-approval shortcuts (`--yes`,
-`--no-deps`) are intentionally **not** configurable, so each run stays explicit. An
-unknown key or a wrong value type is a hard error that names the offending key.
+`max-results`, `max-items`, `max-output-bytes`, and `print0`. The [query cache](caching.md)
+adds `cache`, `cache-semantic`, `cache-embedding-model`, and `cache-threshold`.
+Per-invocation actions (`--save`, `--run`, `--force`) and package-approval shortcuts
+(`--yes`, `--no-deps`) are intentionally **not** configurable, so each run stays explicit.
+An unknown key or a wrong value type is a hard error that names the offending key.
 
 ```toml
 # Enumeration defaults also work, e.g. always skip vendored code:
@@ -96,6 +98,9 @@ nfind persists two small files between runs:
 - A best-effort model endpoint cache (`model-endpoints.json`) that remembers when a model
   needs OpenAI's `/responses` endpoint instead of `/chat/completions`. Delete it any time;
   nfind will re-probe. Relocate it with `NFIND_ENDPOINT_CACHE`.
+- The [query cache](caching.md) (`queries.db`) — stored prompts and the filters generated
+  for them, so repeat prompts skip the LLM. Manage it with `nfind cache …`, delete the file
+  to reset, or relocate it with `NFIND_QUERY_CACHE`.
 
 ## See also
 

@@ -70,6 +70,22 @@ def test_load_config_reads_limit_keys(tmp_path):
     }
 
 
+def test_load_config_reads_cache_keys(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "cache = false\n"
+        "cache-semantic = true\n"
+        'cache-embedding-model = "ollama/nomic-embed-text"\n'
+        "cache-threshold = 0.2\n"
+    )
+    assert config.load_config(path) == {
+        "cache": False,
+        "semantic": True,
+        "cache_embedding_model": "ollama/nomic-embed-text",
+        "cache_threshold": 0.2,
+    }
+
+
 def test_documented_limit_defaults_match_constants():
     limits = (Path(__file__).parents[1] / "docs" / "limits.md").read_text()
     assert f"| Image build time | {constants.DEFAULT_BUILD_TIMEOUT:g} seconds |" in limits

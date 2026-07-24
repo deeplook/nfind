@@ -16,5 +16,10 @@ def _isolate_user_config(tmp_path_factory, monkeypatch):
     """
     monkeypatch.delenv("NFIND_CONFIG", raising=False)
     monkeypatch.delenv("NFIND_ENDPOINT_CACHE", raising=False)
+    monkeypatch.delenv("NFIND_QUERY_CACHE", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("cache")))
+    # Pin a wide terminal so Rich renders --help on predictable line widths: help
+    # assertions must not depend on the CI runner's (narrow, no-TTY) terminal size,
+    # which otherwise wraps option flags like `--cache/--no-cache` mid-token.
+    monkeypatch.setenv("COLUMNS", "200")

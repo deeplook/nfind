@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
@@ -18,8 +19,10 @@ from .backend import (
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_MODEL,
     DEFAULT_SANDBOX_BACKEND,
+    CacheEntry,
     DockerError,
     GeneratedFilter,
+    QueryCache,
     SandboxBackend,
 )
 from .command_plan import (
@@ -38,13 +41,50 @@ from .constants import (
     DEFAULT_TIMEOUT,
 )
 from .deadline import arm_command_timeout
+from .embedding import DEFAULT_EMBEDDING_MODEL, build_embedder
 from .extract import iter_extract_rows
+from .query_cache import DEFAULT_SEMANTIC_THRESHOLD, iter_entry_summaries
+
+_DEFAULT_COMMAND = "search"
+
+
+class DefaultCommandGroup(typer.core.TyperGroup):
+    """A Typer group whose default subcommand is the plain ``search`` filter command.
+
+    nfind is primarily a single verb -- ``nfind "prompt" PATH`` -- so the ``search``
+    command runs when the first token is not a known subcommand (e.g. ``cache``). Top-level
+    help (and a bare ``nfind``) shows the ``search`` command's full help, keeping the
+    familiar flat interface while ``nfind cache ...`` gets its own namespace.
+    """
+
+    # ctx is typed Any so the override stays compatible across typer versions (older
+    # typer passes a click.Context, newer a vendored typer._click Context); it is only
+    # forwarded to super().parse_args.
+    def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
+        if not args:
+            # Bare `nfind`: defer to the search command's own no-args help.
+            args = [_DEFAULT_COMMAND]
+        elif args in (["-h"], ["--help"]):
+            # Top-level help == the primary (search) command's full help.
+            args = [_DEFAULT_COMMAND, *args]
+        elif args[0] not in self.commands:
+            args = [_DEFAULT_COMMAND, *args]
+        return super().parse_args(ctx, args)
+
 
 app = typer.Typer(
+    cls=DefaultCommandGroup,
     add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
     help="Find files by describing them in natural language.",
 )
+
+cache_app = typer.Typer(
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help="Manage the cache of past prompts and their generated filters.",
+)
+app.add_typer(cache_app, name="cache")
 
 _APPLE_SANDBOX_MACOS15_WARNING = (
     "warning: Apple Containers sandbox is experimental and does not disable networking "
@@ -280,7 +320,137 @@ def _resolve_stdin_paths(request: CommandRequest) -> tuple[CommandRequest, bool]
     return replace(request, paths=expanded), not expanded
 
 
-@app.command(no_args_is_help=True)
+def _build_query_cache(
+    *,
+    enabled: bool,
+    semantic: bool,
+    embedding_model: str | None,
+    threshold: float | None,
+) -> QueryCache | None:
+    """Construct the query cache for a search, or ``None`` when caching is disabled.
+
+    Semantic matching is engaged only when requested *and* the optional ``sqlite-vec``
+    dependency is importable; otherwise a warning is printed and the cache falls back to
+    normalized-exact matching, which needs nothing beyond the standard library.
+    """
+    if not enabled:
+        return None
+    embedder = None
+    canonical_model = None
+    if semantic:
+        if importlib.util.find_spec("sqlite_vec") is None:
+            typer.echo(
+                "warning: semantic cache matching (config 'cache-semantic') needs the "
+                "optional 'semantic' extra (pip install 'nfind[semantic]'); "
+                "using exact matching instead.",
+                err=True,
+            )
+        else:
+            try:
+                canonical_model, embed = build_embedder(embedding_model or DEFAULT_EMBEDDING_MODEL)
+            except (RuntimeError, ValueError) as exc:
+                typer.echo(f"warning: semantic cache disabled: {exc}", err=True)
+            else:
+                embedder = cast(Any, embed)
+    return QueryCache(
+        embedder=embedder,
+        embedding_model=canonical_model,
+        threshold=threshold if threshold is not None else DEFAULT_SEMANTIC_THRESHOLD,
+    )
+
+
+@cache_app.command("list")
+def cache_list() -> None:
+    """List stored prompts and the filters generated for them, newest first."""
+    with QueryCache() as cache:
+        entries = cache.all()
+    if not entries:
+        typer.echo("cache is empty.", err=True)
+        raise typer.Exit(0)
+    for line in iter_entry_summaries(entries):
+        typer.echo(line)
+
+
+@cache_app.command("show")
+def cache_show(
+    entry_id: Annotated[
+        int, typer.Argument(metavar="ID", help="Cache entry id (see 'cache list').")
+    ],
+) -> None:
+    """Show one cached entry's prompt, provenance, and generated filter code."""
+    with QueryCache() as cache:
+        entry = cache.get(entry_id)
+    if entry is None:
+        typer.echo(f"error: no cache entry with id {entry_id}", err=True)
+        raise typer.Exit(1)
+    mode = []
+    if entry.macos_meta:
+        mode.append("macos-meta")
+    if entry.extract:
+        mode.append("extract")
+    typer.echo(f"id:      {entry.id}", err=True)
+    typer.echo(f"prompt:  {entry.prompt}", err=True)
+    typer.echo(f"model:   {entry.model}", err=True)
+    typer.echo(f"runtime: {entry.runtime}", err=True)
+    if entry.dependencies:
+        typer.echo(f"deps:    {', '.join(entry.dependencies)}", err=True)
+    if mode:
+        typer.echo(f"mode:    {', '.join(mode)}", err=True)
+    typer.echo(f"created: {entry.created_at}", err=True)
+    used = f"{entry.used_count}x" + (f", last {entry.last_used_at}" if entry.last_used_at else "")
+    typer.echo(f"used:    {used}", err=True)
+    typer.echo("--- filter code ---", err=True)
+    typer.echo(_highlight(entry.code, entry.runtime))
+
+
+@cache_app.command("delete")
+def cache_delete(
+    entry_ids: Annotated[
+        list[int],
+        typer.Argument(metavar="ID...", help="Cache entry id(s) to delete (see 'cache list')."),
+    ],
+) -> None:
+    """Delete one or more cache entries by id. Remaining entries keep their ids."""
+    with QueryCache() as cache:
+        present = {entry.id for entry in cache.all()}
+        missing = [i for i in dict.fromkeys(entry_ids) if i not in present]
+        removed = cache.delete(entry_ids)
+    if missing:
+        ids = ", ".join(str(i) for i in missing)
+        typer.echo(f"warning: no cache entry with id {ids}", err=True)
+    noun = "entry" if removed == 1 else "entries"
+    typer.echo(f"deleted {removed} cache {noun}.", err=True)
+    if removed == 0:
+        raise typer.Exit(1)
+
+
+@cache_app.command("clear")
+def cache_clear(
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Clear without confirmation."),
+    ] = False,
+) -> None:
+    """Delete every stored prompt/filter pair."""
+    with QueryCache() as cache:
+        entries = cache.all()
+        if not entries:
+            typer.echo("cache is already empty.", err=True)
+            raise typer.Exit(0)
+        if not yes and not typer.confirm(
+            f"Delete all {len(entries)} cached entries?", default=False, err=True
+        ):
+            typer.echo("aborted.", err=True)
+            raise typer.Exit(130)
+        removed = cache.clear()
+    typer.echo(f"cleared {removed} cached entries.", err=True)
+
+
+@app.command(
+    _DEFAULT_COMMAND,
+    no_args_is_help=True,
+    epilog="Run 'nfind cache -h' to manage stored prompts and filters.",
+)
 def main(
     ctx: typer.Context,
     prompt: Annotated[
@@ -510,6 +680,25 @@ def main(
         int | None,
         typer.Option(help="Write at most N encoded stdout bytes; never partial rows or JSON."),
     ] = None,
+    cache: Annotated[
+        bool,
+        typer.Option(
+            "--cache/--no-cache",
+            rich_help_panel="Query cache",
+            help="Reuse and store generated filters in the on-disk query cache "
+            "(prompts you have run before skip the LLM). On by default; semantic matching "
+            "and its embedding model/threshold are configured in the config file.",
+        ),
+    ] = True,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            rich_help_panel="Query cache",
+            help="Ignore any cached match and regenerate the filter with the LLM "
+            "(the fresh result is still stored).",
+        ),
+    ] = False,
 ) -> None:
     """Search PATH for files matching PROMPT and print one path per line."""
     try:
@@ -625,10 +814,37 @@ def main(
     def on_retry(retry: int, error: ValueError) -> None:
         typer.echo(f"generation attempt failed, retrying (retry {retry}): {error}", err=True)
 
+    def on_cache_hit(entry: CacheEntry) -> None:
+        detail = (
+            f" (semantic match, distance {entry.distance:.3f})"
+            if entry.distance is not None
+            else ""
+        )
+        typer.echo(
+            f"reusing cached filter #{entry.id} from {entry.created_at[:19]}{detail}; "
+            "pass --force to regenerate.",
+            err=True,
+        )
+
     needs_hook = show_code or save is not None or confirm or generate_only_mode
     hook = on_generated if needs_hook else None
     exclude_globs = tuple(exclude or ())
     use_default_ignores = not no_ignore
+
+    # The cache is only consulted on the generation paths, never for --run replay.
+    query_cache: QueryCache | None = None
+    if isinstance(request, GeneratedSearchRequest):
+        # Semantic matching and its embedding model/threshold are set-once preferences,
+        # so they come from the resolved config file rather than per-run CLI flags.
+        cache_config = ctx.default_map or {}
+        query_cache = _build_query_cache(
+            enabled=cache,
+            semantic=bool(cache_config.get("semantic", False)),
+            embedding_model=cache_config.get("cache_embedding_model"),
+            threshold=cache_config.get("cache_threshold"),
+        )
+        if query_cache is not None:
+            ctx.call_on_close(query_cache.close)
 
     try:
         if isinstance(request, SavedReplayRequest):
@@ -659,6 +875,9 @@ def main(
                 macos_meta=macos_meta,
                 extract=extract,
                 format_code=not no_format,
+                cache=query_cache,
+                force=force,
+                on_cache_hit=on_cache_hit,
             )
             raise typer.Exit(0)
         else:
@@ -684,6 +903,9 @@ def main(
                 exclude=exclude_globs,
                 max_depth=max_depth,
                 use_default_ignores=use_default_ignores,
+                cache=query_cache,
+                force=force,
+                on_cache_hit=on_cache_hit,
             )
     except (typer.Exit, typer.Abort):
         # Control-flow exceptions (e.g. a declined --confirm) subclass RuntimeError;

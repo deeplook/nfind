@@ -33,6 +33,13 @@ dependencies = [
     "typer>=0.12",
 ]
 
+[project.optional-dependencies]
+# Semantic query-cache matching: reuse a stored filter when a new prompt merely means
+# the same thing, not just when it is re-typed. sqlite-vec is a tiny SQLite extension
+# used to index the prompt embeddings; embeddings are produced via the same provider
+# that generates filters (see nfind.embedding), so no extra model download is required.
+semantic = ["sqlite-vec>=0.1"]
+
 [project.urls]
 Homepage = "https://deeplook.github.io/nfind/"
 Documentation = "https://deeplook.github.io/nfind/"
@@ -66,6 +73,8 @@ dev = [
     "ruff>=0.4",
     "pre-commit>=3",
     "mkdocs-material>=9.7.6",
+    # So the opt-in semantic query-cache tests run in CI instead of being skipped.
+    "sqlite-vec>=0.1",
 ]
 
 # ---------------------------------------------------------------------------
@@ -92,7 +101,7 @@ python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["pygments.*"]
+module = ["pygments.*", "sqlite_vec.*"]
 ignore_missing_imports = true
 
 # Tests are type-checked for real bugs (``check_untyped_defs`` stays on), but we
@@ -112,6 +121,7 @@ module = [
     "test_enumeration",
     "test_extract",
     "test_integration",
+    "test_query_cache",
     "test_sandbox",
     "test_worker_node",
 ]

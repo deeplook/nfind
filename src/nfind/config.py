@@ -88,6 +88,10 @@ _SCHEMA: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "max-results": ("max_results", _as_int),
     "max-items": ("max_items", _as_int),
     "max-output-bytes": ("max_output_bytes", _as_int),
+    "cache": ("cache", _as_bool),
+    "cache-semantic": ("semantic", _as_bool),
+    "cache-embedding-model": ("cache_embedding_model", _as_str),
+    "cache-threshold": ("cache_threshold", _as_float),
 }
 
 

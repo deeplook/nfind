@@ -234,6 +234,26 @@ The first run builds the worker image for the chosen runtime
 (`nfind-search-paths:latest` for Python, `nfind-search-node:latest` for Node.js);
 later runs reuse it. Pass `--rebuild` to force a fresh build.
 
+### Query cache
+
+Generated filters are stored on disk next to the prompt that produced them, so re-running
+a prompt you have used before replays the stored filter and **skips the LLM call** — repeat
+searches are faster and free. It is on by default:
+
+```bash
+nfind "PDFs modified in the last week" ~/Documents   # generates, runs, and stores
+nfind "PDFs modified in the last week" ~/Documents   # cache hit: no LLM call
+
+nfind "…" --no-cache      # skip the cache for this run
+nfind "…" --force         # regenerate even if cached (still stored)
+```
+
+Browse and manage the stored prompts with the `nfind cache` subcommand
+(`list`, `show <id>`, `delete <id>...`, `clear`). Prompts that merely *mean* the same thing
+can also reuse a cached filter via optional semantic matching
+(`pip install 'nfind[semantic]'`, enabled in the config file). See the
+[Query Cache guide](docs/caching.md) for details.
+
 ### Useful options
 
 The options newcomers reach for most often:
@@ -245,6 +265,7 @@ The options newcomers reach for most often:
 | `--fields` / `-f` | off | Show extra per-path fields alongside each path |
 | `--show-code` | off | Print the generated filter before running |
 | `--save` / `--run` | — | Save the generated filter, or replay a saved one without an LLM call |
+| `--no-cache` / `--force` | on | Skip the [query cache](docs/caching.md) for this run, or regenerate even if a match is cached |
 | `--sandbox` | `docker` | Sandbox backend: `docker`, experimental `apple` on macOS, experimental `podman`, or experimental `nerdctl` (containerd) |
 | `--no-ignore` | off | Include default ignored directories such as `.git` and `node_modules` |
 | `--max-depth N` | unlimited | Descend at most `N` levels below each search path |
