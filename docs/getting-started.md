@@ -347,11 +347,24 @@ NFIND_CONFIG=./ci.toml nfind "Rust files that use unsafe"
 
 Precedence is **command-line > config file > built-in default**. Settable keys mirror the
 flag names (`model`, `sandbox`, `image`, `timeout`, `command-timeout`, `memory`, `cpus`,
-`pids-limit`, `build-timeout`, `json`, `fields`, `no-format`, `exclude`, `no-ignore`,
-`max-depth`, `max-results`, `max-items`, `max-output-bytes`,
-`print0`); actions like `--save`/`--run` and approval shortcuts like `--yes`/`--no-deps`
-are intentionally not configurable. Full reference:
-[Configuration](configuration.md#config-file).
+`pids-limit`, `build-timeout`, `json`, `fields`, `show-code`, `no-format`, `exclude`,
+`no-ignore`, `max-depth`, `max-results`, `max-items`, `max-output-bytes`, `print0`, plus the
+`cache*` keys); actions like `--save`/`--run` and approval shortcuts like `--yes`/`--no-deps`
+are intentionally not configurable. Every option that accepts a config default is tagged
+`(config)` in `nfind -h`.
+
+You don't have to edit the file by hand — the `nfind config` subcommand manages it:
+
+```bash
+nfind config init                # write a commented template of every key + its default
+nfind config set model anthropic/claude-sonnet-4-6
+nfind config get model           # read one value
+nfind config edit                # open it in $EDITOR
+```
+
+`set` validates values and preserves your file's comments. nfind never creates a config file
+on its own — these commands are how one comes to exist. Full reference:
+[Configuration](configuration.md).
 
 ---
 
@@ -416,6 +429,34 @@ from Python instead of the shell, see the [Python API](api.md).
 
 ---
 
+## 16. Reuse past searches — the query cache
+
+nfind remembers every filter it generates, keyed by your prompt, so **re-running a prompt
+skips the LLM call** and replays the stored filter — faster and free. It's on by default:
+
+```bash
+nfind "PDFs modified in the last week" ~/Documents   # generates, runs, and stores
+nfind "PDFs modified in the last week" ~/Documents   # cache hit: no LLM call
+
+nfind "…" --no-cache      # skip the cache for this run
+nfind "…" --force         # regenerate anyway (still stored)
+```
+
+Browse and manage the stored prompts with the `nfind cache` subcommand:
+
+```bash
+nfind cache list          # every stored prompt, newest first
+nfind cache show 7        # one entry's prompt, provenance, and generated code
+nfind cache delete 7      # remove one by id (ids are stable; accepts several)
+nfind cache clear         # empty the cache
+```
+
+Prompts that merely *mean* the same thing can reuse a cached filter too, via optional
+semantic matching (`pip install 'nfind[semantic]'`, turned on in the config file). See the
+[Query Cache guide](caching.md) for the matching rules and semantic setup.
+
+---
+
 ## Option cheat sheet
 
 Run `nfind -h` for the authoritative option list, or see the full
@@ -426,6 +467,7 @@ workflow so the reference table only lives in one place.
 
 - [Examples](examples.md) — a gallery of prompts that work well.
 - [CLI reference](cli.md) — every option in detail.
-- [Configuration](configuration.md) — env vars and the config file.
+- [Configuration](configuration.md) — env vars, the config file, and `nfind config`.
+- [Query cache](caching.md) — reuse generated filters across runs.
 - [Safety model](safety.md) — exactly what the sandbox does and doesn't allow.
 - [Python API](api.md) — drive nfind from your own code.

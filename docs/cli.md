@@ -11,6 +11,7 @@
 - [Output modes](#output-modes)
 - [Dependencies](#dependencies)
 - [Query cache](#query-cache)
+- [Configuration](#configuration)
 - [Exit codes](#exit-codes)
 
 ---
@@ -70,6 +71,11 @@ saved filters (`--run`) so no stage pays an LLM call — see
 
 ## Options
 
+Running `nfind -h` groups these options into labelled panels — Model, Sandbox & resources,
+Search scope, Generated filter, Output, Dependencies, and Query cache — and tags every
+option that accepts a default from the [config file](configuration.md) with `(config)`. The
+table below lists them together.
+
 | Option | Default | Description |
 |---|---|---|
 | `--config PATH` | XDG default | TOML file of option defaults (env: `NFIND_CONFIG`); command-line options override it. See [Config file](configuration.md#config-file). |
@@ -90,7 +96,7 @@ saved filters (`--run`) so no stage pays an LLM call — see
 | `--pids-limit` | `64` | Maximum number of processes inside the worker container. |
 | `--rebuild` | off | Rebuild the worker image before searching. |
 | `--build-timeout` | `120.0` | Seconds allowed for building the worker image. |
-| `--show-code` | off | Print the generated filter (to stderr) before running it. |
+| `--show-code` | off | Print the generated filter (to stderr) before running it. Settable in the [config file](configuration.md). |
 | `--save PATH` | — | Save the generated filter as a self-describing, replayable script (see [Saving & replaying filters](#saving--replaying-filters)). |
 | `--run PATH` | — | Replay a previously saved filter through the sandbox instead of generating one. No `PROMPT`, no LLM call. |
 | `--confirm`, `-i` | off | Show the generated code and ask for confirmation before running it. |
@@ -403,10 +409,33 @@ nfind cache delete 7    # delete one entry by id (ids are stable; accepts severa
 nfind cache clear       # empty the cache (add --yes to skip the prompt)
 ```
 
-`cache` is nfind's only subcommand; the default `nfind "prompt"` interface is unchanged, and
-the explicit `nfind search "prompt"` form is available if a prompt collides with a
-subcommand name. See the [Query Cache](caching.md) reference for matching rules, the
-semantic (embedding) option, and configuration.
+The default `nfind "prompt"` interface is unchanged; the explicit `nfind search "prompt"`
+form is available if a prompt ever collides with a subcommand name. See the
+[Query Cache](caching.md) reference for matching rules, the semantic (embedding) option, and
+configuration.
+
+## Configuration
+
+The `nfind config` subcommand locates, reads, and edits the [config file](configuration.md)
+without your having to remember its per-OS path:
+
+```bash
+nfind config init         # scaffold a commented template of every key and its default
+nfind config path         # print the config file path
+nfind config show         # print the current config file
+nfind config get KEY      # read one value (built-in default if unset)
+nfind config set KEY VAL  # set a key (list keys take several values), preserving comments
+nfind config unset KEY    # remove a key, reverting to the built-in default
+nfind config edit         # open the config file in $EDITOR
+```
+
+nfind never creates a config file on its own — a search with no file just uses built-in
+defaults. See [Managing configuration from the CLI](configuration.md#managing-configuration-from-the-cli)
+for details.
+
+Note the `nfind config` subcommand (which *manages* the file) is distinct from the
+[`--config PATH`](#options) search option (which *selects* the file a single run reads,
+like `$NFIND_CONFIG` does for a session).
 
 ## Exit codes
 

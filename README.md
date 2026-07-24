@@ -303,6 +303,23 @@ a fraction of a cent per query. And the result is reusable: `--save` the filter 
 reusable code; weaker ones may only save a fraction of a cent while needing retries or
 producing a subtly wrong filter.
 
+### Configuration
+
+nfind needs no config file — it runs on built-in defaults. An optional TOML file
+(`~/.config/nfind/config.toml`, or `$NFIND_CONFIG`) supplies defaults for the most-used
+options; command-line flags always win. The `nfind config` subcommand manages it without
+your having to remember the path:
+
+```bash
+nfind config init            # scaffold a commented template of every key and its default
+nfind config set model anthropic/claude-sonnet-4-6
+nfind config get model
+nfind config edit            # open it in $EDITOR
+```
+
+`set` validates values and preserves your file's comments and formatting. See the
+[Configuration guide](docs/configuration.md) for every key.
+
 ## What can you ask?
 
 The prompt is free-form. What makes nfind different is the kind of question it can
