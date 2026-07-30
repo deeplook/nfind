@@ -105,6 +105,16 @@ def test_cache_show_missing_id_errors(cache_db: Path) -> None:
     assert "no cache entry" in result.stderr
 
 
+def test_cache_show_reports_mode_and_use_count(cache_db: Path) -> None:
+    # The second entry is stored with macos_meta=True, so the optional 'mode:' line renders.
+    _, second_id = _populate(cache_db)
+    result = CliRunner().invoke(cli.app, ["cache", "show", str(second_id)])
+    assert result.exit_code == 0
+    assert "mode:" in result.stderr
+    assert "macos-meta" in result.stderr
+    assert "used:" in result.stderr  # always printed, with the use counter
+
+
 def test_cache_delete_removes_entry(cache_db: Path) -> None:
     first_id, second_id = _populate(cache_db)
     result = CliRunner().invoke(cli.app, ["cache", "delete", str(first_id)])
@@ -154,6 +164,12 @@ def test_cache_clear_yes_deletes_all(cache_db: Path) -> None:
     assert "cleared 2" in result.stderr
     with QueryCache(cache_db) as cache:
         assert cache.all() == []
+
+
+def test_cache_clear_already_empty(cache_db: Path) -> None:
+    result = CliRunner().invoke(cli.app, ["cache", "clear"])
+    assert result.exit_code == 0
+    assert "already empty" in result.stderr
 
 
 # -- cache construction helper ---------------------------------------------
@@ -266,6 +282,13 @@ def test_config_get_unknown_key_errors(config_file: Path) -> None:
     assert "unknown config key" in result.stderr
 
 
+def test_config_get_malformed_file_errors(config_file: Path) -> None:
+    config_file.write_text("this is not valid toml\n")
+    result = CliRunner().invoke(cli.app, ["config", "get", "model"])
+    assert result.exit_code == 1
+    assert "error:" in result.stderr
+
+
 def test_config_set_updates_value_and_preserves_comments(config_file: Path) -> None:
     config_file.write_text(
         "# Pick a strong model\n"
@@ -352,6 +375,20 @@ def test_config_unset_unknown_key_errors(config_file: Path) -> None:
     result = CliRunner().invoke(cli.app, ["config", "unset", "bogus"])
     assert result.exit_code == 2
     assert "unknown config key" in result.stderr
+
+
+def test_config_set_malformed_file_errors(config_file: Path) -> None:
+    config_file.write_text("this is not valid toml\n")
+    result = CliRunner().invoke(cli.app, ["config", "set", "timeout", "45"])
+    assert result.exit_code == 1
+    assert "could not parse" in result.stderr
+
+
+def test_config_unset_malformed_file_errors(config_file: Path) -> None:
+    config_file.write_text("this is not valid toml\n")
+    result = CliRunner().invoke(cli.app, ["config", "unset", "timeout"])
+    assert result.exit_code == 1
+    assert "could not parse" in result.stderr
 
 
 def test_config_edit_creates_dir_and_opens_editor(
