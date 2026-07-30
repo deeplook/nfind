@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-30
+
 ### Changed
 
 - **`--show-code` is now settable in the config file** (key `show-code`), for users who
