@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Missing `click` dependency.** `nfind` imports `click` directly, but it was only declared
+  transitively through `typer`. typer 0.27 dropped its own dependency on `click`, so a fresh
+  `pip install nfind` / `uv tool install nfind` resolved without `click` and crashed on
+  startup with `ModuleNotFoundError: No module named 'click'`. `click` is now declared
+  explicitly in `[project.dependencies]`.
+
 ## [0.3.0] - 2026-07-30
 
 ### Changed
