@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-30
+
 ### Fixed
 
 - **Missing `click` dependency.** `nfind` imports `click` directly, but it was only declared
