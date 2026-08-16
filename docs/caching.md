@@ -101,12 +101,13 @@ without the extra installed, nfind prints a warning and falls back to exact matc
 
 ## Managing the cache
 
-`nfind cache` is a small subcommand group for inspecting and clearing stored entries. The
+`nfind cache` is a small subcommand group for inspecting, exporting, and clearing stored entries. The
 default `nfind "prompt"` interface is unchanged.
 
 ```bash
 nfind cache list             # every stored prompt, newest first (id, date, model, prompt)
 nfind cache show 7           # one entry: prompt, provenance, and the generated filter code
+nfind cache save 7 filter.py # export entry 7 as a uv run-able script (--force to overwrite)
 nfind cache delete 7         # delete one entry by id (accepts several ids)
 nfind cache clear            # delete all entries (asks for confirmation)
 nfind cache clear --yes      # delete all entries without confirmation
@@ -115,6 +116,9 @@ nfind cache clear --yes      # delete all entries without confirmation
 Entry ids are **stable identifiers, not positions**: deleting one leaves a gap rather than
 renumbering the rest, so an id you noted (or scripted) always refers to the same entry.
 `nfind cache delete 3 7 12` removes several at once and ignores ids that don't exist.
+Unlike `nfind "prompt" --save FILE`, `cache save` looks the entry up by id, so it cannot
+be misrouted by an inexact prompt match; it also does not count as a use, leaving
+`used_count` and `last_used_at` untouched.
 
 `cache` and [`config`](configuration.md#managing-configuration-from-the-cli) are nfind's
 subcommands; the default `nfind "prompt"` interface is unchanged. In the rare case a prompt

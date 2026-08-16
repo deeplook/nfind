@@ -42,7 +42,7 @@ def test_top_level_help_shows_search_help_and_subcommands(args: list[str], code:
 def test_cache_help_lists_verbs() -> None:
     result = CliRunner().invoke(cli.app, ["cache", "-h"])
     assert result.exit_code == 0
-    for verb in ("list", "show", "clear"):
+    for verb in ("list", "show", "save", "clear"):
         assert verb in result.output
 
 
@@ -113,6 +113,86 @@ def test_cache_show_reports_mode_and_use_count(cache_db: Path) -> None:
     assert "mode:" in result.stderr
     assert "macos-meta" in result.stderr
     assert "used:" in result.stderr  # always printed, with the use counter
+
+
+def test_cache_save_writes_runnable_script(cache_db: Path, tmp_path: Path) -> None:
+    entry_id, _ = _populate(cache_db)
+    destination = tmp_path / "filter.py"
+
+    result = CliRunner().invoke(cli.app, ["cache", "save", str(entry_id), str(destination)])
+
+    assert result.exit_code == 0
+    saved = destination.read_text()
+    assert "# /// script" in saved
+    assert 'dependencies = ["pypdf"]' in saved
+    assert 'if __name__ == "__main__":' in saved
+
+
+def test_cache_save_uses_entry_model_not_flag(cache_db: Path, tmp_path: Path) -> None:
+    with QueryCache(cache_db) as cache:
+        entry = cache.store(
+            "find pdfs",
+            GeneratedFilter(code="def filter_paths(paths):\n    return paths"),
+            model="openai/gpt-5.6-sol",
+            macos_meta=False,
+            extract=False,
+        )
+    destination = tmp_path / "filter.py"
+
+    result = CliRunner().invoke(cli.app, ["cache", "save", str(entry.id), str(destination)])
+
+    assert result.exit_code == 0
+    saved = destination.read_text()
+    assert "openai/gpt-5.6-sol" in saved
+    assert "openai/gpt-5.4" not in saved
+
+
+def test_cache_save_missing_id_errors(cache_db: Path, tmp_path: Path) -> None:
+    result = CliRunner().invoke(cli.app, ["cache", "save", "999", str(tmp_path / "filter.py")])
+
+    assert result.exit_code == 1
+    assert "no cache entry with id 999" in result.stderr
+
+
+def test_cache_save_refuses_existing_file_without_force(cache_db: Path, tmp_path: Path) -> None:
+    entry_id, _ = _populate(cache_db)
+    destination = tmp_path / "filter.py"
+    destination.write_text("keep me")
+
+    result = CliRunner().invoke(cli.app, ["cache", "save", str(entry_id), str(destination)])
+
+    assert result.exit_code == 1
+    assert "--force" in result.stderr
+    assert destination.read_text() == "keep me"
+
+
+def test_cache_save_force_overwrites(cache_db: Path, tmp_path: Path) -> None:
+    entry_id, _ = _populate(cache_db)
+    destination = tmp_path / "filter.py"
+    destination.write_text("replace me")
+
+    result = CliRunner().invoke(
+        cli.app, ["cache", "save", str(entry_id), str(destination), "--force"]
+    )
+
+    assert result.exit_code == 0
+    assert "replace me" not in destination.read_text()
+    assert "# /// script" in destination.read_text()
+
+
+def test_cache_save_does_not_bump_used_count(cache_db: Path, tmp_path: Path) -> None:
+    entry_id, _ = _populate(cache_db)
+
+    result = CliRunner().invoke(
+        cli.app, ["cache", "save", str(entry_id), str(tmp_path / "filter.py")]
+    )
+
+    assert result.exit_code == 0
+    with QueryCache(cache_db) as cache:
+        entry = cache.get(entry_id)
+    assert entry is not None
+    assert entry.used_count == 0
+    assert entry.last_used_at is None
 
 
 def test_cache_delete_removes_entry(cache_db: Path) -> None:

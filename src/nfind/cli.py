@@ -537,6 +537,41 @@ def cache_show(
     typer.echo(_highlight(entry.code, entry.runtime))
 
 
+@cache_app.command("save")
+def cache_save(
+    entry_id: Annotated[
+        int, typer.Argument(metavar="ID", help="Cache entry id (see 'cache list').")
+    ],
+    file: Annotated[
+        Path,
+        typer.Argument(help="Destination path for the self-describing, replayable script."),
+    ],
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Overwrite FILE if it already exists."),
+    ] = False,
+) -> None:
+    """Save one cached entry as a self-describing, replayable script.
+
+    Looks up the entry by id, so an inexact prompt match cannot select a different
+    filter. The exported provenance reflects the entry's original model. Exporting
+    does not count as a cache use.
+    """
+    with QueryCache() as cache:
+        entry = cache.get(entry_id)
+    if entry is None:
+        typer.echo(f"error: no cache entry with id {entry_id}", err=True)
+        raise typer.Exit(1)
+    if file.is_file() and not force:
+        typer.echo(
+            f"error: {file} already exists (use --force to overwrite).",
+            err=True,
+        )
+        raise typer.Exit(1)
+    file.write_text(backend.serialize_filter(entry.to_filter(), entry.prompt, entry.model))
+    typer.echo(f"saved cache entry #{entry_id} to {file}", err=True)
+
+
 @cache_app.command("delete")
 def cache_delete(
     entry_ids: Annotated[

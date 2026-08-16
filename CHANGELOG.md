@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`nfind cache save <ID> <FILE>`**: export a cached filter as a self-describing,
+  `uv run`-able script by id, without retyping the prompt. Unlike `nfind "prompt" --save
+  FILE`, it cannot be misrouted by an inexact prompt match, its provenance docstring
+  reflects the entry's own model (not the `--model` flag), and it does not count as a
+  cache use.
+
 ## [0.3.1] - 2026-07-30
 
 ### Fixed
