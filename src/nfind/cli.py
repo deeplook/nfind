@@ -52,7 +52,7 @@ from .constants import (
     DEFAULT_PIDS_LIMIT,
     DEFAULT_TIMEOUT,
 )
-from .deadline import arm_command_timeout
+from .deadline import CommandTimeoutError, arm_command_timeout
 from .embedding import DEFAULT_EMBEDDING_MODEL, build_embedder
 from .extract import iter_extract_rows
 from .query_cache import DEFAULT_SEMANTIC_THRESHOLD, iter_entry_summaries
@@ -1103,22 +1103,22 @@ def main(
             max_items=max_items,
             max_output_bytes=max_output_bytes,
         )
-    except (TimeoutError, ValueError) as exc:
+    except (CommandTimeoutError, TimeoutError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(1 if isinstance(exc, TimeoutError) else 2) from exc
+        raise typer.Exit(1 if isinstance(exc, (CommandTimeoutError, TimeoutError)) else 2) from exc
 
     try:
         cancel_deadline = arm_command_timeout(command_timeout)
-    except (TimeoutError, ValueError) as exc:
+    except (CommandTimeoutError, TimeoutError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(1 if isinstance(exc, TimeoutError) else 2) from exc
+        raise typer.Exit(1 if isinstance(exc, (CommandTimeoutError, TimeoutError)) else 2) from exc
     ctx.call_on_close(cancel_deadline)
 
     try:
         request, stdin_no_paths = _resolve_stdin_paths(request)
-    except (TimeoutError, ValueError) as exc:
+    except (CommandTimeoutError, TimeoutError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(1 if isinstance(exc, TimeoutError) else 2) from exc
+        raise typer.Exit(1 if isinstance(exc, (CommandTimeoutError, TimeoutError)) else 2) from exc
     if stdin_no_paths:
         _emit(
             [],
@@ -1137,7 +1137,7 @@ def main(
         try:
             for model_id in backend.list_models(request.model):
                 typer.echo(model_id)
-        except (TimeoutError, RuntimeError, ValueError) as exc:
+        except (CommandTimeoutError, TimeoutError, RuntimeError, ValueError) as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from exc
         raise typer.Exit(0)
@@ -1290,7 +1290,14 @@ def main(
         # Control-flow exceptions (e.g. a declined --confirm) subclass RuntimeError;
         # let them propagate to Typer instead of reporting them as errors.
         raise
-    except (DockerError, TimeoutError, RuntimeError, ValueError, OSError) as exc:
+    except (
+        DockerError,
+        CommandTimeoutError,
+        TimeoutError,
+        RuntimeError,
+        ValueError,
+        OSError,
+    ) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
@@ -1306,7 +1313,7 @@ def main(
             max_items=max_items,
             max_output_bytes=max_output_bytes,
         )
-    except (TimeoutError, ValueError) as exc:
+    except (CommandTimeoutError, TimeoutError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 

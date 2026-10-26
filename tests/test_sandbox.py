@@ -242,8 +242,8 @@ def test_run_removes_container_on_whole_command_interrupt():
 
 
 def test_run_removes_container_on_command_timeout():
-    # The whole-command deadline raises CommandTimeoutError mid-run; unlike the interrupt
-    # case it derives from TimeoutError, so pin that the same cleanup path fires and the
+    # The whole-command deadline raises CommandTimeoutError mid-run; pin that the same
+    # cleanup path fires and the
     # concrete exception (not a SandboxTimeout) still propagates unchanged.
     from nfind.deadline import CommandTimeoutError
 

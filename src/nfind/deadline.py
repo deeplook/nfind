@@ -6,8 +6,13 @@ import signal
 from collections.abc import Callable
 
 
-class CommandTimeoutError(TimeoutError):
-    """Raised when the optional whole-command deadline expires."""
+class CommandTimeoutError(RuntimeError):
+    """Raised when the optional whole-command deadline expires.
+
+    It intentionally does not inherit from :class:`TimeoutError`: that exception is an
+    :class:`OSError`, and Python 3.15's subprocess selector can swallow it when raised by
+    a signal handler during ``Popen.communicate(timeout=...)``.
+    """
 
 
 def arm_command_timeout(seconds: float | None) -> Callable[[], None]:
