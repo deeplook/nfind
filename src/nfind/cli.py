@@ -228,10 +228,9 @@ _APPLE_SANDBOX_MACOS15_WARNING = (
 )
 
 _APPLE_SANDBOX_MACOS26_WARNING = (
-    "warning: Apple Containers sandbox is experimental; on macOS 26+ nfind uses "
-    "--network none for network isolation, but Apple Containers still lacks "
-    "Docker-equivalent pids-limit and no-new-privileges flags in the current CLI. "
-    "Use Docker for the strongest sandbox."
+    "warning: Apple Containers sandbox is experimental; nfind uses --network none "
+    "for network isolation on macOS 26+, but the current Apple CLI lacks Docker-"
+    "equivalent pids-limit and no-new-privileges flags."
 )
 
 

@@ -323,7 +323,10 @@ def test_apple_run_uses_supported_security_and_resource_flags(tmp_path):
         args=[], returncode=0, stdout=b'{"ok":true,"results":[]}', stderr=b""
     )
     box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
-    with patch.object(base, "_run_cli", return_value=completed) as run:
+    with (
+        patch.object(apple.platform, "mac_ver", return_value=("15.7.3", ("", "", ""), "")),
+        patch.object(base, "_run_cli", return_value=completed) as run,
+    ):
         result = box.run(
             b"{}",
             mounts=[Mount(tmp_path.resolve(), "/data", read_only=True)],
@@ -351,6 +354,23 @@ def test_apple_run_uses_no_network_on_macos_26(tmp_path):
     box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
 
     with patch.object(apple.platform, "mac_ver", return_value=("26.0", ("", "", ""), "")):
+        command = box._build_run_command(
+            "name",
+            [Mount(tmp_path.resolve(), "/data", read_only=True)],
+            Limits(),
+        )
+
+    assert command[command.index("--network") : command.index("--network") + 2] == [
+        "--network",
+        "none",
+    ]
+    assert "--no-dns" not in command
+
+
+def test_apple_run_uses_no_network_on_macos_27(tmp_path):
+    box = AppleContainerSandbox("img:latest", dockerfile="Dockerfile.python")
+
+    with patch.object(apple.platform, "mac_ver", return_value=("27.0.1", ("", "", ""), "")):
         command = box._build_run_command(
             "name",
             [Mount(tmp_path.resolve(), "/data", read_only=True)],

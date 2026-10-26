@@ -359,7 +359,8 @@ def test_cli_run_threads_enumeration_flags_to_run_saved(tmp_path):
 
 
 def test_cli_threads_sandbox_backend_to_search():
-    result, search = _run(["--sandbox", "apple"])
+    with patch.object(cli.sandbox_module, "apple_supports_no_network_flag", return_value=False):
+        result, search = _run(["--sandbox", "apple"])
 
     assert result.exit_code == 0
     assert search.call_args.kwargs["sandbox_backend"] == "apple"
@@ -376,6 +377,9 @@ def test_cli_apple_warning_mentions_network_none_on_macos_26():
     assert "Apple Containers sandbox is experimental" in result.output
     assert "--network none" in result.output
     assert "does not disable networking on macOS 15" not in result.output
+    assert "pids-limit" in result.output
+    assert "no-new-privileges" in result.output
+    assert "Use Docker for the strongest sandbox" not in result.output
 
 
 def test_cli_threads_sandbox_backend_to_run_saved(tmp_path):

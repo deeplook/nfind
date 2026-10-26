@@ -51,7 +51,7 @@ nfind sits in a gap not filled by other file-search tools. It combines three thi
    tree inside a **disposable, hardened sandbox** (with your directory mounted read-only),
    so it can open and inspect files — yet your file list and contents never leave the
    machine (only your prompt is sent to the model). The default Docker backend disables
-   networking. Apple Containers do it on macOS 26+.
+   networking. Apple Containers do it on macOS 26+; on macOS 15, only DNS is disabled.
 
 Each neighbouring category has only part of this:
 
@@ -73,7 +73,7 @@ a folder — safely, and without your files leaving your machine. See
 
 - Python 3.11+
 - [Docker](https://docs.docker.com/get-docker/) installed and running, or an experimental
-  alternate backend — Apple Containers on macOS via `--sandbox apple`, Podman via
+  alternate backend — Apple Containers on Apple silicon with macOS 26+ via `--sandbox apple`, Podman via
   `--sandbox podman`, or nerdctl/containerd via `--sandbox nerdctl` (see
   [Safety model](#safety-model))
 - An API key for your provider — `OPENAI_API_KEY` by default, or the matching key for

@@ -44,7 +44,7 @@ nfind needs two things at runtime in addition to Python:
 | Requirement | Used for | macOS | Debian/Ubuntu | Check |
 |---|---|---|---|---|
 | [Docker](https://docs.docker.com/get-docker/) | Default sandboxed execution of the generated filter | [Docker Desktop](https://docs.docker.com/desktop/mac/install/) or `brew install docker` | `sudo apt install docker.io` | `docker info` |
-| [Apple Containers](https://github.com/apple/container) | Experimental alternate sandbox via `--sandbox apple` | Install Apple `container`, then `container system start` | — | `container system status` |
+| [Apple Containers](https://github.com/apple/container) | Experimental alternate sandbox via `--sandbox apple` | Apple silicon with macOS 26+; install Apple `container`, then `container system start` | — | `container system status` |
 | [Podman](https://podman.io/) | Experimental alternate sandbox via `--sandbox podman` | `brew install podman`, then `podman machine init && podman machine start` | `sudo apt install podman` | `podman info` |
 | [nerdctl](https://github.com/containerd/nerdctl) | Experimental alternate sandbox via `--sandbox nerdctl` (containerd) | `brew install lima`, then `limactl start` (or Rancher Desktop) | `sudo apt install containerd` + install `nerdctl` | `nerdctl info` |
 | OpenAI API key | Generating the filter from your prompt | — | — | `echo $OPENAI_API_KEY` |
@@ -79,6 +79,7 @@ When a prompt needs a third-party library, nfind builds a **derived** image
 and caches it for reuse. See [Dependencies & the whitelist](dependencies.md).
 
 Building images requires the selected container backend to pull `python:3.11-slim`
-once (and, for derived images, to reach PyPI). After that, Docker searches work offline
-apart from the OpenAI API call; Apple Containers on macOS 15 may still have raw IP
-network access at run time because Apple does not support `--network none` there.
+once (and, for derived images, to reach PyPI). After that, searches work offline apart
+from the OpenAI API call; Apple Containers on macOS 15 may still have raw IP network
+access at run time because Apple does not support `--network none` there. On macOS 26+,
+nfind uses `--network none`.
