@@ -119,8 +119,11 @@ whole-command deadline. Enumeration, model generation and retries, image builds,
 rendering happen outside it. See [Limits and scaling](limits.md) for all current defaults,
 unlimited dimensions, and the separate worker-response ceiling.
 
-`--sandbox apple` uses Apple Containers instead of Docker. It is currently an explicit
-opt-in and prints a warning before running. On macOS 26+ nfind uses Apple Containers'
+`--sandbox apple` uses Apple Containers instead of Docker. Apple's `container` CLI
+requires Apple silicon and macOS 26 or later; see the
+[upstream requirements](https://github.com/apple/container#requirements). nfind keeps a
+legacy fallback for macOS 15, but Apple no longer documents that platform as supported.
+The backend is an explicit opt-in and prints a warning before running. On macOS 26+ nfind uses Apple Containers'
 `--network none` support. On macOS 15, Apple's official docs say
 `container run --network ...` is unsupported, so nfind falls back to `--no-dns`; raw IP
 network access may still be possible there. Apple Containers also lacks

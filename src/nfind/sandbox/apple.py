@@ -3,7 +3,7 @@
 Apple Containers use OCI images and Dockerfile-compatible builds, but their run flags are
 not a byte-for-byte Docker match. In particular, macOS 15 does not accept
 ``--network none``; macOS 26+ does, so nfind selects the strongest network flag the host
-supports. The CLI does not expose Docker's ``--pids-limit`` or
+supports (including macOS 27). The CLI does not expose Docker's ``--pids-limit`` or
 ``--security-opt no-new-privileges`` options. The supported hardening flags stay in one
 auditable method (:meth:`AppleContainerSandbox._build_run_command`) so the differences
 from Docker remain visible. Everything generic comes from :mod:`nfind.sandbox.base`.

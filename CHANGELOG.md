@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Apple Containers support and validation.** Clarify Apple's current requirement of
+  Apple silicon with macOS 26+, distinguish that supported configuration from nfind's
+  legacy macOS 15 networking fallback, and add live integration coverage for filter
+  execution, network isolation, and read-only mounts. The live tests run on compatible
+  Macs with the Apple container service available; GitHub-hosted ARM macOS runners do not
+  support nested virtualization, so they are not used for this coverage.
+
 ### Added
 
 - **`nfind cache save <ID> <FILE>`**: export a cached filter as a self-describing,

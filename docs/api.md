@@ -23,9 +23,12 @@ Requirements are the same as the CLI: Docker running by default (or an experimen
 alternate backend — Apple Containers on macOS via `sandbox_backend="apple"`, Podman via
 `sandbox_backend="podman"`, or nerdctl/containerd via `sandbox_backend="nerdctl"`), and
 `OPENAI_API_KEY` set in the environment. The first call builds the worker image; later
-calls reuse it. The Apple backend is experimental on macOS 15 because it cannot disable
-networking the way Docker does; the Podman backend is experimental because it has been
-validated only on limited hosts and rootless Podman's isolation differs from a rootful
+calls reuse it. On macOS 15, Apple Containers cannot disable networking the way Docker
+does; on macOS 26+ nfind uses `--network none`. Apple remains experimental because its
+CLI requires Apple silicon/macOS 26+ and lacks some Docker hardening flags; live
+validation covers limited hosts. The
+Podman backend is experimental because it has been validated only on limited hosts and
+rootless Podman's isolation differs from a rootful
 Docker daemon (nfind remaps the read-only mount to the worker user via `--userns=keep-id`
 so rootless runs stay readable); the nerdctl backend is experimental — validated on Linux CI
 against rootful containerd, with rootless containerd unsupported (no `keep-id` remap).
@@ -284,8 +287,10 @@ The hardened execution lives behind a small, domain-agnostic `Sandbox` protocol 
 `docker run` flag set (no network, read-only root, dropped capabilities,
 `no-new-privileges`, and process/memory/CPU/file-descriptor/tmpfs limits) in one
 auditable place, plus the image build/derive mechanics. `AppleContainerSandbox` is an
-experimental macOS backend selected with `sandbox_backend="apple"`; on macOS 15 it
-does not provide Docker-equivalent no-network isolation. `PodmanSandbox`
+experimental macOS backend selected with `sandbox_backend="apple"`; on macOS 26+ it
+passes `--network none`, while macOS 15 falls back to `--no-dns`. Its CLI lacks some
+Docker hardening flags. Apple documents support on Apple silicon with macOS 26+; live
+validation covers limited hosts. `PodmanSandbox`
 (`sandbox_backend="podman"`) reuses the identical Docker-family run command, adding a
 rootless `--userns=keep-id` remap so the non-root worker can read the mount; it stays
 experimental because it is validated only on limited hosts. `NerdctlSandbox`

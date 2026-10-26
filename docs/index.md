@@ -55,8 +55,8 @@ describe in a sentence. See the [Examples gallery](examples.md), or the
    code executes inside a **disposable, hardened sandbox** (a throwaway Docker container)
    with the search root bind-mounted **read-only**, networking disabled, all Linux
    capabilities dropped, and CPU/memory/process limits applied to minimize the **blast
-   radius**. On macOS, `--sandbox apple` opts into experimental Apple Containers support
-   with an explicit macOS 15 networking warning; `--sandbox podman` and `--sandbox nerdctl`
+   radius**. On Apple silicon with macOS 26+, `--sandbox apple` opts into experimental Apple Containers support
+   with a network warning on macOS 15; `--sandbox podman` and `--sandbox nerdctl`
    (containerd) are experimental drop-ins that apply the same hardening flags as Docker.
 4. **Map back** — the container returns matching container paths; nfind maps them to
    host paths and prints them.

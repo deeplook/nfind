@@ -53,30 +53,40 @@ its [`--timeout`](cli.md#options), the container is killed.
 
 ### 3b. Apple Containers is an explicit experimental backend
 
-`--sandbox apple` uses Apple's `container` CLI instead of Docker. nfind uses the same
+`--sandbox apple` uses Apple's `container` CLI instead of Docker. Apple documents the
+CLI as requiring Apple silicon and supporting macOS 26 or later; see the
+[Apple Containers requirements](https://github.com/apple/container#requirements). nfind uses the same
 worker images and keeps the important file-system protections: the search roots are
 mounted read-only, the container root filesystem is read-only, capabilities are
 dropped, CPU/memory/open-file limits are set, and a tmpfs is provided for scratch
-space. On macOS 26+ the backend passes `--network none`; on older macOS releases it
-falls back to `--no-dns`.
+space. On macOS 26+ (including macOS 27) the backend passes `--network none`; on
+macOS 15 it falls back to `--no-dns`.
 
 However, this is **not security-equivalent to Docker on macOS 15**. Apple's official
 docs say that on macOS 15 all containers attach to the default vmnet network, the
 `container network` commands are unavailable, and using `--network` with
 `container run` or `container create` results in an error. As a result, nfind cannot
 pass Docker's `--network none` on macOS 15. `--no-dns` only avoids configuring DNS; it
-does not prove that raw IP network access is impossible. On macOS 26+ nfind is prepared
-to use Apple Containers' `--network none` support instead. The current Apple CLI also
+does not prove that raw IP network access is impossible. On macOS 26+ nfind uses Apple
+Containers' `--network none` support; an end-to-end run on macOS 27 confirmed that the
+worker runs successfully and an outbound raw-IP connection fails with “Network is
+unreachable.” The current Apple CLI also
 does not expose Docker-equivalent `--pids-limit` or
 `--security-opt no-new-privileges` flags. Its `--cpus` option accepts whole-number CPU
 counts only; nfind formats the default `1.0` as `1` and rejects fractional Apple CPU
-limits before running the container.
+limits before running the container. The live integration checks are in
+`tests/test_apple_integration.py`. A normal `uv run pytest` run executes them on Apple
+silicon with macOS 26+ when the Apple container service is running, and skips them
+otherwise. The GitHub Actions workflow currently has no macOS job. GitHub documents
+nested virtualization as unsupported on its ARM64 macOS runners, so those hosted runners
+are not a dependable place for Apple Containers' VM-backed integration tests; use a
+self-hosted physical Apple silicon Mac for that CI coverage.
 
-Because of this, Apple Containers is opt-in and prints a warning every time it is used.
-Use Docker when you need nfind's strongest sandbox. Apple Containers is useful on macOS
-15 when you accept this network limitation in exchange for running via Apple's
-lightweight VM-per-container runtime, and is prepared to use stronger network isolation
-on macOS 26+.
+Apple Containers remains opt-in and experimental because its CLI lacks Docker-equivalent
+`--pids-limit` and `--security-opt no-new-privileges` controls, and live validation has
+covered only limited hosts. It prints a warning when used. On macOS 15, that warning also
+covers the weaker network isolation; on macOS 26+ nfind uses `--network none`. Use Docker
+when you need the most thoroughly tested sandbox.
 
 ### 3c. Podman is an explicit experimental backend
 
@@ -139,7 +149,7 @@ ones you've explicitly approved before, remembered across runs. New packages req
 confirmation; [`--no-deps`](cli.md#options) refuses them entirely. Packages are
 installed at image-build time (which needs network). The default Docker container that
 runs the filter has no network; the experimental Apple backend provides that guarantee
-only on macOS 26+ where `--network none` is available, not on macOS 15. See
+only on macOS 26+ where `--network none` is available, unlike macOS 15. See
 [Dependencies & the whitelist](dependencies.md).
 
 ### 6. You can review before running
@@ -177,4 +187,6 @@ The generated code is treated as untrusted. With the default Docker backend, it 
 with no network, no write access to your files, dropped privileges, and bounded
 resources, in a container that is discarded immediately. With Apple Containers on
 macOS 15, the read-only file protections remain, but no-network isolation is not
-available; use it only when that tradeoff is acceptable.
+available; use it only when that tradeoff is acceptable. On macOS 26+, the Apple backend
+uses `--network none`, but still lacks the process-count and privilege-escalation controls
+listed above.
