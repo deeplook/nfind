@@ -17,6 +17,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Python 3.15 support.** Add Python 3.15 to the supported-version classifiers and run
+  the CI test matrix on Python 3.15. Refresh the lockfile to include Python 3.15-compatible
+  Pydantic wheels. Keep whole-command timeout signals propagating through subprocess on
+  Python 3.15.
 - **`nfind cache save <ID> <FILE>`**: export a cached filter as a self-describing,
   `uv run`-able script by id, without retyping the prompt. Unlike `nfind "prompt" --save
   FILE`, it cannot be misrouted by an inexact prompt match, its provenance docstring

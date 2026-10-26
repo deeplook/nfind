@@ -8,11 +8,13 @@ are skipped where ``signal.setitimer`` is unavailable.
 from __future__ import annotations
 
 import signal
+import sys
 import time
 
 import pytest
 
 from nfind.deadline import CommandTimeoutError, arm_command_timeout
+from nfind.sandbox.base import _run_cli
 
 posix_only = pytest.mark.skipif(
     not hasattr(signal, "setitimer"), reason="POSIX interval timer required"
@@ -59,5 +61,19 @@ def test_expired_timer_raises_command_timeout_error() -> None:
     try:
         with pytest.raises(CommandTimeoutError, match="whole-command timeout"):
             time.sleep(0.5)
+    finally:
+        cancel()
+
+
+@posix_only
+def test_expired_deadline_interrupts_subprocess_with_its_own_timeout() -> None:
+    cancel = arm_command_timeout(0.05)
+    try:
+        with pytest.raises(CommandTimeoutError, match="whole-command timeout"):
+            _run_cli(
+                [sys.executable, "-c", "import time; time.sleep(1)"],
+                timeout=5,
+                input=b"request",
+            )
     finally:
         cancel()
